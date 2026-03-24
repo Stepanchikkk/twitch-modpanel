@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "C:\\Users\\stepa\\Documents\\twitch-mod-panel"],
+      "env": {},
+      "disabled": false
+    }
+  }
+}

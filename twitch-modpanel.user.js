@@ -1,73 +1,64 @@
 // ==UserScript==
 // @name            Twitch ModPanel
 // @namespace       TMP
-// @description     Панель модератора для Twitch — быстрый доступ к инструментам управления стримом
-// @copyright       Twitch ModPanel Team
+// @description     Панель модератора для Twitch
+// @version         1.0.0
 //
-// @grant   GM_getValue
-// @grant   GM_setValue
-// @grant   GM_xmlhttpRequest
+// @grant           GM_xmlhttpRequest
+// @grant           GM_getValue
+// @grant           GM_setValue
+// @grant           GM_registerMenuCommand
+// @grant           GM_notification
 //
 // @match           https://*.twitch.tv/*
 //
-// @version         1.0.0
-// @updateURL       https://raw.githubusercontent.com/stepa/twitch-modpanel/main/twitch-modpanel.user.js
-// @downloadURL     https://raw.githubusercontent.com/stepa/twitch-modpanel/main/twitch-modpanel.user.js
+// @connect         raw.githubusercontent.com
+// @connect         api.twitch.tv
+// @connect         id.twitch.tv
+// @connect         irc-ws.chat.twitch.tv
+//
+// @run-at          document-end
+//
+// @updateURL       https://raw.githubusercontent.com/Stepanchikkk/twitch-modpanel/main/twitch-modpanel.user.js
+// @downloadURL     https://raw.githubusercontent.com/Stepanchikkk/twitch-modpanel/main/twitch-modpanel.user.js
 // ==/UserScript==
 
 (function() {
     'use strict';
 
-    const SCRIPT_URL = 'https://raw.githubusercontent.com/stepa/twitch-modpanel/main/twitch-modpanel-loader.js';
+    const SCRIPT_URL = 'https://raw.githubusercontent.com/Stepanchikkk/twitch-modpanel/main/twitch-modpanel-full.user.js';
     const CACHE_KEY = 'tmp_last_update';
-    const CACHE_DURATION = 3600000; // 1 час
+    const CACHE_DURATION = 3600000;
 
     function shouldRefreshCache() {
         try {
             const lastUpdate = GM_getValue(CACHE_KEY, 0);
-            const now = Date.now();
-            return (now - lastUpdate) > CACHE_DURATION;
+            return (Date.now() - lastUpdate) > CACHE_DURATION;
         } catch (e) {
-            console.log('[TMP] Cache error:', e);
             return true;
         }
     }
 
-    function updateCacheTimestamp() {
-        try {
-            GM_setValue(CACHE_KEY, Date.now());
-        } catch (e) {
-            console.log('[TMP] Cache write error:', e);
-        }
-    }
-
     function loadScript() {
-        const script = document.createElement('script');
-        script.type = 'text/javascript';
+        const cacheBust = shouldRefreshCache() ? '?t=' + Date.now() : '';
 
-        if (shouldRefreshCache()) {
-            script.src = SCRIPT_URL + '?t=' + Date.now();
-            updateCacheTimestamp();
-            console.log('[TMP] Loading script with cache bust');
-        } else {
-            script.src = SCRIPT_URL;
-            console.log('[TMP] Loading script from cache');
-        }
-
-        script.onload = function() {
-            console.log('[TMP] Script loaded successfully');
-        };
-
-        script.onerror = function() {
-            console.error('[TMP] Failed to load script');
-        };
-
-        document.head.appendChild(script);
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url: SCRIPT_URL + cacheBust,
+            onload: function(response) {
+                try {
+                    eval(response.responseText);
+                    console.log('[TMP] Script loaded successfully');
+                    GM_setValue(CACHE_KEY, Date.now());
+                } catch (e) {
+                    console.error('[TMP] Error executing script:', e);
+                }
+            },
+            onerror: function(error) {
+                console.error('[TMP] Failed to load script:', error);
+            }
+        });
     }
 
-    if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        loadScript();
-    } else {
-        window.addEventListener('DOMContentLoaded', loadScript);
-    }
+    loadScript();
 })();
