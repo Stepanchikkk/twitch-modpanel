@@ -13,7 +13,7 @@
 
 2. **Нажми кнопку установки:**
 
-   [📦 Установить скрипт](https://raw.githubusercontent.com/stepa/twitch-modpanel/main/twitch-modpanel.user.js)
+   [📦 Установить скрипт](https://raw.githubusercontent.com/Stepanchikkk/twitch-modpanel/main/twitch-modpanel.user.js)
 
 3. **Подтверди установку** в окне Tampermonkey
 
@@ -21,7 +21,7 @@
 
 ### Ручная установка
 
-1. Скачай [`twitch-modpanel.user.js`](https://raw.githubusercontent.com/stepa/twitch-modpanel/main/twitch-modpanel.user.js)
+1. Скачай [`twitch-modpanel.user.js`](https://raw.githubusercontent.com/Stepanchikkk/twitch-modpanel/main/twitch-modpanel.user.js)
 2. Открой Tampermonkey → **Create new script**
 3. Вставь содержимое файла
 4. **File** → **Save**

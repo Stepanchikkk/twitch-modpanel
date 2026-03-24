@@ -395,7 +395,7 @@
 
     function startOAuth() {
         return new Promise((resolve) => {
-            const redirectUri = 'http://localhost:3000';
+            const redirectUri = 'https://stepanchikkk.github.io/twitch-modpanel/oauth-callback.html';
             const scopes = [
                 'moderator:manage:announcements',
                 'moderator:manage:chat_settings',
@@ -419,20 +419,37 @@
 
             console.log('[ModPanel] Opening OAuth:', authUrl);
 
-            // Открываем в новом окне через GM_openInTab
-            const authWindow = GM_openInTab(authUrl, {
-                active: true,
-                insert: true,
-                setParent: true
-            });
+            // Открываем popup окно по центру экрана
+            const width = 600;
+            const height = 700;
+            const left = Math.round((window.screen.width - width) / 2);
+            const top = Math.round((window.screen.height - height) / 2);
+
+            const authWindow = window.open(
+                authUrl,
+                'TwitchModPanelOAuth',
+                `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,location=no,status=no,directories=no,scrollbars=yes,resizable=yes`
+            );
+
+            if (!authWindow) {
+                resolve({ success: false, error: 'Блокировщик всплывающих окон!' });
+                return;
+            }
 
             let completed = false;
             let checkCount = 0;
 
-            // Создаваем iframe для перехвата redirect
-            const iframe = document.createElement('iframe');
-            iframe.style.display = 'none';
-            document.body.appendChild(iframe);
+            // Слушаем сообщения от окна авторизации
+            const messageHandler = (event) => {
+                if (event.data?.type === 'TMOD_OAUTH_SUCCESS' && !completed) {
+                    completed = true;
+                    authWindow.close();
+                    window.removeEventListener('message', messageHandler);
+                    resolve({ success: true, token: event.data.token, user: event.data.user });
+                }
+            };
+
+            window.addEventListener('message', messageHandler);
 
             // Проверяем закрытие окна
             const checkWindow = setInterval(() => {
@@ -440,8 +457,8 @@
                     clearInterval(checkWindow);
                     if (!completed) {
                         completed = true;
-                        document.body.removeChild(iframe);
-                        resolve({ success: false, error: 'Window closed' });
+                        window.removeEventListener('message', messageHandler);
+                        resolve({ success: false, error: 'Окно закрыто' });
                     }
                 }
                 checkCount++;
@@ -449,22 +466,10 @@
                     clearInterval(checkWindow);
                     completed = true;
                     authWindow.close();
-                    document.body.removeChild(iframe);
+                    window.removeEventListener('message', messageHandler);
                     resolve({ success: false, error: 'Timeout' });
                 }
             }, 500);
-
-            // Слушаем сообщения от iframe
-            window.addEventListener('message', function handler(event) {
-                if (event.data?.type === 'TMOD_OAUTH_SUCCESS' && !completed) {
-                    completed = true;
-                    clearInterval(checkWindow);
-                    authWindow.close();
-                    document.body.removeChild(iframe);
-                    window.removeEventListener('message', handler);
-                    resolve({ success: true, token: event.data.token, user: event.data.user });
-                }
-            });
         });
     }
 
