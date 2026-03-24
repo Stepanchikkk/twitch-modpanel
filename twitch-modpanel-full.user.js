@@ -315,21 +315,13 @@
 
     function startOAuth() {
         return new Promise((resolve) => {
-            // Создаём blob URL который ловит токен
-            const redirectHtml = `
-                <!DOCTYPE html>
-                <html><body><script>
-                    const hash = window.location.hash.substring(1);
-                    const params = new URLSearchParams(hash);
-                    const token = params.get('access_token');
-                    if (token && window.opener) {
-                        window.opener.postMessage({type:'TMOD_OAUTH_SUCCESS',token:token},'${window.location.origin}');
-                    }
-                    window.close();
-                <\/script></body></html>
-            `;
-            const blob = new Blob([redirectHtml], {type: 'text/html'});
-            const redirectUri = URL.createObjectURL(blob);
+            // Создаём data URI который ловит токен и закрывается
+            const redirectHtml = `<!DOCTYPE html><html><body><script>
+                var h=location.hash.substring(1),p=new URLSearchParams(h),t=p.get('access_token');
+                if(t&&window.opener){window.opener.postMessage({type:'TMOD_OAUTH_SUCCESS',token:t},'${window.location.origin}');}
+                window.close();
+            <\/script></body></html>`;
+            const redirectUri = 'data:text/html;base64,' + btoa(redirectHtml);
             
             const scopes = [
                 'moderator:manage:announcements',
@@ -361,7 +353,7 @@
 
             const authWindow = window.open(authUrl, 'TwitchOAuth', `width=${width},height=${height},left=${left},top=${top}`);
 
-            if (!authWindow) { URL.revokeObjectURL(redirectUri); resolve({success:false,error:'Popup blocked'}); return; }
+            if (!authWindow) { resolve({success:false,error:'Popup blocked'}); return; }
 
             let completed = false;
             let checkCount = 0;
@@ -369,10 +361,8 @@
             const messageHandler = (event) => {
                 if (event.data?.type === 'TMOD_OAUTH_SUCCESS' && !completed) {
                     completed = true;
-                    URL.revokeObjectURL(redirectUri);
                     window.removeEventListener('message', messageHandler);
                     authWindow.close();
-                    // Получаем пользователя
                     GM_xmlhttpRequest({
                         method: 'GET',
                         url: 'https://api.twitch.tv/helix/users',
@@ -395,7 +385,6 @@
                     clearInterval(checkWindow);
                     if (!completed) {
                         completed = true;
-                        URL.revokeObjectURL(redirectUri);
                         window.removeEventListener('message', messageHandler);
                         resolve({success:false,error:'Closed'});
                     }
@@ -404,7 +393,6 @@
                 if (checkCount > 240) {
                     clearInterval(checkWindow);
                     completed = true;
-                    URL.revokeObjectURL(redirectUri);
                     authWindow.close();
                     window.removeEventListener('message', messageHandler);
                     resolve({success:false,error:'Timeout'});
