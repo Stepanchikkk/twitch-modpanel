@@ -315,7 +315,22 @@
 
     function startOAuth() {
         return new Promise((resolve) => {
-            const redirectUri = 'http://localhost:3000';
+            // Создаём blob URL который ловит токен
+            const redirectHtml = `
+                <!DOCTYPE html>
+                <html><body><script>
+                    const hash = window.location.hash.substring(1);
+                    const params = new URLSearchParams(hash);
+                    const token = params.get('access_token');
+                    if (token && window.opener) {
+                        window.opener.postMessage({type:'TMOD_OAUTH_SUCCESS',token:token},'${window.location.origin}');
+                    }
+                    window.close();
+                <\/script></body></html>
+            `;
+            const blob = new Blob([redirectHtml], {type: 'text/html'});
+            const redirectUri = URL.createObjectURL(blob);
+            
             const scopes = [
                 'moderator:manage:announcements',
                 'moderator:manage:chat_settings',
@@ -337,23 +352,16 @@
                 `&scope=${encodeURIComponent(scopes)}` +
                 `&force_verify=true`;
 
-            console.log('[ModPanel] Opening OAuth:', authUrl);
+            console.log('[ModPanel] Opening OAuth');
 
             const width = 600;
             const height = 700;
             const left = Math.round((window.screen.width - width) / 2);
             const top = Math.round((window.screen.height - height) / 2);
 
-            const authWindow = window.open(
-                authUrl,
-                'TwitchModPanelOAuth',
-                `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,location=no,status=no`
-            );
+            const authWindow = window.open(authUrl, 'TwitchOAuth', `width=${width},height=${height},left=${left},top=${top}`);
 
-            if (!authWindow) {
-                resolve({ success: false, error: 'Popup blocked' });
-                return;
-            }
+            if (!authWindow) { URL.revokeObjectURL(redirectUri); resolve({success:false,error:'Popup blocked'}); return; }
 
             let completed = false;
             let checkCount = 0;
@@ -361,9 +369,22 @@
             const messageHandler = (event) => {
                 if (event.data?.type === 'TMOD_OAUTH_SUCCESS' && !completed) {
                     completed = true;
-                    authWindow.close();
+                    URL.revokeObjectURL(redirectUri);
                     window.removeEventListener('message', messageHandler);
-                    resolve({ success: true, token: event.data.token, user: event.data.user });
+                    authWindow.close();
+                    // Получаем пользователя
+                    GM_xmlhttpRequest({
+                        method: 'GET',
+                        url: 'https://api.twitch.tv/helix/users',
+                        headers: {'Authorization':`Bearer ${event.data.token}`,'Client-Id':CLIENT_ID},
+                        onload: (r) => {
+                            try {
+                                const d = JSON.parse(r.responseText);
+                                resolve({success:true, token:event.data.token, user:d.data[0]});
+                            } catch(e) { resolve({success:true, token:event.data.token, user:{login:'user'}}); }
+                        },
+                        onerror: () => resolve({success:true, token:event.data.token, user:{login:'user'}})
+                    });
                 }
             };
 
@@ -374,17 +395,19 @@
                     clearInterval(checkWindow);
                     if (!completed) {
                         completed = true;
+                        URL.revokeObjectURL(redirectUri);
                         window.removeEventListener('message', messageHandler);
-                        resolve({ success: false, error: 'Window closed' });
+                        resolve({success:false,error:'Closed'});
                     }
                 }
                 checkCount++;
                 if (checkCount > 240) {
                     clearInterval(checkWindow);
                     completed = true;
+                    URL.revokeObjectURL(redirectUri);
                     authWindow.close();
                     window.removeEventListener('message', messageHandler);
-                    resolve({ success: false, error: 'Timeout' });
+                    resolve({success:false,error:'Timeout'});
                 }
             }, 500);
         });
