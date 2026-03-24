@@ -4,7 +4,15 @@
 
 ## 📦 Установка
 
-### Через Tampermonkey (рекомендуется)
+### Способ 1: Chrome Extension (рекомендуется)
+
+1. Открой `chrome://extensions/`
+2. Включи **Developer mode**
+3. Нажми **Load unpacked**
+4. Выбери папку `twitch-mod-panel`
+5. **Готово!** Зайди на любой стрим где ты модератор
+
+### Способ 2: Tampermonkey
 
 1. **Установи Tampermonkey:**
    - [Chrome](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo)
@@ -19,7 +27,7 @@
 
 4. **Готово!** Зайди на любой стрим где ты модератор
 
-### Ручная установка
+### Ручная установка Tampermonkey
 
 1. Скачай [`twitch-modpanel.user.js`](https://raw.githubusercontent.com/Stepanchikkk/twitch-modpanel/main/twitch-modpanel.user.js)
 2. Открой Tampermonkey → **Create new script**
