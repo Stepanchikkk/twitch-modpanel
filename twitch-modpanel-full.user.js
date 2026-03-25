@@ -315,15 +315,7 @@
 
     function startOAuth() {
         return new Promise((resolve) => {
-            // Создаём data URI который показывает успех и закрывается сам
-            const redirectHtml = `<!DOCTYPE html><html><head><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0e0e10;color:#efeff1}</style></head><body><div id="msg"><h1>✅ Успешно!</h1><p>Закрой это окно</p></div><script>
-                var h=location.hash.substring(1),p=new URLSearchParams(h),t=p.get('access_token');
-                if(t&&window.opener){
-                    window.opener.postMessage({type:'TMOD_OAUTH_SUCCESS',token:t},'*');
-                    document.getElementById('msg').innerHTML='<h1>✅ Готово!</h1><p>Можешь закрыть это окно</p>';
-                }
-            <\/script></body></html>`;
-            const redirectUri = 'data:text/html;base64,' + btoa(redirectHtml);
+            const redirectUri = 'http://localhost:3000';
             
             const scopes = [
                 'moderator:manage:announcements',
@@ -360,18 +352,12 @@
             let completed = false;
             let checkCount = 0;
 
+            // Слушаем сообщения от localhost:3000
             const messageHandler = (event) => {
                 if (event.data?.type === 'TMOD_OAUTH_SUCCESS' && !completed) {
                     completed = true;
                     window.removeEventListener('message', messageHandler);
-                    // Пытаемся закрыть окно
-                    try { 
-                        authWindow.close(); 
-                        console.log('[ModPanel] Close attempted');
-                    } catch(e) {
-                        console.log('[ModPanel] Close failed:', e);
-                    }
-                    // Получаем пользователя
+                    try { authWindow.close(); } catch(e) {}
                     GM_xmlhttpRequest({
                         method: 'GET',
                         url: 'https://api.twitch.tv/helix/users',
