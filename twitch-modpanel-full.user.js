@@ -315,9 +315,8 @@
 
     function startOAuth() {
         return new Promise((resolve) => {
-            // Создаём data URI который показывает успех и закрывается через 2 секунды
-            const redirectHtml = `<!DOCTYPE html><html><head><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0e0e10;color:#efeff1}</style></head><body><div><h1>✅ Успешно!</h1><p>Окно закроется автоматически...</p></div><script>
-                setTimeout(function(){window.close();},2000);
+            // Создаём data URI который показывает успех
+            const redirectHtml = `<!DOCTYPE html><html><head><style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0e0e10;color:#efeff1}</style></head><body><div><h1>✅ Успешно!</h1><p>Можно закрыть это окно</p></div><script>
                 var h=location.hash.substring(1),p=new URLSearchParams(h),t=p.get('access_token');
                 if(t&&window.opener){try{window.opener.postMessage({type:'TMOD_OAUTH_SUCCESS',token:t},'*');}catch(e){}}
             <\/script></body></html>`;
@@ -362,7 +361,9 @@
                 if (event.data?.type === 'TMOD_OAUTH_SUCCESS' && !completed) {
                     completed = true;
                     window.removeEventListener('message', messageHandler);
-                    authWindow.close();
+                    // Закрываем окно
+                    try { authWindow.close(); } catch(e) {}
+                    // Получаем пользователя
                     GM_xmlhttpRequest({
                         method: 'GET',
                         url: 'https://api.twitch.tv/helix/users',
@@ -380,21 +381,20 @@
 
             window.addEventListener('message', messageHandler);
 
-            // Проверяем закрытие окна и URL
+            // Активно закрываем окно когда видим data: URL
             const checkWindow = setInterval(() => {
                 try {
-                    // Если окно сменило URL на data: — значит авторизация прошла
                     if (authWindow.location.href.startsWith('data:')) {
                         clearInterval(checkWindow);
-                        // Ждём 3 секунды и закрываем
+                        // Закрываем окно с задержкой чтобы постMessage успел сработать
                         setTimeout(() => {
-                            if (!completed && authWindow) {
-                                authWindow.close();
-                                completed = true;
-                                window.removeEventListener('message', messageHandler);
-                                resolve({success:false,error:'Timeout after auth'});
-                            }
-                        }, 3000);
+                            try { 
+                                if (authWindow && !authWindow.closed) {
+                                    authWindow.close();
+                                    console.log('[ModPanel] Window closed');
+                                }
+                            } catch(e) {}
+                        }, 2000);
                     }
                 } catch(e) {
                     // CORS - нельзя читать URL
@@ -412,7 +412,7 @@
                 if (checkCount > 240) {
                     clearInterval(checkWindow);
                     completed = true;
-                    authWindow.close();
+                    try { authWindow.close(); } catch(e) {}
                     window.removeEventListener('message', messageHandler);
                     resolve({success:false,error:'Timeout'});
                 }
