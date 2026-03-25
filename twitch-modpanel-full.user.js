@@ -315,8 +315,7 @@
 
     function startOAuth() {
         return new Promise((resolve) => {
-            // GitHub Pages URL для OAuth callback
-            const redirectUri = 'https://stepanchikkk.github.io/twitch-modpanel/oauth-callback.html';
+            const redirectUri = 'https://stepanchikkk.github.io/twitch-modpanel/';
             
             const scopes = [
                 'moderator:manage:announcements',
