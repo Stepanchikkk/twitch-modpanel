@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Twitch ModPanel</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0e0e10;
+            color: #efeff1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 40px;
+        }
+        h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: #9146FF;
+        }
+        p {
+            font-size: 18px;
+            color: #adadb8;
+            margin-bottom: 30px;
+            text-align: center;
+            max-width: 600px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 15px 30px;
+            background: #9146FF;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            margin: 10px;
+            transition: background 0.2s;
+        }
+        .btn:hover {
+            background: #772ce8;
+        }
+        .btn-secondary {
+            background: #3a3a3d;
+        }
+        .btn-secondary:hover {
+            background: #4f4f52;
+        }
+        code {
+            background: #1f1f23;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+    </style>
+</head>
+<body>
+    <h1>🛡️ Twitch ModPanel</h1>
+    <p>
+        Панель модератора для Twitch — быстрый доступ к инструментам управления стримом без переключения на Mod View.
+    </p>
+    
+    <div>
+        <a href="https://github.com/Stepanchikkk/twitch-modpanel" class="btn">📦 GitHub</a>
+        <a href="https://raw.githubusercontent.com/Stepanchikkk/twitch-modpanel/main/twitch-modpanel.user.js" class="btn">📥 Установить Tampermonkey</a>
+    </div>
+    
+    <div style="margin-top: 40px; text-align: center;">
+        <h2 style="color: #efeff1; margin-bottom: 20px;">Установка</h2>
+        
+        <h3 style="color: #9146FF; margin: 20px 0 10px;">Способ 1: Tampermonkey</h3>
+        <ol style="color: #adadb8; text-align: left; max-width: 500px; margin: 0 auto 20px;">
+            <li>Установи <a href="https://www.tampermonkey.net/" style="color: #9146FF;">Tampermonkey</a></li>
+            <li>Нажми на кнопку "Установить Tampermonkey" выше</li>
+            <li>Подтверди установку в окне Tampermonkey</li>
+            <li>Зайди на любой стрим где ты модератор</li>
+            <li>Нажми на кнопку "Панель модератора" над чатом</li>
+        </ol>
+        
+        <h3 style="color: #9146FF; margin: 20px 0 10px;">Способ 2: Chrome Extension</h3>
+        <ol style="color: #adadb8; text-align: left; max-width: 500px; margin: 0 auto 20px;">
+            <li>Открой <code>chrome://extensions/</code></li>
+            <li>Включи <strong>Developer mode</strong></li>
+            <li>Нажми <strong>Load unpacked</strong></li>
+            <li>Выбери папку <code>twitch-mod-panel</code></li>
+        </ol>
+    </div>
+    
+    <footer style="margin-top: 60px; color: #717172; font-size: 14px;">
+        <p>Twitch ModPanel v1.0.0</p>
+    </footer>
+</body>
+</html>
