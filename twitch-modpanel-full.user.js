@@ -349,50 +349,51 @@
 
             if (!authWindow) { resolve({success:false,error:'Popup blocked'}); return; }
 
-            let completed = false;
-            let checkCount = 0;
+            // Показываем инструкцию
+            alert('📋 Инструкция:\n\n1. Авторизуйся на Twitch\n2. Когда увидишь ошибку "Не удаётся подключиться" — скопируй URL из адресной строки\n3. Вставь URL в следующее окно\n\nИли просто закрой это окно если не хочешь авторизоваться');
 
-            // Слушаем сообщения от localhost:3000
-            const messageHandler = (event) => {
-                if (event.data?.type === 'TMOD_OAUTH_SUCCESS' && !completed) {
-                    completed = true;
-                    window.removeEventListener('message', messageHandler);
-                    try { authWindow.close(); } catch(e) {}
-                    GM_xmlhttpRequest({
-                        method: 'GET',
-                        url: 'https://api.twitch.tv/helix/users',
-                        headers: {'Authorization':`Bearer ${event.data.token}`,'Client-Id':CLIENT_ID},
-                        onload: (r) => {
-                            try {
-                                const d = JSON.parse(r.responseText);
-                                resolve({success:true, token:event.data.token, user:d.data[0]});
-                            } catch(e) { resolve({success:true, token:event.data.token, user:{login:'user'}}); }
-                        },
-                        onerror: () => resolve({success:true, token:event.data.token, user:{login:'user'}})
-                    });
-                }
-            };
+            // Запрашиваем токен у пользователя
+            const tokenUrl = prompt('📋 Скопируй URL из адресной строки (там будет #access_token=...):\n\nhttp://localhost:3000#access_token=XXXXX');
+            
+            try { authWindow.close(); } catch(e) {}
 
-            window.addEventListener('message', messageHandler);
+            if (!tokenUrl) {
+                resolve({success:false,error:'Cancelled'});
+                return;
+            }
 
-            const checkWindow = setInterval(() => {
-                if (authWindow.closed) {
-                    clearInterval(checkWindow);
-                    if (!completed) {
-                        completed = true;
-                        window.removeEventListener('message', messageHandler);
-                        resolve({success:false,error:'Closed by user'});
+            // Парсим токен из URL
+            const hash = tokenUrl.split('#')[1];
+            if (!hash) {
+                resolve({success:false,error:'No token in URL'});
+                return;
+            }
+
+            const params = new URLSearchParams(hash);
+            const token = params.get('access_token');
+
+            if (!token) {
+                resolve({success:false,error:'No access_token'});
+                return;
+            }
+
+            console.log('[ModPanel] Token received from prompt');
+
+            // Получаем пользователя
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: 'https://api.twitch.tv/helix/users',
+                headers: {'Authorization':`Bearer ${token}`,'Client-Id':CLIENT_ID},
+                onload: (r) => {
+                    try {
+                        const d = JSON.parse(r.responseText);
+                        resolve({success:true, token:token, user:d.data[0]});
+                    } catch(e) {
+                        resolve({success:true, token:token, user:{login:'user'}});
                     }
-                }
-                checkCount++;
-                if (checkCount > 240) {
-                    clearInterval(checkWindow);
-                    completed = true;
-                    try { authWindow.close(); } catch(e) {}
-                    window.removeEventListener('message', messageHandler);
-                    resolve({success:false,error:'Timeout'});
-                }
-            }, 500);
+                },
+                onerror: () => resolve({success:true, token:token, user:{login:'user'}})
+            });
         });
     }
 
