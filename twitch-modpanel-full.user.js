@@ -410,7 +410,94 @@
             min-width: 340px;
         `;
 
+        const announceIconUrl = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTggMTZWMTEgTTEyIDE2VjggTTE2IDE2VjEzIE00IDE2LjhMNC03LjJDNCA2LjA3OTkgNCA1LjUxOTg0IDQuMjE3OTkgNS4wOTIwMiBDNC40MDk3MyA0LjcxNTcgNC43MTU2OSA0LjQwOTczIDUuMDkyMDIgNC4yMTc5OSBDNS41MTk4NCA0IDYuMDc5OSA0IDcuMiA0SDE2LjhDMTcuOTIwMSA0IDE4LjQ4MDIgNCAxOC45MDggNC4yMTc5OSBDMTkuMjg0MyA0LjQwOTczIDE5LjU5MDMgNC43MTU3IDE5Ljc4MiA1LjA5MjAyIEMyMCA1LjUxOTg0IDIwIDYuMDc5OSAyMCA3LjJWMTYuOEMyMCAxNy45MjAxIDIwIDE4LjQ4MDIgMTkuNzgyIDE4LjkwOCBDMTkuNTkwMyAxOS4yODQzIDE5LjI4NDMgMTkuNTkwMyAxOC45MDggMTkuNzgyIEMxOC40ODAyIDIwIDE3LjkyMDEgMjAgMTYuOCAyMEg3LjJDNi4wNzk5IDIwIDUuNTE5ODQgMjAgNS4wOTIwMiAxOS43ODIgQzQuNzE1NjkgMTkuNTkwMyA0LjQwOTczIDE5LjI4NDMgNC4yMTc5OSAxOC45MDggQzQgMTguNDgwMiA0IDE3LjkyMDEgNCAxNi44WiIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+';
+        const chatIconUrl = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMyIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIi8+CjxwYXRoIGQ9Ik0yMSAxMkMxMiAxMiAxMiAxMiAxMiAxMk0yMSAxMkMyMSAxNi45NzA2IDE2Ljk3MDYgMjEgMTIgMjFDMTcgMjEgMTIgMjEgMTIgMjFDNy4wMjk0NCAyMSAzIDE2Ljk3MDYgMyAxMkMzIDcuMDI5NDQgNy4wMjk0NCAzIDEyIDNDNyAxMiAxMiAxMiAxMiAxMk0yMSAxMkMyMSA3LjAyOTQ0IDE2Ljk3MDYgMyAxMiAzIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4=';
+        const pollIconUrl = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTggMTZWMTEgTTEyIDE2VjggTTE2IDE2VjEzIE00IDE2LjhMNC03LjJDNCA2LjA3OTkgNCA1LjUxOTg0IDQuMjE3OTkgNS4wOTIwMiBDNC40MDk3MyA0LjcxNTcgNC43MTU2OSA0LjQwOTczIDUuMDkyMDIgNC4yMTc5OSBDNS41MTk4NCA0IDYuMDc5OSA0IDcuMiA0SDE2LjhDMTcuOTIwMSA0IDE4LjQ4MDIgNCAxOC45MDggNC4yMTc5OSBDMTkuMjg0MyA0LjQwOTczIDE5LjU5MDMgNC43MTU3IDE5Ljc4MiA1LjA5MjAyIEMyMCA1LjUxOTg0IDIwIDYuMDc5OSAyMCA3LjJWMTYuOEMyMCAxNy45MjAxIDIwIDE4LjQ4MDIgMTkuNzgyIDE4LjkwOCBDMTkuNTkwMyAxOS4yODQzIDE5LjI4NDMgMTkuNTkwMyAxOC45MDggMTkuNzgyIEMxOC40ODAyIDIwIDE3LjkyMDEgMjAgMTYuOCAyMEg3LjJDNi4wNzk5IDIwIDUuNTE5ODQgMjAgNS4wOTIwMiAxOS43ODIgQzQuNzE1NjkgMTkuNTkwMyA0LjQwOTczIDE5LjI4NDMgNC4yMTc5OSAxOC45MDggQzQgMTguNDgwMiA0IDE3LjkyMDEgNCAxNi44WiIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+';
+        const predictionIconUrl = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTggMTZWMTEgTTEyIDE2VjggTTE2IDE2VjEzIE00IDE2LjhMNC03LjJDNCA2LjA3OTkgNCA1LjUxOTg0IDQuMjE3OTkgNS4wOTIwMiBDNC40MDk3MyA0LjcxNTcgNC43MTU2OSA0LjQwOTczIDUuMDkyMDIgNC4yMTc5OSBDNS41MTk4NCA0IDYuMDc5OSA0IDcuMiA0SDE2LjhDMTcuOTIwMSA0IDE4LjQ4MDIgNCAxOC45MDggNC4yMTc5OSBDMTkuMjg0MyA0LjQwOTczIDE5LjU5MDMgNC43MTU3IDE5Ljc4MiA1LjA5MjAyIEMyMCA1LjUxOTg0IDIwIDYuMDc5OSAyMCA3LjJWMTYuOEMyMCAxNy45MjAxIDIwIDE4LjQ4MDIgMTkuNzgyIDE4LjkwOCBDMTkuNTkwMyAxOS4yODQzIDE5LjI4NDMgMTkuNTkwMyAxOC45MDggMTkuNzgyIEMxOC40ODAyIDIwIDE3LjkyMDEgMjAgMTYuOCAyMEg3LjJDNi4wNzk5IDIwIDUuNTE5ODQgMjAgNS4wOTIwMiAxOS43ODIgQzQuNzE1NjkgMTkuNTkwMyA0LjQwOTczIDE5LjI4NDMgNC4yMTc5OSAxOC45MDggQzQgMTguNDgwMiA0IDE3LjkyMDEgNCAxNi44WiIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+';
+        const clipIconUrl = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTggMTZWMTEgTTEyIDE2VjggTTE2IDE2VjEzIE00IDE2LjhMNC03LjJDNCA2LjA3OTkgNCA1LjUxOTg0IDQuMjE3OTkgNS4wOTIwMiBDNC40MDk3MyA0LjcxNTcgNC43MTU2OSA0LjQwOTczIDUuMDkyMDIgNC4yMTc5OSBDNS41MTk4NCA0IDYuMDc5OSA0IDcuMiA0SDE2LjhDMTcuOTIwMSA0IDE4LjQ4MDIgNCAxOC45MDggNC4yMTc5OSBDMTkuMjg0MyA0LjQwOTczIDE5LjU5MDMgNC43MTU3IDE5Ljc4MiA1LjA5MjAyIEMyMCA1LjUxOTg0IDIwIDYuMDc5OSAyMCA3LjJWMTYuOEMyMCAxNy45MjAxIDIwIDE4LjQ4MDIgMTkuNzgyIDE4LjkwOCBDMTkuNTkwMyAxOS4yODQzIDE5LjI4NDMgMTkuNTkwMyAxOC45MDggMTkuNzgyIEMxOC40ODAyIDIwIDE3LjkyMDEgMjAgMTYuOCAyMEg3LjJDNi4wNzk5IDIwIDUuNTE5ODQgMjAgNS4wOTIwMiAxOS43ODIgQzQuNzE1NjkgMTkuNTkwMyA0LjQwOTczIDE5LjI4NDMgNC4yMTc5OSAxOC45MDggQzQgMTguNDgwMiA0IDE3LjkyMDEgNCAxNi44WiIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+';
+        const rewardsIconUrl = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTggMTZWMTEgTTEyIDE2VjggTTE2IDE2VjEzIE00IDE2LjhMNC03LjJDNCA2LjA3OTkgNCA1LjUxOTg0IDQuMjE3OTkgNS4wOTIwMiBDNC40MDk3MyA0LjcxNTcgNC43MTU2OSA0LjQwOTczIDUuMDkyMDIgNC4yMTc5OSBDNS41MTk4NCA0IDYuMDc5OSA0IDcuMiA0SDE2LjhDMTcuOTIwMSA0IDE4LjQ4MDIgNCAxOC45MDggNC4yMTc5OSBDMTkuMjg0MyA0LjQwOTczIDE5LjU5MDMgNC43MTU3IDE5Ljc4MiA1LjA5MjAyIEMyMCA1LjUxOTg0IDIwIDYuMDc5OSAyMCA3LjJWMTYuOEMyMCAxNy45MjAxIDIwIDE4LjQ4MDIgMTkuNzgyIDE4LjkwOCBDMTkuNTkwMyAxOS4yODQzIDE5LjI4NDMgMTkuNTkwMyAxOC45MDggMTkuNzgyIEMxOC40ODAyIDIwIDE3LjkyMDEgMjAgMTYuOCAyMEg3LjJDNi4wNzk5IDIwIDUuNTE5ODQgMjAgNS4wOTIwMiAxOS43ODIgQzQuNzE1NjkgMTkuNTkwMyA0LjQwOTczIDE5LjI4NDMgNC4yMTc5OSAxOC45MDggQzQgMTguNDgwMiA0IDE3LjkyMDEgNCAxNi44WiIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+';
+        const headerIconUrl = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTggMTZWMTEgTTEyIDE2VjggTTE2IDE2VjEzIE00IDE2LjhMNC03LjJDNCA2LjA3OTkgNCA1LjUxOTg0IDQuMjE3OTkgNS4wOTIwMiBDNC40MDk3MyA0LjcxNTcgNC43MTU2OSA0LjQwOTczIDUuMDkyMDIgNC4yMTc5OSBDNS41MTk4NCA0IDYuMDc5OSA0IDcuMiA0SDE2LjhDMTcuOTIwMSA0IDE4LjQ4MDIgNCAxOC45MDggNC4yMTc5OSBDMTkuMjg0MyA0LjQwOTczIDE5LjU5MDMgNC43MTU3IDE5Ljc4MiA1LjA5MjAyIEMyMCA1LjUxOTg0IDIwIDYuMDc5OSAyMCA3LjJWMTYuOEMyMCAxNy45MjAxIDIwIDE4LjQ4MDIgMTkuNzgyIDE4LjkwOCBDMTkuNTkwMyAxOS4yODQzIDE5LjI4NDMgMTkuNTkwMyAxOC45MDggMTkuNzgyIEMxOC40ODAyIDIwIDE3LjkyMDEgMjAgMTYuOCAyMEg3LjJDNi4wNzk5IDIwIDUuNTE5ODQgMjAgNS4wOTIwMiAxOS43ODIgQzQuNzE1NjkgMTkuNTkwMyA0LjQwOTczIDE5LjI4NDMgNC4yMTc5OSAxOC45MDggQzQgMTguNDgwMiA0IDE3LjkyMDEgNCAxNi44WiIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+';
+
         panel.innerHTML = `
+            <style>
+                @keyframes tmod-slide-in {
+                    from { opacity: 0; transform: translateY(20px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                .tmod-no-select { user-select: none !important; -webkit-user-select: none !important; }
+                .tmod-feature-btn {
+                    background: #18181b !important;
+                    border: 1px solid #3a3a3d !important;
+                    border-radius: 8px !important;
+                    cursor: pointer !important;
+                    display: flex !important;
+                    flex-direction: row !important;
+                    align-items: center !important;
+                    gap: 8px !important;
+                    text-align: left !important;
+                    padding: 18px 16px !important;
+                    min-width: 120px !important;
+                    margin: 0 !important;
+                    box-sizing: border-box !important;
+                    color: #efeff1 !important;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+                    font-size: 14px !important;
+                    font-weight: 600 !important;
+                }
+                .tmod-feature-btn:hover {
+                    background: #26262c !important;
+                    border-color: #4f4f52 !important;
+                }
+                .tmod-feature-btn img {
+                    width: 24px !important;
+                    height: 24px !important;
+                    flex-shrink: 0 !important;
+                    filter: brightness(0) invert(1) !important;
+                }
+                .tmod-feature-btn .tmod-label {
+                    font-size: 14px !important;
+                    font-weight: 600 !important;
+                    color: #efeff1 !important;
+                    white-space: nowrap !important;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+                }
+            </style>
+            <div class="tmod-no-select" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #18181b; border-bottom: 1px solid #3a3a3d; cursor: move; border-radius: 8px 8px 0 0;" id="tmod-panel-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <img src="${headerIconUrl}" style="width: 24px; height: 24px; object-fit: contain; filter: brightness(0) invert(1);" alt="">
+                    <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: #efeff1; pointer-events: none;">Панель модератора</h3>
+                </div>
+                <button id="tmod-panel-close" style="background: none; border: none; color: #adadb8; cursor: pointer; padding: 4px; font-size: 18px;">✕</button>
+            </div>
+            <div style="padding: 8px; border-radius: 0 0 8px 8px;" id="tmod-panel-content">
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+                    <button class="tmod-feature-btn" data-feature="announce">
+                        <img src="${announceIconUrl}" style="width: 24px; height: 24px; object-fit: contain;" alt="">
+                        <span class="tmod-label">Анонс</span>
+                    </button>
+                    <button class="tmod-feature-btn" data-feature="chat">
+                        <img src="${chatIconUrl}" style="width: 24px; height: 24px; object-fit: contain;" alt="">
+                        <span class="tmod-label">Чат</span>
+                    </button>
+                    <button class="tmod-feature-btn" data-feature="poll">
+                        <img src="${pollIconUrl}" style="width: 24px; height: 24px; object-fit: contain;" alt="">
+                        <span class="tmod-label">Опрос</span>
+                    </button>
+                    <button class="tmod-feature-btn" data-feature="prediction">
+                        <img src="${predictionIconUrl}" style="width: 24px; height: 24px; object-fit: contain;" alt="">
+                        <span class="tmod-label">Прогноз</span>
+                    </button>
+                    <button class="tmod-feature-btn" data-feature="clip">
+                        <img src="${clipIconUrl}" style="width: 24px; height: 24px; object-fit: contain;" alt="">
+                        <span class="tmod-label">Клип</span>
+                    </button>
+                    <button class="tmod-feature-btn" data-feature="rewards">
+                        <img src="${rewardsIconUrl}" style="width: 24px; height: 24px; object-fit: contain;" alt="">
+                        <span class="tmod-label">Награды</span>
+                    </button>
+                </div>
+            </div>
+        `;
                 }
                 .tmod-no-select { user-select: none !important; -webkit-user-select: none !important; }
                 .tmod-feature-btn {
