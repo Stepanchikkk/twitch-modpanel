@@ -1,0 +1,19 @@
+# Documentation
+AI_INSTRUCTIONS.md
+QWEN.md
+SPEC.md
+
+# Dev config
+mcp.json
+package.json
+
+# Source folder
+js/
+
+# Icon generators
+icons/generate-empty-icons.html
+icons/generate-icons.html
+icons/empty.svg
+
+# GitHub Pages
+index.html
