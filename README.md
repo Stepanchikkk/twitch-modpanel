@@ -16,7 +16,7 @@
 #### Шаг 2. Включи режим разработчика в браузере
 
 1. Открой:
-   - **Chrome:** chrome://extensions/
+   - **Chrome:** [chrome://extensions/](chrome://extensions/)
    - **Яндекс Браузер:** `browser://extensions/`
    - **Edge:** `edge://extensions/`
 2. Включи **Режим разработчика** в правом верхнем углу
