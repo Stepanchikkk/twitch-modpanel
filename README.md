@@ -11,12 +11,12 @@
 #### Шаг 1. Установи Tampermonkey
 
 1. Открой сайт [tampermonkey.net](https://www.tampermonkey.net/)
-2. Выбери свой браузер и установи расширение
+2. В разделе "Скачать" выбери Tampermonkey, нажми перейти в магазин и установи расширение
 
 #### Шаг 2. Включи режим разработчика в браузере
 
 1. Открой:
-   - **Chrome:** `chrome://extensions/`
+   - **Chrome:** chrome://extensions/
    - **Яндекс Браузер:** `browser://extensions/`
    - **Edge:** `edge://extensions/`
 2. Включи **Режим разработчика** в правом верхнем углу
