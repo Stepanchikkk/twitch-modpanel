@@ -34,6 +34,10 @@
     let connected = false;
     let currentChannel = null;
 
+    // ============================================================================
+    // УТИЛИТЫ
+    // ============================================================================
+
     function isStreamPage() {
         return /^\/[a-zA-Z0-9_]+$/.test(window.location.pathname);
     }
@@ -58,7 +62,11 @@
         GM_setValue(STORAGE_KEY_USER, user);
     }
 
-    function getCurrentUserId(token) {
+    // ============================================================================
+    // API ФУНКЦИИ
+    // ============================================================================
+
+    async function getCurrentUserId(token) {
         return new Promise(resolve => {
             GM_xmlhttpRequest({
                 method: 'GET',
@@ -80,7 +88,7 @@
         });
     }
 
-    function getChannelId(channelName, token) {
+    async function getChannelId(channelName, token) {
         return new Promise(resolve => {
             GM_xmlhttpRequest({
                 method: 'GET',
@@ -232,6 +240,10 @@
         });
     }
 
+    // ============================================================================
+    // IRC WEBSOCKET
+    // ============================================================================
+
     function connectIRC(token, username) {
         return new Promise((resolve, reject) => {
             if (ws && ws.readyState === WebSocket.OPEN) {
@@ -280,6 +292,10 @@
         });
     }
 
+    // ============================================================================
+    // ОТПРАВКА В ЧАТ ЧЕРЕЗ REACT FIBER
+    // ============================================================================
+
     function getReactFiber(element) {
         for (const key in element) {
             if (key.startsWith('__reactFiber$') || key.startsWith('__reactInternalInstance$')) {
@@ -308,15 +324,17 @@
     function sendToChatInput(message) {
         const chatComponent = getChatComponent();
         if (!chatComponent) { console.error('[ModPanel] Chat component not found'); return false; }
-        console.log('[ModPanel] Sending to chat:', message);
         chatComponent.props.onSendMessage(message);
         return true;
     }
 
+    // ============================================================================
+    // OAUTH
+    // ============================================================================
+
     function startOAuth() {
         return new Promise((resolve) => {
             const redirectUri = 'https://stepanchikkk.github.io/twitch-modpanel/';
-            
             const scopes = [
                 'moderator:manage:announcements',
                 'moderator:manage:chat_settings',
@@ -337,8 +355,6 @@
                 `&response_type=token` +
                 `&scope=${encodeURIComponent(scopes)}` +
                 `&force_verify=true`;
-
-            console.log('[ModPanel] Opening OAuth');
 
             const width = 600;
             const height = 700;
@@ -396,59 +412,203 @@
         });
     }
 
+    // ============================================================================
+    // UI ФУНКЦИИ (из content.js)
+    // ============================================================================
+
     function createPanel() {
-        // Упрощённая версия - только кнопки
         if (panelElement) panelElement.remove();
 
         const panel = document.createElement('div');
         panel.id = 'tmod-panel';
+
+        let rightPos, bottomPos;
+
+        if (!panelPosition) {
+            const btnWrapper = document.getElementById('tmod-btn-wrapper');
+            const btn = document.getElementById('tmod-btn');
+
+            if (btnWrapper) {
+                const wrapperRect = btnWrapper.getBoundingClientRect();
+                const btnRect = btn.getBoundingClientRect();
+                rightPos = window.innerWidth - wrapperRect.left + 10;
+                bottomPos = window.innerHeight - btnRect.bottom;
+            } else if (btn) {
+                const btnRect = btn.getBoundingClientRect();
+                rightPos = window.innerWidth - btnRect.left + 10;
+                bottomPos = window.innerHeight - btnRect.bottom;
+            } else {
+                rightPos = 20;
+                bottomPos = 20;
+            }
+        } else {
+            rightPos = panelPosition?.right || 20;
+            bottomPos = panelPosition?.bottom || 20;
+        }
+
         panel.style.cssText = `
-            position: fixed; right: 350px; bottom: 10px; z-index: 999999;
-            width: max-content; min-width: 320px; background: #0e0e10;
-            border: 1px solid #3a3a3d; border-radius: 8px; overflow: hidden;
+            position: fixed;
+            right: ${rightPos}px;
+            bottom: ${bottomPos}px;
+            z-index: 999999;
+            background: #0e0e10;
+            border: 1px solid #3a3a3d;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            overflow: hidden;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            animation: tmod-slide-in 0.3s ease-out;
             user-select: none;
+            -webkit-user-select: none;
+            width: fit-content;
+            min-width: 340px;
         `;
 
-        const iconUrl = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTggMTZWMTEgTTEyIDE2VjggTTE2IDE2VjEzIE00IDE2LjhMNC03LjJDNCA2LjA3OTkgNCA1LjUxOTg0IDQuMjE3OTkgNS4wOTIwMiBDNC40MDk3MyA0LjcxNTcgNC43MTU2OSA0LjQwOTczIDUuMDkyMDIgNC4yMTc5OSBDNS41MTk4NCA0IDYuMDc5OSA0IDcuMiA0SDE2LjhDMTcuOTIwMSA0IDE4LjQ4MDIgNCAxOC45MDggNC4yMTc5OSBDMTkuMjg0MyA0LjQwOTczIDE5LjU5MDMgNC43MTU3IDE5Ljc4MiA1LjA5MjAyIEMyMCA1LjUxOTg0IDIwIDYuMDc5OSAyMCA3LjJWMTYuOEMyMCAxNy45MjAxIDIwIDE4LjQ4MDIgMTkuNzgyIDE4LjkwOCBDMTkuNTkwMyAxOS4yODQzIDE5LjI4NDMgMTkuNTkwMyAxOC45MDggMTkuNzgyIEMxOC40ODAyIDIwIDE3LjkyMDEgMjAgMTYuOCAyMEg3LjJDNi4wNzk5IDIwIDUuNTE5ODQgMjAgNS4wOTIwMiAxOS43ODIgQzQuNzE1NjkgMTkuNTkwMyA0LjQwOTczIDE5LjI4NDMgNC4yMTc5OSAxOC45MDggQzQgMTguNDgwMiA0IDE3LjkyMDEgNCAxNi44WiIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+';
+        // SVG иконки как data URLs
+        const announceIconUrl = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTggMTZWMTEgTTEyIDE2VjggTTE2IDE2VjEzIE00IDE2LjhMNC03LjJDNCA2LjA3OTkgNCA1LjUxOTg0IDQuMjE3OTkgNS4wOTIwMiBDNC40MDk3MyA0LjcxNTcgNC43MTU2OSA0LjQwOTczIDUuMDkyMDIgNC4yMTc5OSBDNS41MTk4NCA0IDYuMDc5OSA0IDcuMiA0SDE2LjhDMTcuOTIwMSA0IDE4LjQ4MDIgNCAxOC45MDggNC4yMTc5OSBDMTkuMjg0MyA0LjQwOTczIDE5LjU5MDMgNC43MTU3IDE5Ljc4MiA1LjA5MjAyIEMyMCA1LjUxOTg0IDIwIDYuMDc5OSAyMCA3LjJWMTYuOEMyMCAxNy45MjAxIDIwIDE4LjQ4MDIgMTkuNzgyIDE4LjkwOCBDMTkuNTkwMyAxOS4yODQzIDE5LjI4NDMgMTkuNTkwMyAxOC45MDggMTkuNzgyIEMxOC40ODAyIDIwIDE3LjkyMDEgMjAgMTYuOCAyMEg3LjJDNi4wNzk5IDIwIDUuNTE5ODQgMjAgNS4wOTIwMiAxOS43ODIgQzQuNzE1NjkgMTkuNTkwMyA0LjQwOTczIDE5LjI4NDMgNC4yMTc5OSAxOC45MDggQzQgMTguNDgwMiA0IDE3LjkyMDEgNCAxNi44WiIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+';
+        const chatIconUrl = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMyIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIi8+CjxwYXRoIGQ9Ik0yMSAxMkMxMiAxMiAxMiAxMiAxMiAxMk0yMSAxMkMyMSAxNi45NzA2IDE2Ljk3MDYgMjEgMTIgMjFDMTcgMjEgMTIgMjEgMTIgMjFDNy4wMjk0NCAyMSAzIDE2Ljk3MDYgMyAxMkMzIDcuMDI5NDQgNy4wMjk0NCAzIDEyIDNDNyAxMiAxMiAxMiAxMiAxMk0yMSAxMkMyMSA3LjAyOTQ0IDE2Ljk3MDYgMyAxMiAzIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4=';
+        const pollIconUrl = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTggMTZWMTEgTTEyIDE2VjggTTE2IDE2VjEzIE00IDE2LjhMNC03LjJDNCA2LjA3OTkgNCA1LjUxOTg0IDQuMjE3OTkgNS4wOTIwMiBDNC40MDk3MyA0LjcxNTcgNC43MTU2OSA0LjQwOTczIDUuMDkyMDIgNC4yMTc5OSBDNS41MTk4NCA0IDYuMDc5OSA0IDcuMiA0SDE2LjhDMTcuOTIwMSA0IDE4LjQ4MDIgNCAxOC45MDggNC4yMTc5OSBDMTkuMjg0MyA0LjQwOTczIDE5LjU5MDMgNC43MTU3IDE5Ljc4MiA1LjA5MjAyIEMyMCA1LjUxOTg0IDIwIDYuMDc5OSAyMCA3LjJWMTYuOEMyMCAxNy45MjAxIDIwIDE4LjQ4MDIgMTkuNzgyIDE4LjkwOCBDMTkuNTkwMyAxOS4yODQzIDE5LjI4NDMgMTkuNTkwMyAxOC45MDggMTkuNzgyIEMxOC40ODAyIDIwIDE3LjkyMDEgMjAgMTYuOCAyMEg3LjJDNi4wNzk5IDIwIDUuNTE5ODQgMjAgNS4wOTIwMiAxOS43ODIgQzQuNzE1NjkgMTkuNTkwMyA0LjQwOTczIDE5LjI4NDMgNC4yMTc5OSAxOC45MDggQzQgMTguNDgwMiA0IDE3LjkyMDEgNCAxNi44WiIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+';
+        const predictionIconUrl = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTggMTZWMTEgTTEyIDE2VjggTTE2IDE2VjEzIE00IDE2LjhMNC03LjJDNCA2LjA3OTkgNCA1LjUxOTg0IDQuMjE3OTkgNS4wOTIwMiBDNC40MDk3MyA0LjcxNTcgNC43MTU2OSA0LjQwOTczIDUuMDkyMDIgNC4yMTc5OSBDNS41MTk4NCA0IDYuMDc5OSA0IDcuMiA0SDE2LjhDMTcuOTIwMSA0IDE4LjQ4MDIgNCAxOC45MDggNC4yMTc5OSBDMTkuMjg0MyA0LjQwOTczIDE5LjU5MDMgNC43MTU3IDE5Ljc4MiA1LjA5MjAyIEMyMCA1LjUxOTg0IDIwIDYuMDc5OSAyMCA3LjJWMTYuOEMyMCAxNy45MjAxIDIwIDE4LjQ4MDIgMTkuNzgyIDE4LjkwOCBDMTkuNTkwMyAxOS4yODQzIDE5LjI4NDMgMTkuNTkwMyAxOC45MDggMTkuNzgyIEMxOC40ODAyIDIwIDE3LjkyMDEgMjAgMTYuOCAyMEg3LjJDNi4wNzk5IDIwIDUuNTE5ODQgMjAgNS4wOTIwMiAxOS43ODIgQzQuNzE1NjkgMTkuNTkwMyA0LjQwOTczIDE5LjI4NDMgNC4yMTc5OSAxOC45MDggQzQgMTguNDgwMiA0IDE3LjkyMDEgNCAxNi44WiIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+';
+        const clipIconUrl = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTggMTZWMTEgTTEyIDE2VjggTTE2IDE2VjEzIE00IDE2LjhMNC03LjJDNCA2LjA3OTkgNCA1LjUxOTg0IDQuMjE3OTkgNS4wOTIwMiBDNC40MDk3MyA0LjcxNTcgNC43MTU2OSA0LjQwOTczIDUuMDkyMDIgNC4yMTc5OSBDNS41MTk4NCA0IDYuMDc5OSA0IDcuMiA0SDE2LjhDMTcuOTIwMSA0IDE4LjQ4MDIgNCAxOC45MDggNC4yMTc5OSBDMTkuMjg0MyA0LjQwOTczIDE5LjU5MDMgNC43MTU3IDE5Ljc4MiA1LjA5MjAyIEMyMCA1LjUxOTg0IDIwIDYuMDc5OSAyMCA3LjJWMTYuOEMyMCAxNy45MjAxIDIwIDE4LjQ4MDIgMTkuNzgyIDE4LjkwOCBDMTkuNTkwMyAxOS4yODQzIDE5LjI4NDMgMTkuNTkwMyAxOC45MDggMTkuNzgyIEMxOC40ODAyIDIwIDE3LjkyMDEgMjAgMTYuOCAyMEg3LjJDNi4wNzk5IDIwIDUuNTE5ODQgMjAgNS4wOTIwMiAxOS43ODIgQzQuNzE1NjkgMTkuNTkwMyA0LjQwOTczIDE5LjI4NDMgNC4yMTc5OSAxOC45MDggQzQgMTguNDgwMiA0IDE3LjkyMDEgNCAxNi44WiIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+';
+        const rewardsIconUrl = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTggMTZWMTEgTTEyIDE2VjggTTE2IDE2VjEzIE00IDE2LjhMNC03LjJDNCA2LjA3OTkgNCA1LjUxOTg0IDQuMjE3OTkgNS4wOTIwMiBDNC40MDk3MyA0LjcxNTcgNC43MTU2OSA0LjQwOTczIDUuMDkyMDIgNC4yMTc5OSBDNS41MTk4NCA0IDYuMDc5OSA0IDcuMiA0SDE2LjhDMTcuOTIwMSA0IDE4LjQ4MDIgNCAxOC45MDggNC4yMTc5OSBDMTkuMjg0MyA0LjQwOTczIDE5LjU5MDMgNC43MTU3IDE5Ljc4MiA1LjA5MjAyIEMyMCA1LjUxOTg0IDIwIDYuMDc5OSAyMCA3LjJWMTYuOEMyMCAxNy45MjAxIDIwIDE4LjQ4MDIgMTkuNzgyIDE4LjkwOCBDMTkuNTkwMyAxOS4yODQzIDE5LjI4NDMgMTkuNTkwMyAxOC45MDggMTkuNzgyIEMxOC40ODAyIDIwIDE3LjkyMDEgMjAgMTYuOCAyMEg3LjJDNi4wNzk5IDIwIDUuNTE5ODQgMjAgNS4wOTIwMiAxOS43ODIgQzQuNzE1NjkgMTkuNTkwMyA0LjQwOTczIDE5LjI4NDMgNC4yMTc5OSAxOC45MDggQzQgMTguNDgwMiA0IDE3LjkyMDEgNCAxNi44WiIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+';
 
         panel.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #18181b; border-bottom: 1px solid #3a3a3d; cursor: move;" id="tmod-panel-header">
+            <style>
+                @keyframes tmod-slide-in {
+                    from { opacity: 0; transform: translateY(20px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+                .tmod-no-select { user-select: none !important; -webkit-user-select: none !important; }
+                .tmod-feature-btn {
+                    background: #18181b !important;
+                    border: 1px solid #3a3a3d !important;
+                    border-radius: 8px !important;
+                    cursor: pointer !important;
+                    display: flex !important;
+                    flex-direction: row !important;
+                    align-items: center !important;
+                    gap: 8px !important;
+                    text-align: left !important;
+                    padding: 18px 16px !important;
+                    min-width: 120px !important;
+                    margin: 0 !important;
+                    box-sizing: border-box !important;
+                    color: #efeff1 !important;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+                    font-size: 14px !important;
+                    font-weight: 600 !important;
+                }
+                .tmod-feature-btn:hover {
+                    background: #26262c !important;
+                    border-color: #4f4f52 !important;
+                }
+                .tmod-feature-btn img {
+                    width: 24px !important;
+                    height: 24px !important;
+                    flex-shrink: 0 !important;
+                    filter: brightness(0) invert(1) !important;
+                }
+                .tmod-feature-btn .tmod-label {
+                    font-size: 14px !important;
+                    font-weight: 600 !important;
+                    color: #efeff1 !important;
+                    white-space: nowrap !important;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+                }
+            </style>
+            <div class="tmod-no-select" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #18181b; border-bottom: 1px solid #3a3a3d; cursor: move; border-radius: 8px 8px 0 0;" id="tmod-panel-header">
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <img src="${iconUrl}" style="width: 24px; height: 24px; filter: brightness(0) invert(1);" alt="">
-                    <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: #efeff1;">Панель модератора</h3>
+                    <img src="${announceIconUrl}" style="width: 24px; height: 24px; object-fit: contain; filter: brightness(0) invert(1);" alt="">
+                    <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: #efeff1; pointer-events: none;">Панель модератора</h3>
                 </div>
                 <button id="tmod-panel-close" style="background: none; border: none; color: #adadb8; cursor: pointer; padding: 4px; font-size: 18px;">✕</button>
             </div>
-            <div style="padding: 8px;" id="tmod-panel-content">
+            <div style="padding: 8px; border-radius: 0 0 8px 8px;" id="tmod-panel-content">
                 <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
-                    <button class="tmod-feature-btn" data-feature="announce" style="background: #18181b; border: 1px solid #3a3a3d; border-radius: 8px; padding: 18px 16px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px;">
-                        <span style="font-size: 24px;">📢</span>
-                        <span style="font-size: 12px; color: #adadb8;">Анонс</span>
+                    <button class="tmod-feature-btn" data-feature="announce">
+                        <img src="${announceIconUrl}" style="width: 24px; height: 24px; object-fit: contain;" alt="">
+                        <span class="tmod-label">Анонс</span>
                     </button>
-                    <button class="tmod-feature-btn" data-feature="chat" style="background: #18181b; border: 1px solid #3a3a3d; border-radius: 8px; padding: 18px 16px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px;">
-                        <span style="font-size: 24px;">⚙️</span>
-                        <span style="font-size: 12px; color: #adadb8;">Чат</span>
+                    <button class="tmod-feature-btn" data-feature="chat">
+                        <img src="${chatIconUrl}" style="width: 24px; height: 24px; object-fit: contain;" alt="">
+                        <span class="tmod-label">Чат</span>
                     </button>
-                    <button class="tmod-feature-btn" data-feature="poll" style="background: #18181b; border: 1px solid #3a3a3d; border-radius: 8px; padding: 18px 16px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px;">
-                        <span style="font-size: 24px;">📊</span>
-                        <span style="font-size: 12px; color: #adadb8;">Опрос</span>
+                    <button class="tmod-feature-btn" data-feature="poll">
+                        <img src="${pollIconUrl}" style="width: 24px; height: 24px; object-fit: contain;" alt="">
+                        <span class="tmod-label">Опрос</span>
                     </button>
-                    <button class="tmod-feature-btn" data-feature="prediction" style="background: #18181b; border: 1px solid #3a3a3d; border-radius: 8px; padding: 18px 16px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px;">
-                        <span style="font-size: 24px;">🔮</span>
-                        <span style="font-size: 12px; color: #adadb8;">Прогноз</span>
+                    <button class="tmod-feature-btn" data-feature="prediction">
+                        <img src="${predictionIconUrl}" style="width: 24px; height: 24px; object-fit: contain;" alt="">
+                        <span class="tmod-label">Прогноз</span>
                     </button>
-                    <button class="tmod-feature-btn" data-feature="clip" style="background: #18181b; border: 1px solid #3a3a3d; border-radius: 8px; padding: 18px 16px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px;">
-                        <span style="font-size: 24px;">🎬</span>
-                        <span style="font-size: 12px; color: #adadb8;">Клип</span>
+                    <button class="tmod-feature-btn" data-feature="clip">
+                        <img src="${clipIconUrl}" style="width: 24px; height: 24px; object-fit: contain;" alt="">
+                        <span class="tmod-label">Клип</span>
                     </button>
-                    <button class="tmod-feature-btn" data-feature="rewards" style="background: #18181b; border: 1px solid #3a3a3d; border-radius: 8px; padding: 18px 16px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px;">
-                        <span style="font-size: 24px;">🎁</span>
-                        <span style="font-size: 12px; color: #adadb8;">Награды</span>
+                    <button class="tmod-feature-btn" data-feature="rewards">
+                        <img src="${rewardsIconUrl}" style="width: 24px; height: 24px; object-fit: contain;" alt="">
+                        <span class="tmod-label">Награды</span>
                     </button>
                 </div>
             </div>
         `;
+
+        const header = panel.querySelector('#tmod-panel-header');
+        let isDragging = false;
+        let startX, startY, startRight, startBottom;
+
+        header.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            const rect = panel.getBoundingClientRect();
+            startRight = window.innerWidth - rect.right;
+            startBottom = window.innerHeight - rect.bottom;
+            header.style.cursor = 'grabbing';
+
+            document.addEventListener('mousemove', handleDragMove);
+            document.addEventListener('mouseup', handleDragEnd);
+        });
+
+        function handleDragMove(e) {
+            if (!isDragging) return;
+            e.preventDefault();
+
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+
+            let newRight = startRight - dx;
+            let newBottom = startBottom - dy;
+
+            const panelRect = panel.getBoundingClientRect();
+            const maxRight = window.innerWidth - panelRect.width - 10;
+            const maxBottom = window.innerHeight - panelRect.height - 10;
+            const minBottom = 10;
+
+            newRight = Math.max(10, Math.min(newRight, maxRight));
+            newBottom = Math.max(minBottom, Math.min(newBottom, maxBottom));
+
+            panel.style.right = `${newRight}px`;
+            panel.style.bottom = `${newBottom}px`;
+            panel.style.left = 'auto';
+            panel.style.top = 'auto';
+        }
+
+        function handleDragEnd() {
+            if (isDragging) {
+                isDragging = false;
+                header.style.cursor = 'move';
+
+                const rect = panel.getBoundingClientRect();
+                panelPosition = {
+                    right: window.innerWidth - rect.right,
+                    bottom: window.innerHeight - rect.bottom
+                };
+
+                document.removeEventListener('mousemove', handleDragMove);
+                document.removeEventListener('mouseup', handleDragEnd);
+            }
+        }
 
         panel.querySelector('#tmod-panel-close').addEventListener('click', () => {
             panel.remove();
@@ -628,11 +788,16 @@
                 return;
             }
 
-            if (panelOpen && panelElement) { panelElement.remove(); panelOpen = false; }
-            else { createPanel(); }
+            if (panelOpen && panelElement) {
+                panelElement.remove();
+                panelOpen = false;
+            } else {
+                createPanel();
+            }
         });
 
         wrapper.appendChild(btn);
+
         const chatRoom = chatInput.closest('[class*="chat-room"]') || chatInput.parentElement;
         if (chatRoom) chatRoom.appendChild(wrapper);
         else chatInput.appendChild(wrapper);
@@ -640,11 +805,16 @@
         console.log('[ModPanel] Button injected');
     }
 
+    // ============================================================================
+    // ЗАПУСК
+    // ============================================================================
+
     if (isStreamPage()) {
         console.log('[ModPanel] Starting on:', window.location.pathname);
         injectButton();
     }
 
+    // Меню Tampermonkey
     GM_registerMenuCommand('🔐 Войти', async () => {
         const result = await startOAuth();
         if (result.success) {
