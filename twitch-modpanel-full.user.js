@@ -15,7 +15,6 @@
 //
 // @connect         api.twitch.tv
 // @connect         id.twitch.tv
-// @connect         irc-ws.chat.twitch.tv
 //
 // @run-at          document-end
 // ==/UserScript==
@@ -30,9 +29,9 @@
     let panelOpen = false;
     let panelElement = null;
     let panelPosition = null;
-    let ws = null;
-    let connected = false;
-    let currentChannel = null;
+
+    // URL иконок (глобально) - используем data URLs
+    const ICON_URL = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTggMTZWMTEgTTEyIDE2VjggTTE2IDE2VjEzIE00IDE2LjhMNC03LjJDNCA2LjA3OTkgNCA1LjUxOTg0IDQuMjE3OTkgNS4wOTIwMiBDNC40MDk3MyA0LjcxNTcgNC43MTU2OSA0LjQwOTczIDUuMDkyMDIgNC4yMTc5OSBDNS41MTk4NCA0IDYuMDc5OSA0IDcuMiA0SDE2LjhDMTcuOTIwMSA0IDE4LjQ4MDIgNCAxOC45MDggNC4yMTc5OSBDMTkuMjg0MyA0LjQwOTczIDE5LjU5MDMgNC43MTU3IDE5Ljc4MiA1LjA5MjAyIEMyMCA1LjUxOTg0IDIwIDYuMDc5OSAyMCA3LjJWMTYuOEMyMCAxNy45MjAxIDIwIDE4LjQ4MDIgMTkuNzgyIDE4LjkwOCBDMTkuNTkwMyAxOS4yODQzIDE5LjI4NDMgMTkuNTkwMyAxOC45MDggMTkuNzgyIEMxOC40ODAyIDIwIDE3LjkyMDEgMjAgMTYuOCAyMEg3LjJDNi4wNzk5IDIwIDUuNTE5ODQgMjAgNS4wOTIwMiAxOS43ODIgQzQuNzE1NjkgMTkuNTkwMyA0LjQwOTczIDE5LjI4NDMgNC4yMTc5OSAxOC45MDggQzQgMTguNDgwMiA0IDE3LjkyMDEgNCAxNi44WiIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+';
 
     // ============================================================================
     // УТИЛИТЫ
@@ -241,58 +240,6 @@
     }
 
     // ============================================================================
-    // IRC WEBSOCKET
-    // ============================================================================
-
-    function connectIRC(token, username) {
-        return new Promise((resolve, reject) => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                resolve(true);
-                return;
-            }
-
-            ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
-
-            ws.onopen = () => {
-                ws.send(`PASS oauth:${token}`);
-                ws.send(`NICK ${username.toLowerCase()}`);
-            };
-
-            ws.onmessage = (event) => {
-                if (event.data.includes('004')) {
-                    connected = true;
-                    resolve(true);
-                }
-                if (event.data.includes('PING')) {
-                    ws.send('PONG :tmi.twitch.tv');
-                }
-            };
-
-            ws.onerror = (error) => reject(error);
-            ws.onclose = () => { connected = false; ws = null; };
-
-            setTimeout(() => { if (!connected) reject(new Error('Timeout')); }, 10000);
-        });
-    }
-
-    function joinChannel(channel) {
-        return new Promise((resolve, reject) => {
-            if (!connected || !ws) { reject(new Error('Not connected')); return; }
-            currentChannel = channel.toLowerCase();
-            ws.send(`JOIN #${currentChannel}`);
-            setTimeout(resolve, 500);
-        });
-    }
-
-    function sendMessage(message) {
-        return new Promise((resolve, reject) => {
-            if (!connected || !ws || !currentChannel) { reject(new Error('Not connected')); return; }
-            ws.send(`PRIVMSG #${currentChannel} :${message}`);
-            resolve(true);
-        });
-    }
-
-    // ============================================================================
     // ОТПРАВКА В ЧАТ ЧЕРЕЗ REACT FIBER
     // ============================================================================
 
@@ -413,7 +360,7 @@
     }
 
     // ============================================================================
-    // UI ФУНКЦИИ (из content.js)
+    // КОПИЯ content.js ОТ СЮДА
     // ============================================================================
 
     function createPanel() {
@@ -464,7 +411,6 @@
             min-width: 340px;
         `;
 
-        // SVG иконки как data URLs
         const announceIconUrl = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTggMTZWMTEgTTEyIDE2VjggTTE2IDE2VjEzIE00IDE2LjhMNC03LjJDNCA2LjA3OTkgNCA1LjUxOTg0IDQuMjE3OTkgNS4wOTIwMiBDNC40MDk3MyA0LjcxNTcgNC43MTU2OSA0LjQwOTczIDUuMDkyMDIgNC4yMTc5OSBDNS41MTk4NCA0IDYuMDc5OSA0IDcuMiA0SDE2LjhDMTcuOTIwMSA0IDE4LjQ4MDIgNCAxOC45MDggNC4yMTc5OSBDMTkuMjg0MyA0LjQwOTczIDE5LjU5MDMgNC43MTU3IDE5Ljc4MiA1LjA5MjAyIEMyMCA1LjUxOTg0IDIwIDYuMDc5OSAyMCA3LjJWMTYuOEMyMCAxNy45MjAxIDIwIDE4LjQ4MDIgMTkuNzgyIDE4LjkwOCBDMTkuNTkwMyAxOS4yODQzIDE5LjI4NDMgMTkuNTkwMyAxOC45MDggMTkuNzgyIEMxOC40ODAyIDIwIDE3LjkyMDEgMjAgMTYuOCAyMEg3LjJDNi4wNzk5IDIwIDUuNTE5ODQgMjAgNS4wOTIwMiAxOS43ODIgQzQuNzE1NjkgMTkuNTkwMyA0LjQwOTczIDE5LjI4NDMgNC4yMTc5OSAxOC45MDggQzQgMTguNDgwMiA0IDE3LjkyMDEgNCAxNi44WiIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+';
         const chatIconUrl = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMyIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIi8+CjxwYXRoIGQ9Ik0yMSAxMkMxMiAxMiAxMiAxMiAxMiAxMk0yMSAxMkMyMSAxNi45NzA2IDE2Ljk3MDYgMjEgMTIgMjFDMTcgMjEgMTIgMjEgMTIgMjFDNy4wMjk0NCAyMSAzIDE2Ljk3MDYgMyAxMkMzIDcuMDI5NDQgNy4wMjk0NCAzIDEyIDNDNyAxMiAxMiAxMiAxMiAxMk0yMSAxMkMyMSA3LjAyOTQ0IDE2Ljk3MDYgMyAxMiAzIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPgo8L3N2Zz4=';
         const pollIconUrl = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTggMTZWMTEgTTEyIDE2VjggTTE2IDE2VjEzIE00IDE2LjhMNC03LjJDNCA2LjA3OTkgNCA1LjUxOTg0IDQuMjE3OTkgNS4wOTIwMiBDNC40MDk3MyA0LjcxNTcgNC43MTU2OSA0LjQwOTczIDUuMDkyMDIgNC4yMTc5OSBDNS41MTk4NCA0IDYuMDc5OSA0IDcuMiA0SDE2LjhDMTcuOTIwMSA0IDE4LjQ4MDIgNCAxOC45MDggNC4yMTc5OSBDMTkuMjg0MyA0LjQwOTczIDE5LjU5MDMgNC43MTU3IDE5Ljc4MiA1LjA5MjAyIEMyMCA1LjUxOTg0IDIwIDYuMDc5OSAyMCA3LjJWMTYuOEMyMCAxNy45MjAxIDIwIDE4LjQ4MDIgMTkuNzgyIDE4LjkwOCBDMTkuNTkwMyAxOS4yODQzIDE5LjI4NDMgMTkuNTkwMyAxOC45MDggMTkuNzgyIEMxOC40ODAyIDIwIDE3LjkyMDEgMjAgMTYuOCAyMEg3LjJDNi4wNzk5IDIwIDUuNTE5ODQgMjAgNS4wOTIwMiAxOS43ODIgQzQuNzE1NjkgMTkuNTkwMyA0LjQwOTczIDE5LjI4NDMgNC4yMTc5OSAxOC45MDggQzQgMTguNDgwMiA0IDE3LjkyMDEgNCAxNi44WiIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz4KPC9zdmc+';
@@ -515,10 +461,23 @@
                     white-space: nowrap !important;
                     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
                 }
+                .tmod-toggle-active span:first-of-type {
+                    background-color: #9146FF !important;
+                }
+                .tmod-toggle-active span:last-of-type {
+                    transform: translateX(20px) !important;
+                    background-color: #fff !important;
+                }
+                .tmod-toggle label:hover span:first-of-type {
+                    background-color: #4f4f52;
+                }
+                .tmod-toggle-active label:hover span:first-of-type {
+                    background-color: #772ce8 !important;
+                }
             </style>
             <div class="tmod-no-select" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #18181b; border-bottom: 1px solid #3a3a3d; cursor: move; border-radius: 8px 8px 0 0;" id="tmod-panel-header">
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <img src="${announceIconUrl}" style="width: 24px; height: 24px; object-fit: contain; filter: brightness(0) invert(1);" alt="">
+                    <img src="${ICON_URL}" style="width: 24px; height: 24px; object-fit: contain; filter: brightness(0) invert(1);" alt="">
                     <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: #efeff1; pointer-events: none;">Панель модератора</h3>
                 </div>
                 <button id="tmod-panel-close" style="background: none; border: none; color: #adadb8; cursor: pointer; padding: 4px; font-size: 18px;">✕</button>
@@ -613,11 +572,18 @@
         panel.querySelector('#tmod-panel-close').addEventListener('click', () => {
             panel.remove();
             panelOpen = false;
+            panelPosition = null;
         });
 
         panel.querySelectorAll('.tmod-feature-btn').forEach(btn => {
             btn.addEventListener('click', function() {
                 const feature = this.dataset.feature;
+                const rect = panel.getBoundingClientRect();
+                panelPosition = {
+                    right: window.innerWidth - rect.right,
+                    bottom: window.innerHeight - rect.bottom
+                };
+
                 if (feature === 'announce') showAnnounceSection(panel);
                 else if (feature === 'chat') showChatSection(panel);
                 else if (feature === 'poll') sendToChatInput('/poll');
@@ -630,6 +596,24 @@
         document.documentElement.appendChild(panel);
         panelOpen = true;
         panelElement = panel;
+
+        panel.setAttribute('style', `
+            position: fixed !important;
+            right: ${rightPos}px !important;
+            bottom: ${bottomPos}px !important;
+            z-index: 999999 !important;
+            background: #0e0e10 !important;
+            border: 1px solid #3a3a3d !important;
+            border-radius: 8px !important;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5) !important;
+            overflow: visible !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+            animation: tmod-slide-in 0.3s ease-out !important;
+            user-select: none !important;
+            -webkit-user-select: none !important;
+            width: max-content !important;
+            min-width: 320px !important;
+        `);
     }
 
     function showAnnounceSection(panel) {
@@ -638,12 +622,12 @@
         if (!content) return;
 
         content.innerHTML = `
-            <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;">
+            <button id="tmod-back" class="tmod-no-select" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;">
                 <span>←</span> <span>Назад</span>
             </button>
-            <textarea id="tmod-announce-text" placeholder="Текст анонса" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 10px; font-size: 14px; resize: vertical;" rows="4"></textarea>
-            <select id="tmod-announce-color" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px; margin-top: 10px;">
-                <option value="primary">🔴 Красный</option>
+            <textarea id="tmod-announce-text" placeholder="Текст анонса (макс. 500 символов)" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 10px; font-size: 14px; resize: vertical; font-family: inherit;" rows="4"></textarea>
+            <select id="tmod-announce-color" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px; margin-top: 10px; font-family: inherit;">
+                <option value="primary">🔴 Красный (Primary)</option>
                 <option value="blue">🔵 Синий</option>
                 <option value="green">🟢 Зелёный</option>
                 <option value="orange">🟠 Оранжевый</option>
@@ -653,14 +637,27 @@
             <div id="tmod-announce-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
         `;
 
-        content.querySelector('#tmod-back').addEventListener('click', () => { panel.remove(); panelOpen = false; setTimeout(() => createPanel(), 10); });
+        const rect = panel.getBoundingClientRect();
+        if (rect.top < 0) {
+            const newBottom = panelPosition.bottom + rect.top;
+            panel.style.bottom = `${Math.max(10, newBottom)}px`;
+        }
+
+        content.querySelector('#tmod-back').addEventListener('click', function() {
+            panel.remove();
+            panelOpen = false;
+            setTimeout(() => createPanel(), 10);
+        });
 
         content.querySelector('#tmod-send-announce').addEventListener('click', async () => {
-            const text = content.querySelector('#tmod-announce-text').value.trim();
-            const color = content.querySelector('#tmod-announce-color').value;
+            const textInput = content.querySelector('#tmod-announce-text');
+            const colorSelect = content.querySelector('#tmod-announce-color');
             const statusDiv = content.querySelector('#tmod-announce-status');
 
-            if (!text) { statusDiv.style.color = '#ff6b6b'; statusDiv.textContent = 'Введите текст'; return; }
+            const text = textInput.value.trim();
+            const color = colorSelect.value;
+
+            if (!text) { statusDiv.style.color = '#ff6b6b'; statusDiv.textContent = 'Введите текст анонса'; return; }
             if (text.length > 500) { statusDiv.style.color = '#ff6b6b'; statusDiv.textContent = 'Текст слишком длинный'; return; }
 
             statusDiv.style.color = '#adadb8';
@@ -670,11 +667,11 @@
 
             if (result.success) {
                 statusDiv.style.color = '#00ff00';
-                statusDiv.textContent = '✅ Отправлено!';
+                statusDiv.textContent = '✅ Анонс отправлен!';
                 setTimeout(() => { panel.remove(); createPanel(); }, 1500);
             } else {
                 statusDiv.style.color = '#ff6b6b';
-                statusDiv.textContent = '❌ ' + result.error;
+                statusDiv.textContent = '❌ Ошибка: ' + result.error;
             }
         });
     }
@@ -685,37 +682,177 @@
         if (!content) return;
 
         content.innerHTML = `
-            <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;">
+            <button id="tmod-back" class="tmod-no-select" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;">
                 <span>←</span> <span>Назад</span>
             </button>
-            <div id="tmod-chat-loading" style="text-align: center; color: #adadb8; padding: 20px;">Загрузка...</div>
+            <div id="tmod-chat-loading" style="text-align: center; color: #adadb8; padding: 20px;">Загрузка настроек...</div>
             <div id="tmod-chat-settings" style="display: none;">
-                <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #26262c;">
+                <div class="tmod-no-select tmod-toggle" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #26262c;">
+                    <span style="font-size: 14px; color: #efeff1;">Только для подписчиков</span>
+                    <label style="position: relative; display: inline-block; width: 40px; height: 20px; cursor: pointer;">
+                        <input type="checkbox" id="tmod-sub-only" style="opacity: 0; width: 0; height: 0;">
+                        <span style="position: absolute; inset: 0; background-color: #3a3a3d; border-radius: 10px; transition: 0.2s;"></span>
+                        <span style="position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background-color: #adadb8; border-radius: 50%; transition: 0.2s;"></span>
+                    </label>
+                </div>
+                <div class="tmod-no-select tmod-toggle" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #26262c;">
+                    <span style="font-size: 14px; color: #efeff1;">Только для фолловеров</span>
+                    <label style="position: relative; display: inline-block; width: 40px; height: 20px; cursor: pointer;">
+                        <input type="checkbox" id="tmod-follower-only" style="opacity: 0; width: 0; height: 0;">
+                        <span style="position: absolute; inset: 0; background-color: #3a3a3d; border-radius: 10px; transition: 0.2s;"></span>
+                        <span style="position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background-color: #adadb8; border-radius: 50%; transition: 0.2s;"></span>
+                    </label>
+                </div>
+                <div class="tmod-no-select tmod-toggle" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #26262c;">
+                    <span style="font-size: 14px; color: #efeff1;">Только эмодзи</span>
+                    <label style="position: relative; display: inline-block; width: 40px; height: 20px; cursor: pointer;">
+                        <input type="checkbox" id="tmod-emote-only" style="opacity: 0; width: 0; height: 0;">
+                        <span style="position: absolute; inset: 0; background-color: #3a3a3d; border-radius: 10px; transition: 0.2s;"></span>
+                        <span style="position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background-color: #adadb8; border-radius: 50%; transition: 0.2s;"></span>
+                    </label>
+                </div>
+                <div class="tmod-no-select tmod-toggle" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #26262c;">
                     <span style="font-size: 14px; color: #efeff1;">Slow Mode</span>
-                    <input type="checkbox" id="tmod-slow-mode" style="width: 40px; height: 20px;">
+                    <label style="position: relative; display: inline-block; width: 40px; height: 20px; cursor: pointer;">
+                        <input type="checkbox" id="tmod-slow-mode" style="opacity: 0; width: 0; height: 0;">
+                        <span style="position: absolute; inset: 0; background-color: #3a3a3d; border-radius: 10px; transition: 0.2s;"></span>
+                        <span style="position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background-color: #adadb8; border-radius: 50%; transition: 0.2s;"></span>
+                    </label>
+                </div>
+                <div id="tmod-slow-wait" style="display: none; margin-top: 15px; padding: 12px; background: #18181b; border-radius: 4px;">
+                    <input type="number" id="tmod-slow-time" min="0" max="120" value="30" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 10px; font-size: 14px;">
+                    <span style="font-size: 12px; color: #adadb8; margin-top: 5px; display: block;">секунд между сообщениями</span>
+                </div>
+                <div class="tmod-no-select tmod-toggle" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #26262c;">
+                    <span style="font-size: 14px; color: #efeff1;">Shield Mode</span>
+                    <label style="position: relative; display: inline-block; width: 40px; height: 20px; cursor: pointer;">
+                        <input type="checkbox" id="tmod-shield-mode" style="opacity: 0; width: 0; height: 0;">
+                        <span style="position: absolute; inset: 0; background-color: #3a3a3d; border-radius: 10px; transition: 0.2s;"></span>
+                        <span style="position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background-color: #adadb8; border-radius: 50%; transition: 0.2s;"></span>
+                    </label>
                 </div>
                 <button id="tmod-clear-chat" style="width: 100%; background: #ff4444; color: white; border: none; border-radius: 4px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 15px;">🗑️ Очистить чат</button>
+                <button id="tmod-save-chat" style="width: 100%; background: #9146FF; color: white; border: none; border-radius: 4px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 10px;">Сохранить</button>
                 <div id="tmod-chat-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
             </div>
         `;
 
-        content.querySelector('#tmod-back').addEventListener('click', () => { panel.remove(); panelOpen = false; setTimeout(() => createPanel(), 10); });
+        const toggleStyle = document.createElement('style');
+        toggleStyle.textContent = `
+            .tmod-toggle-active span:first-of-type {
+                background-color: #9146FF !important;
+            }
+            .tmod-toggle-active span:last-of-type {
+                transform: translateX(20px) !important;
+                background-color: #fff !important;
+            }
+            .tmod-toggle label:hover span:first-of-type {
+                background-color: #4f4f52;
+            }
+            .tmod-toggle-active label:hover span:first-of-type {
+                background-color: #772ce8 !important;
+            }
+        `;
+        panel.appendChild(toggleStyle);
+
+        const rect = panel.getBoundingClientRect();
+        if (rect.top < 0) {
+            const newBottom = panelPosition.bottom + rect.top;
+            panel.style.bottom = `${Math.max(10, newBottom)}px`;
+        }
 
         getChatSettings(channelName).then((settings) => {
+            const loadingDiv = content.querySelector('#tmod-chat-loading');
+            const settingsDiv = content.querySelector('#tmod-chat-settings');
+
             if (!settings) {
-                content.querySelector('#tmod-chat-loading').textContent = 'Ошибка загрузки';
+                loadingDiv.style.color = '#ff6b6b';
+                loadingDiv.textContent = 'Ошибка: проверьте консоль (F12)';
                 return;
             }
-            content.querySelector('#tmod-chat-loading').style.display = 'none';
-            content.querySelector('#tmod-chat-settings').style.display = 'block';
-            content.querySelector('#tmod-slow-mode').checked = settings.slowMode;
+
+            loadingDiv.style.display = 'none';
+            settingsDiv.style.display = 'block';
+
+            function updateToggleStyle(checkbox) {
+                const label = checkbox.closest('label');
+                if (checkbox.checked) {
+                    label.classList.add('tmod-toggle-active');
+                } else {
+                    label.classList.remove('tmod-toggle-active');
+                }
+            }
+
+            const subCheckbox = content.querySelector('#tmod-sub-only');
+            const followerCheckbox = content.querySelector('#tmod-follower-only');
+            const emoteCheckbox = content.querySelector('#tmod-emote-only');
+            const slowCheckbox = content.querySelector('#tmod-slow-mode');
+            const shieldCheckbox = content.querySelector('#tmod-shield-mode');
+
+            subCheckbox.checked = settings.subscriberMode;
+            followerCheckbox.checked = settings.followerMode;
+            emoteCheckbox.checked = settings.emoteMode;
+            slowCheckbox.checked = settings.slowMode;
+            content.querySelector('#tmod-slow-time').value = settings.slowModeWaitTime || 30;
+
+            updateToggleStyle(subCheckbox);
+            updateToggleStyle(followerCheckbox);
+            updateToggleStyle(emoteCheckbox);
+            updateToggleStyle(slowCheckbox);
+
+            subCheckbox.addEventListener('change', () => updateToggleStyle(subCheckbox));
+            followerCheckbox.addEventListener('change', () => updateToggleStyle(followerCheckbox));
+            emoteCheckbox.addEventListener('change', () => updateToggleStyle(emoteCheckbox));
+            slowCheckbox.addEventListener('change', () => {
+                updateToggleStyle(slowCheckbox);
+                content.querySelector('#tmod-slow-wait').style.display = slowCheckbox.checked ? 'block' : 'none';
+            });
+
+            shieldCheckbox.addEventListener('change', () => {
+                updateToggleStyle(shieldCheckbox);
+                const command = shieldCheckbox.checked ? '/shieldmode' : '/shieldmodeoff';
+                sendToChatInput(command);
+            });
 
             content.querySelector('#tmod-clear-chat').addEventListener('click', () => {
-                if (confirm('Очистить чат?')) {
+                if (confirm('Вы уверены, что хотите очистить чат?')) {
                     sendToChatInput('/clear');
                     const statusDiv = content.querySelector('#tmod-chat-status');
                     statusDiv.style.color = '#00ff00';
                     statusDiv.textContent = '✅ Чат очищен!';
+                    setTimeout(() => { statusDiv.textContent = ''; }, 2000);
+                }
+            });
+
+            content.querySelector('#tmod-back').addEventListener('click', function() {
+                panel.remove();
+                panelOpen = false;
+                setTimeout(() => createPanel(), 10);
+            });
+
+            content.querySelector('#tmod-save-chat').addEventListener('click', async () => {
+                const statusDiv = content.querySelector('#tmod-chat-status');
+
+                const settings = {
+                    subscriberMode: subCheckbox.checked,
+                    followerMode: followerCheckbox.checked,
+                    emoteMode: emoteCheckbox.checked,
+                    slowMode: slowCheckbox.checked,
+                    slowModeWaitTime: parseInt(content.querySelector('#tmod-slow-time').value) || 30
+                };
+
+                statusDiv.style.color = '#adadb8';
+                statusDiv.textContent = 'Сохранение...';
+
+                const result = await updateChatSettings(channelName, settings);
+
+                if (result.success) {
+                    statusDiv.style.color = '#00ff00';
+                    statusDiv.textContent = '✅ Сохранено!';
+                    setTimeout(() => { panel.remove(); createPanel(); }, 1500);
+                } else {
+                    statusDiv.style.color = '#ff6b6b';
+                    statusDiv.textContent = '❌ Ошибка: ' + result.error;
                 }
             });
         });
@@ -726,23 +863,36 @@
         if (!content) return;
 
         content.innerHTML = `
-            <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;">
+            <button id="tmod-back" class="tmod-no-select" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;">
                 <span>←</span> <span>Назад</span>
             </button>
-            <input type="text" id="tmod-clip-title" placeholder="Название клипа" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 10px; font-size: 14px; margin-bottom: 10px;">
+            <div style="text-align: center; color: #adadb8; font-size: 13px; margin-bottom: 15px;">
+                Создание клипа из текущего момента стрима
+            </div>
+            <input type="text" id="tmod-clip-title" placeholder="Название клипа (необязательно)" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 10px; font-size: 14px; margin-bottom: 10px;">
             <button id="tmod-create-clip" style="width: 100%; background: #9146FF; color: white; border: none; border-radius: 4px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer;">🎬 Создать клип</button>
             <div id="tmod-clip-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
         `;
 
-        content.querySelector('#tmod-back').addEventListener('click', () => { panel.remove(); panelOpen = false; setTimeout(() => createPanel(), 10); });
+        content.querySelector('#tmod-back').addEventListener('click', function() {
+            panel.remove();
+            panelOpen = false;
+            setTimeout(() => createPanel(), 10);
+        });
 
         content.querySelector('#tmod-create-clip').addEventListener('click', () => {
-            const title = content.querySelector('#tmod-clip-title').value.trim();
+            const titleInput = content.querySelector('#tmod-clip-title');
+            const statusDiv = content.querySelector('#tmod-clip-status');
+            const title = titleInput.value.trim();
+
+            statusDiv.style.color = '#adadb8';
+            statusDiv.textContent = 'Создание клипа...';
+
             const command = title ? `/clip "${title}"` : '/clip';
             sendToChatInput(command);
-            const statusDiv = content.querySelector('#tmod-clip-status');
+
             statusDiv.style.color = '#00ff00';
-            statusDiv.textContent = '✅ Клик создан!';
+            statusDiv.textContent = '✅ Клик создан! Проверьте чат.';
             setTimeout(() => { panel.remove(); createPanel(); }, 1500);
         });
     }
@@ -781,7 +931,7 @@
                 if (result.success) {
                     setToken(result.token);
                     setUserInfo(result.user);
-                    GM_notification({ title: 'Twitch ModPanel', text: '✅ Вход выполнен!', timeout: 5000 });
+                    GM_notification({ title: 'Twitch ModPanel', text: '✅ Вход: ' + result.user.login, timeout: 5000 });
                 } else {
                     GM_notification({ title: 'Twitch ModPanel', text: '❌ ' + result.error, timeout: 5000 });
                 }
@@ -814,7 +964,6 @@
         injectButton();
     }
 
-    // Меню Tampermonkey
     GM_registerMenuCommand('🔐 Войти', async () => {
         const result = await startOAuth();
         if (result.success) {
