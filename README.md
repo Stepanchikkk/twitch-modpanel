@@ -2,6 +2,10 @@
 
 Панель модератора для Twitch — быстрый доступ к инструментам управления стримом без переключения на Mod View.
 
+<p align="center">
+  <img src="screenshots/00-banner.png" alt="Twitch ModPanel Banner" width="100%">
+</p>
+
 ---
 
 ## 📦 Установка

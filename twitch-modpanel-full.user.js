@@ -568,7 +568,7 @@
             sub.onchange = () => updateToggle(sub); follower.onchange = () => updateToggle(follower);
             emote.onchange = () => updateToggle(emote);
             slow.onchange = () => { updateToggle(slow); content.querySelector('#tmod-slow-wait').style.display = slow.checked ? 'block' : 'none'; };
-            shield.onchange = () => { updateToggle(shield); sendToChatInput(shield.checked ? '/shieldmode' : '/shieldmodeoff'); };
+            shield.onchange = () => { updateToggle(shield); sendToChatInput(shield.checked ? '/shield' : '/shieldoff'); };
 
             content.querySelector('#tmod-clear-chat').onclick = () => { if (confirm('Очистить чат?')) { sendToChatInput('/clear'); content.querySelector('#tmod-chat-status').style.color = '#00ff00'; content.querySelector('#tmod-chat-status').textContent = '✅ Чат очищен!'; setTimeout(() => { content.querySelector('#tmod-chat-status').textContent = ''; }, 2000); } };
             content.querySelector('#tmod-back').onclick = () => { panel.remove(); panelOpen = false; setTimeout(() => createPanel(), 10); };

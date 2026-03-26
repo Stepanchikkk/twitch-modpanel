@@ -690,7 +690,7 @@ function showChatSection(panel) {
         const shieldCheckbox = content.querySelector('#tmod-shield-mode');
         shieldCheckbox.addEventListener('change', () => {
             updateToggleStyle(shieldCheckbox);
-            const command = shieldCheckbox.checked ? '/shieldmode' : '/shieldmodeoff';
+            const command = shieldCheckbox.checked ? '/shield' : '/shieldoff';
             sendToChatInput(command);
         });
 
