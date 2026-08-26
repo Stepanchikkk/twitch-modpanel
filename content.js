@@ -812,44 +812,39 @@
             });
         }
 
-        function renderHistory() {
+function renderHistory() {
             return loadHistory().then(history => {
                 if (!history.length) return '';
                 const arrowSvg = `<svg width="16" height="16" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="m14.207 5 1.414 1.414-5.793 5.793L15.621 18l-1.414 1.414L7 12.207 14.207 5Z" fill="currentColor"></path></svg>`;
-                const arrowBtn = (cls, label, svg, disabled) => `
-                    <button type="button" class="tmod-history-nav ${cls}" aria-label="${label}" ${disabled ? 'disabled' : ''}
-                        style="flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; background: #18181b; border: 1px solid ${disabled ? '#2a2a2d' : '#3a3a3d'}; color: ${disabled ? '#5a5a5f' : '#efeff1'}; cursor: ${disabled ? 'not-allowed' : 'pointer'}; display: flex; align-items: center; justify-content: center; opacity: ${disabled ? '0.4' : '1'}; transition: opacity 0.15s;">
-                        ${svg}
+                const arrowBtn = (cls, label, rotated) => `
+                    <button type="button" class="tmod-history-nav ${cls}" aria-label="${rotated ? 'Предыдущие' : 'Следующие'} анонсы"
+                        style="flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; background: #18181b; border: 1px solid #3a3a3d; color: #efeff1; cursor: pointer; display: none; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s;">
+                        ${rotated ? `<svg width="16" height="16" viewBox="0 0 24 24" focusable="false" aria-hidden="true" style="transform: rotate(180deg);"><path d="m14.207 5 1.414 1.414-5.793 5.793L15.621 18l-1.414 1.414L7 12.207 14.207 5Z" fill="currentColor"></path></svg>` : `<svg width="16" height="16" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="m14.207 5 1.414 1.414-5.793 5.793L15.621 18l-1.414 1.414L7 12.207 14.207 5Z" fill="currentColor"></path></svg>`}
                     </button>`;
 
-                return loadHistory().then(history => {
-                    if (!history.length) return '';
-                    return `
-                        <div class="tmod-history-bar" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 4px 0;">
-                            ${arrowBtn('tmod-history-prev', 'Предыдущие анонсы', arrowSvg.replace('<svg', '<svg transform="rotate(180)"'), true)}
-                            <div class="tmod-history-track" style="flex: 1; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -ms-overflow-style: none; display: flex; gap: 6px; padding: 2px 4px; min-width: 0;">
-                                ${history.map((h, i) => {
-                                    const stripe = h.color === 'primary'
-                                        ? (getChannelAccentColor() || '#9147ff')
-                                        : (ANNOUNCE_COLORS.find(c => c.value === h.color)?.stripe || '#9147ff');
-                                    const isGrad = stripe.includes('gradient(');
-                                    const indStyle = isGrad ? `background-image: ${stripe};` : `background-color: ${stripe};`;
-                                    const fullText = h.text;
-                                    const displayText = fullText.slice(0, 40);
-                                    const needsEllipsis = fullText.length > 40;
-                                    return `
-                                        <button type="button" class="tmod-history-item" data-index="${i}" title="${fullText}"
-                                            style="flex: 0 0 auto; padding: 5px 10px; border-radius: 999px; color: #efeff1; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; min-width: 0; display: inline-flex; align-items: center; gap: 8px; border: 1px solid #3a3a3d; background: #18181b;">
-                                            <span style="flex: 0 0 auto; width: 10px; height: 10px; border-radius: 999px; ${isGrad ? `background-image: ${stripe};` : `background-color: ${stripe};`}"></span>
-                                            <span style="overflow: hidden; text-overflow: ellipsis;">${displayText}${needsEllipsis ? '…' : ''}</span>
-                                        </button>
-                                    `;
-                                }).join('')}
-                            </div>
-                            ${arrowBtn('tmod-history-next', 'Следующие анонсы', arrowSvg, true)}
+                return `
+                    <div class="tmod-history-bar" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 4px 0; min-width: 0;">
+                        ${arrowBtn('tmod-history-prev', 'Предыдущие', true)}
+                        <div class="tmod-history-track" style="flex: 1; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -ms-overflow-style: none; display: flex; gap: 6px; padding: 2px 4px; min-width: 0; width: 0;">
+                            ${history.map((h, i) => {
+                                const stripe = h.color === 'primary'
+                                    ? (getChannelAccentColor() || '#9147ff')
+                                    : (ANNOUNCE_COLORS.find(c => c.value === h.color)?.stripe || '#9147ff');
+                                const isGrad = stripe.includes('gradient(');
+                                const fullText = h.text;
+                                const displayText = fullText.slice(0, 45);
+                                return `
+                                    <button type="button" class="tmod-history-item" data-index="${i}" title="${fullText}"
+                                        style="flex: 0 0 auto; padding: 5px 10px; border-radius: 999px; color: #efeff1; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; min-width: 0; display: inline-flex; align-items: center; gap: 8px; border: 1px solid #3a3a3d; background: #18181b;">
+                                        <span style="flex: 0 0 auto; width: 10px; height: 10px; border-radius: 999px; ${stripe.includes('gradient(') ? `background-image: ${stripe};` : `background-color: ${stripe};`}"></span>
+                                        <span style="overflow: hidden; text-overflow: ellipsis; max-width: 100%;">${h.text.slice(0, 45)}</span>
+                                    </button>
+                                `;
+                            }).join('')}
                         </div>
-                    `;
-                });
+                        ${arrowBtn('tmod-history-next', 'Следующие', false)}
+                    </div>
+                `;
             });
         }
 
@@ -880,11 +875,11 @@
                 const nextBtn = wrap.querySelector('.tmod-history-next');
 
                 function updateNav() {
-                    if (!track) return;
+                    if (!track || !prevBtn || !nextBtn) return;
                     const atStart = track.scrollLeft <= 1;
                     const atEnd = track.scrollLeft + track.clientWidth >= track.scrollWidth - 1;
-                    if (prevBtn) prevBtn.disabled = atStart;
-                    if (nextBtn) nextBtn.disabled = atEnd;
+                    prevBtn.style.display = atStart ? 'none' : 'flex';
+                    nextBtn.style.display = atEnd ? 'none' : 'flex';
                 }
 
                 if (track) {
@@ -913,7 +908,7 @@
                         });
                     }
                     const nav = e.target.closest('.tmod-history-nav');
-                    if (nav && !nav.disabled) {
+                    if (nav && nav.style.display !== 'none') {
                         const track = wrap.querySelector('.tmod-history-track');
                         if (track) {
                             const scrollAmount = track.clientWidth * 0.8;
