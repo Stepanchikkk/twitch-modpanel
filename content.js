@@ -1518,10 +1518,14 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
             <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;"><span>\u2190</span> <span>Назад</span></button>
             <div id="tmod-so-loading" style="text-align: center; color: #adadb8; padding: 20px;">Загрузка зрителей...</div>
             <div id="tmod-so-form" style="display: none;">
-                <div style="margin-bottom: 10px; position: relative;">
-                    <input type="text" id="tmod-so-search" placeholder="Поиск пользователя..." autocomplete="off" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
+                <div style="margin-bottom: 10px; display: flex; gap: 6px;">
+                    <input type="text" id="tmod-so-manual" placeholder="Имя пользователя..." autocomplete="off" style="flex: 1; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
+                    <button id="tmod-so-send-manual" style="background: #9146FF; color: white; border: none; border-radius: 4px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;">Шаутаут</button>
                 </div>
-                <div id="tmod-so-list" style="max-height: 400px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #3a3a3d transparent;"></div>
+                <div style="border-top: 1px solid #26262c; padding-top: 8px; margin-bottom: 8px;">
+                    <input type="text" id="tmod-so-search" placeholder="Поиск в чате..." autocomplete="off" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
+                </div>
+                <div id="tmod-so-list" style="max-height: 350px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #3a3a3d transparent;"></div>
                 <div id="tmod-so-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
             </div>
         `;
@@ -1618,6 +1622,27 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
 
             renderList('');
             searchInput.addEventListener('input', () => renderList(searchInput.value.trim()));
+
+            const manualInput = content.querySelector('#tmod-so-manual');
+            const manualBtn = content.querySelector('#tmod-so-send-manual');
+            async function doManualShoutout() {
+                const login = manualInput.value.trim().replace('@', '');
+                if (!login) return;
+                const statusDiv = content.querySelector('#tmod-so-status');
+                manualBtn.disabled = true;
+                statusDiv.textContent = 'Отправка шаутаута...';
+                statusDiv.style.color = '#adadb8';
+                const result = await sendShoutout(login);
+                if (result.success) {
+                    statusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Шаутаут отправлен!</span>';
+                    manualInput.value = '';
+                } else {
+                    statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + result.error + '</span>';
+                }
+                manualBtn.disabled = false;
+            }
+            manualBtn.onclick = doManualShoutout;
+            manualInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doManualShoutout(); });
         });
     }
 
