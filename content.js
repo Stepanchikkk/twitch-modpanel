@@ -47,34 +47,79 @@
         return !!value && value !== 'rgba(0, 0, 0, 0)' && value.trim() !== '' && !value.startsWith('url(');
     }
 
+    // Отладка: window.TMOD_DEBUG = true включает логи поиска акцента,
+    // window.getTMODAccent() — ручной вызов детектора из консоли.
+    const TMOD_DEBUG = typeof window !== 'undefined' && window.TMOD_DEBUG === true;
+    function debugLog(label, value) {
+        if (TMOD_DEBUG) console.log('[ModPanel][accent]', label, value);
+    }
+
     function getChannelAccentColor() {
+        let result = null;
+
         try {
-            const accentRegion = document.querySelector('[class*="ScAccentRegionCssVars"]');
-            if (accentRegion) {
-                const cssVar = getComputedStyle(accentRegion).getPropertyValue('--color-accent').trim();
-                if (isValidColor(cssVar)) return cssVar;
+            for (const el of [
+                document.querySelector('[class*="ScAccentRegionCssVars"]'),
+                document.body,
+                document.documentElement
+            ]) {
+                if (!el) continue;
+                const cssVar = getComputedStyle(el).getPropertyValue('--color-accent').trim();
+                debugLog('css-var ' + (el.className || el.tagName).toString().slice(0, 40), cssVar);
+                if (isValidColor(cssVar)) { result = cssVar; break; }
             }
         } catch (e) {}
 
-        try {
-            const edge = document.querySelector('.tw-hover-accent-effect [class*="ScEdgeLeft"]');
-            if (edge) {
-                const bg = getComputedStyle(edge).backgroundColor;
-                if (isValidColor(bg)) return bg;
-            }
-        } catch (e) {}
+        if (!result) {
+            try {
+                const edge = document.querySelector('.tw-hover-accent-effect [class*="ScEdgeLeft"]');
+                if (edge) {
+                    const bg = getComputedStyle(edge).backgroundColor;
+                    debugLog('edge-card', bg);
+                    if (isValidColor(bg)) result = bg;
+                } else {
+                    debugLog('edge-card', 'no element');
+                }
+            } catch (e) {}
+        }
 
-        try {
-            const lines = document.querySelectorAll('.announcement-line');
-            for (const line of lines) {
-                if (/announcement-line--/.test(line.className)) continue;
-                const style = getComputedStyle(line);
-                const color = style.borderInlineStartColor || style.borderLeftColor;
-                if (isValidColor(color)) return color;
-            }
-        } catch (e) {}
+        if (!result) {
+            try {
+                const halo = document.querySelector('[class*="intermediateHalo"]')
+                    || document.querySelector('[class*="avatarHaloContainer"] div');
+                if (halo) {
+                    const st = getComputedStyle(halo);
+                    const cand = st.backgroundColor && st.backgroundColor !== 'rgba(0, 0, 0, 0)'
+                        ? st.backgroundColor : null;
+                    const grad = st.backgroundImage && st.backgroundImage !== 'none' ? st.backgroundImage : null;
+                    debugLog('avatar-halo', { backgroundColor: cand, backgroundImage: grad });
+                    if (isValidColor(cand)) result = cand;
+                    else if (grad && grad.includes('gradient')) result = grad;
+                } else {
+                    debugLog('avatar-halo', 'no element');
+                }
+            } catch (e) {}
+        }
 
-        return null;
+        if (!result) {
+            try {
+                const lines = document.querySelectorAll('.announcement-line');
+                debugLog('announcements', lines.length + ' found');
+                for (const line of lines) {
+                    if (/announcement-line--/.test(line.className)) continue;
+                    const style = getComputedStyle(line);
+                    const color = style.borderInlineStartColor || style.borderLeftColor;
+                    if (isValidColor(color)) { result = color; break; }
+                }
+            } catch (e) {}
+        }
+
+        if (!result) debugLog('result', 'fallback');
+        return result;
+    }
+
+    if (typeof window !== 'undefined') {
+        window.getTMODAccent = getChannelAccentColor;
     }
 
     function getPrimaryStripe() {
