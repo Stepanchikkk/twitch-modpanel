@@ -1332,29 +1332,17 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                     <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 4px;">Название стрима</label>
                     <input type="text" id="tmod-stream-title" maxlength="140" placeholder="Название трансляции" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
                 </div>
-                <div style="margin-bottom: 12px; position: relative;">
+                <div style="margin-bottom: 4px; position: relative;">
                     <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 4px;">Категория / Игра</label>
                     <input type="text" id="tmod-stream-category" placeholder="Поиск категории..." autocomplete="off" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
                     <div id="tmod-cat-results" style="position: absolute; top: 100%; left: 0; right: 0; background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 0 0 4px 4px; display: none; z-index: 10; max-height: 250px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #3a3a3d transparent;"></div>
                 </div>
-                <div style="margin-bottom: 12px;">
-                    <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 4px;">Теги (через запятую, до 20)</label>
-                    <input type="text" id="tmod-stream-tags" placeholder="тег1, тег2, ..." style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
-                </div>
+                <div id="tmod-cat-card" style="margin-bottom: 12px; background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 6px; padding: 10px; display: none; align-items: center; gap: 12px;"></div>
                 <div style="margin-bottom: 12px;">
                     <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 4px;">Язык</label>
                     <select id="tmod-stream-lang" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
                         ${LANGUAGES.map(l => `<option value="${l.value}">${l.label}</option>`).join('')}
                     </select>
-                </div>
-                <div style="margin-bottom: 12px; position: relative; display: flex; flex-direction: column;">
-                    <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 6px;">Метки контента</label>
-                    <div id="tmod-ccl-trigger" style="display: flex; align-items: center; justify-content: space-between; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; cursor: pointer; user-select: none;">
-                        <span id="tmod-ccl-trigger-text">Выбрано: 0</span>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#adadb8" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                    </div>
-                    <div id="tmod-ccl-dropdown" style="position: absolute; bottom: calc(100% + 4px); left: 0; right: 0; background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 4px; display: none; z-index: 10; max-height: 200px; overflow-y: auto;"></div>
-                    <div id="tmod-ccl-chips" style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;"></div>
                 </div>
                 <button id="tmod-stream-save" style="width: 100%; background: #9146FF; color: white; border: none; border-radius: 4px; padding: 10px; font-size: 14px; font-weight: 600; cursor: pointer;">Сохранить</button>
                 <div id="tmod-stream-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
@@ -1392,84 +1380,40 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
 
             const titleInput = content.querySelector('#tmod-stream-title');
             const catInput = content.querySelector('#tmod-stream-category');
-            const tagsInput = content.querySelector('#tmod-stream-tags');
             const langSelect = content.querySelector('#tmod-stream-lang');
             const catResults = content.querySelector('#tmod-cat-results');
+            const catCard = content.querySelector('#tmod-cat-card');
 
             titleInput.value = ch.title || '';
             catInput.value = ch.game_name || '';
             selectedGameId = ch.game_id || null;
             langSelect.value = ch.broadcaster_language || '';
 
-            if (ch.tags && ch.tags.length) {
-                tagsInput.value = ch.tags.join(', ');
-            }
-
-            const CCL_ITEMS = [
-                { id: 'DebatedSocialIssuesAndPolitics', label: 'Политика и острые социальные вопросы' },
-                { id: 'DrugsIntoxication', label: 'Наркотики, опьянение или чрезмерное употребление табака' },
-                { id: 'Gambling', label: 'Азартные игры' },
-                { id: 'MatureGame', label: 'Игра c рейтингом «Для взрослых»' },
-                { id: 'ProfanityVulgarity', label: 'Значительное употребление ненормативной лексики и вульгарных выражений' },
-                { id: 'SexualThemes', label: 'Сексуализированные темы' },
-                { id: 'ViolentGraphic', label: 'Насилие и натуралистичное изображение насилия' }
-            ];
-
-            const ccl = ch.content_classification_labels || [];
-            const selectedCCL = new Set(ccl.filter(v => CCL_ITEMS.some(c => c.id === v)));
-
-            const cclDropdown = content.querySelector('#tmod-ccl-dropdown');
-            const cclTriggerText = content.querySelector('#tmod-ccl-trigger-text');
-            const cclChips = content.querySelector('#tmod-ccl-chips');
-
-            cclDropdown.innerHTML = CCL_ITEMS.map(item => `
-                <label style="display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 12px; color: #efeff1; cursor: pointer; transition: background 0.1s;" onmouseenter="this.style.background='#26262c'" onmouseleave="this.style.background=''">
-                    <input type="checkbox" value="${item.id}" ${selectedCCL.has(item.id) ? 'checked' : ''} style="accent-color: #9146FF;">
-                    <span>${item.label}</span>
-                </label>
-            `).join('');
-
-            function renderCCLChips() {
-                cclChips.innerHTML = [...selectedCCL].map(id => {
-                    const item = CCL_ITEMS.find(c => c.id === id);
-                    return `<div title="${item.label}" style="display: flex; align-items: center; justify-content: space-between; background: #3a3a3d; color: #efeff1; border-radius: 4px; padding: 4px 8px; font-size: 12px; overflow: hidden;">
-                        <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.label}</span>
-                        <span data-ccl-remove="${id}" style="cursor: pointer; color: #adadb8; margin-left: 8px; font-size: 14px; line-height: 1; flex-shrink: 0;">×</span>
+            function renderCatCard(gameName, gameId, artUrl) {
+                if (!gameName) { catCard.style.display = 'none'; return; }
+                const thumb = artUrl ? artUrl.replace('{width}', '80').replace('{height}', '112') : '';
+                catCard.innerHTML = `
+                    ${thumb ? `<img src="${thumb}" style="width: 60px; height: 84px; object-fit: cover; border-radius: 4px; flex-shrink: 0; background: #26262c;" onerror="this.style.display='none'">` : ''}
+                    <div style="min-width: 0;">
+                        <div style="font-size: 14px; font-weight: 600; color: #efeff1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${gameName}</div>
+                        <div style="font-size: 11px; color: #adadb8; margin-top: 2px;">ID: ${gameId}</div>
                     </div>`;
-                }).join('');
-                cclTriggerText.textContent = `Выбрано: ${selectedCCL.size}`;
-
-                cclChips.querySelectorAll('[data-ccl-remove]').forEach(el => {
-                    el.onclick = (e) => {
-                        e.stopPropagation();
-                        const removeId = el.dataset.cclRemove;
-                        selectedCCL.delete(removeId);
-                        const cb = cclDropdown.querySelector(`input[value="${removeId}"]`);
-                        if (cb) cb.checked = false;
-                        renderCCLChips();
-                    };
-                });
+                catCard.style.display = 'flex';
             }
 
-            cclDropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-                cb.addEventListener('change', () => {
-                    if (cb.checked) selectedCCL.add(cb.value); else selectedCCL.delete(cb.value);
-                    renderCCLChips();
-                });
-            });
-
-            content.querySelector('#tmod-ccl-trigger').onclick = () => {
-                const dd = content.querySelector('#tmod-ccl-dropdown');
-                dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
-            };
-
-            content.addEventListener('click', (e) => {
-                if (!e.target.closest('#tmod-ccl-trigger') && !e.target.closest('#tmod-ccl-dropdown')) {
-                    cclDropdown.style.display = 'none';
-                }
-            });
-
-            renderCCLChips();
+            if (ch.game_name && ch.game_id) {
+                (async () => {
+                    const token2 = await getToken();
+                    if (!token2) return;
+                    const gameResp = await apiRequest(`https://api.twitch.tv/helix/games?id=${ch.game_id}`, {
+                        headers: { 'Authorization': `Bearer ${token2}`, 'Client-Id': CLIENT_ID }
+                    });
+                    try {
+                        const gd = JSON.parse(gameResp.text);
+                        renderCatCard(ch.game_name, ch.game_id, gd.data && gd.data[0] ? gd.data[0].box_art_url : '');
+                    } catch { renderCatCard(ch.game_name, ch.game_id, ''); }
+                })();
+            }
 
             let searchTimeout = null;
             catInput.addEventListener('input', () => {
@@ -1488,7 +1432,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                         if (!data.data || !data.data.length) { catResults.style.display = 'none'; return; }
                         catResults.innerHTML = data.data.map(c => {
                             const thumb = c.box_art_url ? c.box_art_url.replace('{width}', '40').replace('{height}', '56') : '';
-                            return `<div class="tmod-cat-item" data-id="${c.id}" data-name="${c.name}" style="padding: 6px 10px; font-size: 13px; color: #efeff1; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.1s;">
+                            return `<div class="tmod-cat-item" data-id="${c.id}" data-name="${c.name}" data-art="${c.box_art_url || ''}" style="padding: 6px 10px; font-size: 13px; color: #efeff1; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.1s;">
                                 ${thumb ? `<img src="${thumb}" style="width: 40px; height: 56px; object-fit: cover; border-radius: 4px; flex-shrink: 0; background: #26262c;" onerror="this.style.display='none'">` : ''}
                                 <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${c.name}</span>
                             </div>`;
@@ -1501,6 +1445,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                                 catInput.value = item.dataset.name;
                                 selectedGameId = item.dataset.id;
                                 catResults.style.display = 'none';
+                                renderCatCard(item.dataset.name, item.dataset.id, item.dataset.art || '');
                             };
                         });
                     } catch { catResults.style.display = 'none'; }
@@ -1524,18 +1469,14 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 const newGameId = selectedGameId || undefined;
                 const newGameName = catInput.value.trim();
                 const newLang = langSelect.value || undefined;
-                const rawTags = tagsInput.value.split(',').map(t => t.trim()).filter(Boolean).slice(0, 20);
-                const newCCL = [...selectedCCL];
 
                 const gqlBody = {};
-                let tagsChanged = rawTags.join(',') !== (ch.tags || []).join(',');
-                let cclChanged = newCCL.join(',') !== (ch.content_classification_labels || []);
 
                 if (newTitle !== (ch.title || '')) gqlBody.status = newTitle;
                 if (newGameId && newGameId !== ch.game_id) gqlBody.game = newGameName || newGameId;
                 if (newLang !== (ch.broadcaster_language || '')) gqlBody.broadcasterLanguage = newLang;
 
-                if (!Object.keys(gqlBody).length && !tagsChanged && !cclChanged) {
+                if (!Object.keys(gqlBody).length) {
                     statusDiv.innerHTML = '<span style="color:#adadb8;">Нет изменений</span>';
                     return;
                 }
@@ -1544,45 +1485,8 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 statusDiv.textContent = 'Сохранение...';
 
                 const errors = [];
-
-                if (Object.keys(gqlBody).length) {
-                    const gqlResult = await gqlUpdateBroadcastSettings(token, broadcasterId, gqlBody);
-                    if (!gqlResult.success) errors.push(gqlResult.error);
-                }
-
-                if (tagsChanged) {
-                    statusDiv.textContent = 'Сохранение тегов...';
-                    const tagIds = [];
-                    for (const tagName of rawTags) {
-                        const results = await gqlSearchTags(tagName, token);
-                        const exact = results.find(t => t.localizedName.toLowerCase() === tagName.toLowerCase());
-                        if (exact) tagIds.push(exact.id);
-                        else if (results.length) tagIds.push(results[0].id);
-                    }
-                    const tagResult = await gqlSetContentTags(broadcasterId, tagIds, token);
-                    if (!tagResult.success) errors.push('Теги: ' + tagResult.error);
-                }
-
-                if (cclChanged) {
-                    statusDiv.textContent = 'Сохранение меток...';
-                    const helixResp = await apiRequest(`https://api.twitch.tv/helix/channels?broadcaster_id=${broadcasterId}`, {
-                        method: 'PATCH',
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Client-Id': CLIENT_ID,
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ content_classification_labels: newCCL })
-                    });
-                    if (!(helixResp.status === 204 || (helixResp.ok && !helixResp.error))) {
-                        try {
-                            const err = JSON.parse(helixResp.text);
-                            errors.push('Метки: ' + (err.message || 'Helix error'));
-                        } catch {
-                            errors.push('Метки: Helix ' + helixResp.status);
-                        }
-                    }
-                }
+                const gqlResult = await gqlUpdateBroadcastSettings(token, broadcasterId, gqlBody);
+                if (!gqlResult.success) errors.push(gqlResult.error);
 
                 if (errors.length) {
                     statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + errors.join('; ') + '</span>';
