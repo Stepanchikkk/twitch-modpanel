@@ -2,7 +2,7 @@
 // @name            Twitch ModPanel
 // @namespace       TMP
 // @description     Панель модератора для Twitch
-// @version         1.0.0
+// @version         1.1.0
 // @author          Twitch ModPanel Team
 //
 // @grant           GM_getValue
@@ -27,7 +27,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_URL = 'https://raw.githubusercontent.com/Stepanchikkk/twitch-modpanel/main/twitch-modpanel-full.user.js';
+    const SCRIPT_URL = 'https://raw.githubusercontent.com/Stepanchikkk/twitch-modpanel/unified-core/content.js';
     const CACHE_KEY = 'tmp_last_update';
     const CACHE_DURATION = 3600000;
 
