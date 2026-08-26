@@ -1041,7 +1041,6 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         if (!content) return;
 
         panel.style.minWidth = '360px';
-        panel.style.width = '360px';
 
         if (!panel.querySelector('#tmod-chat-tile-styles')) {
             const s = document.createElement('style');
