@@ -62,9 +62,25 @@
     }
 
     let cachedAccentColor = null;
+    let cachedAccentChannel = null;
     let accentProbedAt = 0;
 
+    function getChannelName() {
+        return window.location.pathname.slice(1).split('/')[0] || null;
+    }
+
+    // Приоритет источников: 1) реальные primary-анонсы в чате (инлайн border-color —
+    // ровно то, чем рисует Твитч), 2) ореол аватара канала, 3) CSS-переменные
+    // --color-accent, 4) полоски карточек. Ничего не нашли — null (фолбэк-градиент).
     function getChannelAccentColor() {
+        const channel = getChannelName();
+        // Twitch — SPA: при переходе на другой канал кэш сбрасываем.
+        if (cachedAccentColor && channel && cachedAccentChannel !== channel) {
+            cachedAccentColor = null;
+            accentProbedAt = 0;
+        }
+        if (channel) cachedAccentChannel = channel;
+
         if (cachedAccentColor) { debugLog('cache', cachedAccentColor); return cachedAccentColor; }
         // Неудачные попытки повторяем не чаще раза в 30 секунд,
         // чтобы не дёргать DOM при каждом открытии списка.
@@ -74,30 +90,15 @@
         let result = null;
 
         try {
-            for (const el of [
-                document.querySelector('[class*="ScAccentRegionCssVars"]'),
-                document.body,
-                document.documentElement
-            ]) {
-                if (!el) continue;
-                const cssVar = getComputedStyle(el).getPropertyValue('--color-accent').trim();
-                debugLog('css-var ' + (el.className || el.tagName).toString().slice(0, 40), cssVar);
-                if (isValidColor(cssVar)) { result = cssVar; break; }
+            const lines = document.querySelectorAll('.announcement-line');
+            debugLog('announcements', lines.length + ' found');
+            for (const line of lines) {
+                if (/announcement-line--/.test(line.className)) continue;
+                const style = getComputedStyle(line);
+                const color = style.borderInlineStartColor || style.borderLeftColor;
+                if (isValidColor(color)) { result = color; break; }
             }
         } catch (e) {}
-
-        if (!result) {
-            try {
-                const edge = document.querySelector('.tw-hover-accent-effect [class*="ScEdgeLeft"]');
-                if (edge) {
-                    const bg = getComputedStyle(edge).backgroundColor;
-                    debugLog('edge-card', bg);
-                    if (isValidColor(bg)) result = bg;
-                } else {
-                    debugLog('edge-card', 'no element');
-                }
-            } catch (e) {}
-        }
 
         if (!result) {
             try {
@@ -119,13 +120,28 @@
 
         if (!result) {
             try {
-                const lines = document.querySelectorAll('.announcement-line');
-                debugLog('announcements', lines.length + ' found');
-                for (const line of lines) {
-                    if (/announcement-line--/.test(line.className)) continue;
-                    const style = getComputedStyle(line);
-                    const color = style.borderInlineStartColor || style.borderLeftColor;
-                    if (isValidColor(color)) { result = color; break; }
+                for (const el of [
+                    document.querySelector('[class*="ScAccentRegionCssVars"]'),
+                    document.body,
+                    document.documentElement
+                ]) {
+                    if (!el) continue;
+                    const cssVar = getComputedStyle(el).getPropertyValue('--color-accent').trim();
+                    debugLog('css-var ' + (el.className || el.tagName).toString().slice(0, 40), cssVar);
+                    if (isValidColor(cssVar)) { result = cssVar; break; }
+                }
+            } catch (e) {}
+        }
+
+        if (!result) {
+            try {
+                const edge = document.querySelector('.tw-hover-accent-effect [class*="ScEdgeLeft"]');
+                if (edge) {
+                    const bg = getComputedStyle(edge).backgroundColor;
+                    debugLog('edge-card', bg);
+                    if (isValidColor(bg)) result = bg;
+                } else {
+                    debugLog('edge-card', 'no element');
                 }
             } catch (e) {}
         }
@@ -133,6 +149,39 @@
         if (!result) debugLog('result', 'fallback');
         if (result) cachedAccentColor = result;
         return result;
+    }
+
+    // Самообучение: после отправки нашего primary-анонса он появляется в чате,
+    // считываем с него точный цвет (authoritative) и сохраняем по каналу навсегда.
+    function learnAccentFromChat() {
+        setTimeout(() => {
+            try {
+                const lines = document.querySelectorAll('.announcement-line');
+                for (const line of lines) {
+                    if (/announcement-line--/.test(line.className)) continue;
+                    const style = getComputedStyle(line);
+                    const color = style.borderInlineStartColor || style.borderLeftColor;
+                    if (isValidColor(color)) {
+                        cachedAccentColor = color;
+                        const ch = getChannelName();
+                        if (ch) storageSet('tmod_accent_' + ch, color);
+                        debugLog('learned', color);
+                        return;
+                    }
+                }
+            } catch (e) {}
+        }, 2500);
+    }
+
+    // Подхват сохранённого цвета канала из хранилища (переживает перезагрузки).
+    async function warmAccentCache() {
+        const ch = getChannelName();
+        if (!ch || cachedAccentColor) return;
+        const stored = await storageGet('tmod_accent_' + ch);
+        if (stored && isValidColor(stored)) {
+            cachedAccentColor = stored;
+            debugLog('from-storage', stored);
+        }
     }
 
     // Ручной вызов из консоли страницы: PAGE_WINDOW.getTMODAccent()
@@ -733,6 +782,7 @@
 
     function showAnnounceSection(panel) {
         const channelName = window.location.pathname.slice(1);
+        warmAccentCache();
         const content = panel.querySelector('#tmod-panel-content');
         if (!content) return;
 
@@ -834,7 +884,11 @@
             if (text.length > 500) { statusDiv.style.color = '#ff6b6b'; statusDiv.textContent = 'Текст слишком длинный'; return; }
             statusDiv.style.color = '#adadb8'; statusDiv.textContent = 'Отправка...';
             const result = await sendAnnouncement(channelName, text, color);
-            if (result.success) { statusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Анонс отправлен!</span>'; setTimeout(() => { panel.remove(); createPanel(); }, 1500); }
+            if (result.success) {
+                statusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Анонс отправлен!</span>';
+                if (color === 'primary') learnAccentFromChat();
+                setTimeout(() => { panel.remove(); createPanel(); }, 1500);
+            }
             else { statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + result.error + '</span>'; }
         });
     }
@@ -979,8 +1033,8 @@
         } else {
             injectButton();
         }
-        // Прогрев кэша акцента канала: React дорисовывает чат/хедер позже,
-        // поэтому пробуем пару раз с задержкой, чтобы к открытию панели цвет уже был в кэше.
+        // Прогрев кэша акцента канала
+        warmAccentCache();
         setTimeout(getChannelAccentColor, 3000);
         setTimeout(getChannelAccentColor, 12000);
     }
