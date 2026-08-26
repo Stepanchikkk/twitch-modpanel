@@ -712,6 +712,10 @@
                 #tmod-ccl-dropdown::-webkit-scrollbar-thumb { background: #3a3a3d; border-radius: 2px; }
                 #tmod-ccl-dropdown::-webkit-scrollbar-thumb:hover { background: #555; }
                 #tmod-ccl-dropdown { scrollbar-width: thin; scrollbar-color: #3a3a3d transparent; }
+                #tmod-cat-results::-webkit-scrollbar { width: 4px; }
+                #tmod-cat-results::-webkit-scrollbar-track { background: transparent; }
+                #tmod-cat-results::-webkit-scrollbar-thumb { background: #3a3a3d; border-radius: 2px; }
+                #tmod-cat-results::-webkit-scrollbar-thumb:hover { background: #555; }
             </style>
             <div class="tmod-no-select" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #18181b; border-bottom: 1px solid #3a3a3d; cursor: move; border-radius: 8px 8px 0 0;" id="tmod-panel-header">
                 <div style="display: flex; align-items: center; gap: 10px;">
@@ -1330,7 +1334,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 <div style="margin-bottom: 12px; position: relative;">
                     <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 4px;">Категория / Игра</label>
                     <input type="text" id="tmod-stream-category" placeholder="Поиск категории..." autocomplete="off" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
-                    <div id="tmod-cat-results" style="position: absolute; top: 100%; left: 0; right: 0; background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 0 0 4px 4px; display: none; z-index: 10; max-height: 150px; overflow: hidden;"></div>
+                    <div id="tmod-cat-results" style="position: absolute; top: 100%; left: 0; right: 0; background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 0 0 4px 4px; display: none; z-index: 10; max-height: 250px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #3a3a3d transparent;"></div>
                 </div>
                 <div style="margin-bottom: 12px;">
                     <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 4px;">Теги (через запятую, до 20)</label>
@@ -1481,11 +1485,13 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                     try {
                         const data = JSON.parse(resp.text);
                         if (!data.data || !data.data.length) { catResults.style.display = 'none'; return; }
-                        catResults.innerHTML = data.data.map(c =>
-                            `<div class="tmod-cat-item" data-id="${c.id}" data-name="${c.name}" style="padding: 8px 10px; font-size: 13px; color: #efeff1; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.1s;">
+                        catResults.innerHTML = data.data.map(c => {
+                            const thumb = c.box_art_url ? c.box_art_url.replace('{width}', '40').replace('{height}', '56') : '';
+                            return `<div class="tmod-cat-item" data-id="${c.id}" data-name="${c.name}" style="padding: 6px 10px; font-size: 13px; color: #efeff1; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.1s;">
+                                ${thumb ? `<img src="${thumb}" style="width: 40px; height: 56px; object-fit: cover; border-radius: 4px; flex-shrink: 0; background: #26262c;" onerror="this.style.display='none'">` : ''}
                                 <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${c.name}</span>
-                            </div>`
-                        ).join('');
+                            </div>`;
+                        }).join('');
                         catResults.style.display = 'block';
                         catResults.querySelectorAll('.tmod-cat-item').forEach(item => {
                             item.onmouseenter = () => item.style.background = '#26262c';
