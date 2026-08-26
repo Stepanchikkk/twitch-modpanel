@@ -28,6 +28,38 @@
     const ICON_TRASH = '<svg style="vertical-align:-3px;margin-right:6px;" width="15" height="15" viewBox="0 0 24 24" fill="white"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
     const ICON_CLIP = '<svg style="vertical-align:-3px;margin-right:6px;" width="15" height="15" viewBox="0 0 24 24" fill="white"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg>';
 
+    // Цвета анонсов: градиенты полосок — как у .announcement-line в чате Твича.
+    const DEFAULT_TWITCH_PURPLE = '#9147ff';
+    const ANNOUNCE_COLORS = [
+        { value: 'primary', label: 'Цвет канала', stripe: null },
+        { value: 'blue', label: 'Синий', stripe: `linear-gradient(#00d6d6, ${DEFAULT_TWITCH_PURPLE})` },
+        { value: 'green', label: 'Зелёный', stripe: 'linear-gradient(#00db84, #57bee6)' },
+        { value: 'orange', label: 'Оранжевый', stripe: 'linear-gradient(#ffb31a, #e0e000)' },
+        { value: 'purple', label: 'Фиолетовый', stripe: `linear-gradient(${DEFAULT_TWITCH_PURPLE}, #ff75e6)` }
+    ];
+
+    // Акцент канала Твитч кладёт инлайном в border-color элемента primary-анонса
+    // (.announcement-line без модификатора класса). Если анонсов в чате нет или
+    // акцент не настроен (рендерится как .announcement-line--<цвет>) — вернём null.
+    function getChannelAccentColor() {
+        try {
+            const lines = document.querySelectorAll('.announcement-line');
+            for (const line of lines) {
+                if (/announcement-line--/.test(line.className)) continue;
+                const style = getComputedStyle(line);
+                const color = style.borderInlineStartColor || style.borderLeftColor;
+                if (color && color !== 'rgba(0, 0, 0, 0)') return color;
+            }
+        } catch (e) {}
+        return null;
+    }
+
+    function getPrimaryStripe() {
+        const accent = getChannelAccentColor();
+        if (accent) return accent;
+        return `linear-gradient(${DEFAULT_TWITCH_PURPLE}, #ff75e6)`;
+    }
+
     // ============================================================================
     // Адаптеры платформы (хранилище / HTTP / иконки / уведомления)
     // ============================================================================
@@ -526,6 +558,26 @@
                 .tmod-feature-btn .tmod-label { font-size: 14px !important; font-weight: 600 !important; color: #efeff1 !important; white-space: nowrap !important; }
                 .tmod-toggle-active span:first-of-type { background-color: #9146FF !important; }
                 .tmod-toggle-active span:last-of-type { transform: translateX(20px) !important; background-color: #fff !important; }
+                .tmod-select-btn {
+                    width: 100%; display: flex; align-items: center; gap: 10px;
+                    background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px;
+                    color: #efeff1; padding: 8px 10px; font-size: 14px; cursor: pointer;
+                    font-family: inherit; text-align: left;
+                }
+                .tmod-select-btn:hover { border-color: #4f4f52; }
+                .tmod-color-list {
+                    margin-top: 6px; background: #18181b; border: 1px solid #3a3a3d;
+                    border-radius: 8px; overflow: hidden;
+                }
+                .tmod-option {
+                    display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+                    cursor: pointer; font-size: 14px; color: #efeff1;
+                    border-inline-start: 8px solid transparent;
+                    border-inline-end: 8px solid transparent;
+                    border-image-slice: 1;
+                }
+                .tmod-option:hover { background: #26262c !important; }
+                .tmod-option-selected { background: #1f1f23 !important; }
             </style>
             <div class="tmod-no-select" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #18181b; border-bottom: 1px solid #3a3a3d; cursor: move; border-radius: 8px 8px 0 0;" id="tmod-panel-header">
                 <div style="display: flex; align-items: center; gap: 10px;">
@@ -609,12 +661,73 @@
         content.innerHTML = `
             <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;"><span>←</span> <span>Назад</span></button>
             <textarea id="tmod-announce-text" placeholder="Текст анонса (макс. 500 символов)" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 10px; font-size: 14px; resize: vertical;" rows="4"></textarea>
-            <select id="tmod-announce-color" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px; margin-top: 10px;">
-                <option value="primary">Primary</option><option value="blue">Синий</option><option value="green">Зелёный</option><option value="orange">Оранжевый</option><option value="purple">Фиолетовый</option>
-            </select>
+            <div id="tmod-color-wrap">
+                <button type="button" class="tmod-select-btn" id="tmod-color-btn">
+                    <span id="tmod-color-stripe" style="width: 8px; height: 18px; border-radius: 2px; flex-shrink: 0;"></span>
+                    <span id="tmod-color-label">Цвет канала</span>
+                    <span style="margin-left: auto; color: #adadb8;">▾</span>
+                </button>
+                <div class="tmod-color-list" id="tmod-color-list" hidden></div>
+            </div>
             <button id="tmod-send-announce" style="width: 100%; background: #9146FF; color: white; border: none; border-radius: 4px; padding: 10px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 10px;">Отправить</button>
             <div id="tmod-announce-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
         `;
+
+        // Кастомный дропдаун цветов
+        const selected = { value: 'primary' };
+        const colorBtn = content.querySelector('#tmod-color-btn');
+        const colorStripe = content.querySelector('#tmod-color-stripe');
+        const colorLabel = content.querySelector('#tmod-color-label');
+        const colorList = content.querySelector('#tmod-color-list');
+
+        function stripeFor(color) {
+            return color.value === 'primary' ? getPrimaryStripe() : color.stripe;
+        }
+
+        function renderOptions() {
+            colorList.innerHTML = ANNOUNCE_COLORS.map((c, i) => `
+                <div class="tmod-option${c.value === selected.value ? ' tmod-option-selected' : ''}" data-value="${c.value}"
+                     style="${i > 0 ? 'box-shadow: inset 0 1px 0 #26262c;' : ''} border-image-source: ${stripeFor(c)};">
+                    <span>${c.label}</span>
+                </div>
+            `).join('');
+        }
+
+        function updateButton() {
+            const current = ANNOUNCE_COLORS.find(c => c.value === selected.value);
+            colorLabel.textContent = current.label;
+            colorStripe.style.backgroundImage = stripeFor(current);
+            colorStripe.style.backgroundColor = 'transparent';
+        }
+
+        renderOptions();
+        updateButton();
+
+        let outsideCloser = null;
+        colorBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            renderOptions();
+            colorList.hidden = !colorList.hidden;
+            if (!colorList.hidden && !outsideCloser) {
+                outsideCloser = (ev) => {
+                    if (!colorBtn.parentElement.contains(ev.target)) {
+                        colorList.hidden = true;
+                        document.removeEventListener('click', outsideCloser);
+                        outsideCloser = null;
+                    }
+                };
+                document.addEventListener('click', outsideCloser);
+            }
+        });
+
+        colorList.addEventListener('click', (e) => {
+            const opt = e.target.closest('.tmod-option');
+            if (!opt) return;
+            e.stopPropagation();
+            selected.value = opt.dataset.value;
+            updateButton();
+            colorList.hidden = true;
+        });
 
         const rect = panel.getBoundingClientRect();
         if (rect.top < 0) {
@@ -625,7 +738,7 @@
 
         content.querySelector('#tmod-send-announce').addEventListener('click', async () => {
             const text = content.querySelector('#tmod-announce-text').value.trim();
-            const color = content.querySelector('#tmod-announce-color').value;
+            const color = selected.value;
             const statusDiv = content.querySelector('#tmod-announce-status');
             if (!text) { statusDiv.style.color = '#ff6b6b'; statusDiv.textContent = 'Введите текст'; return; }
             if (text.length > 500) { statusDiv.style.color = '#ff6b6b'; statusDiv.textContent = 'Текст слишком длинный'; return; }
