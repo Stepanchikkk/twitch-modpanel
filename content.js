@@ -1342,14 +1342,14 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                         ${LANGUAGES.map(l => `<option value="${l.value}">${l.label}</option>`).join('')}
                     </select>
                 </div>
-                <div style="margin-bottom: 12px; position: relative; width: 100%; box-sizing: border-box;">
+                <div style="margin-bottom: 12px; position: relative;">
                     <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 6px;">Метки контента</label>
                     <div id="tmod-ccl-trigger" style="display: flex; align-items: center; justify-content: space-between; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; cursor: pointer; user-select: none;">
                         <span id="tmod-ccl-trigger-text">Выбрано: 0</span>
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#adadb8" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
                     </div>
                     <div id="tmod-ccl-dropdown" style="position: absolute; bottom: calc(100% + 4px); left: 0; right: 0; background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 4px; display: none; z-index: 10; max-height: 200px; overflow-y: auto;"></div>
-                    <div id="tmod-ccl-chips" style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; width: 100%; box-sizing: border-box;"></div>
+                    <div id="tmod-ccl-chips" style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;"></div>
                 </div>
                 <button id="tmod-stream-save" style="width: 100%; background: #9146FF; color: white; border: none; border-radius: 4px; padding: 10px; font-size: 14px; font-weight: 600; cursor: pointer;">Сохранить</button>
                 <div id="tmod-stream-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
@@ -1425,6 +1425,8 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
             `).join('');
 
             function renderCCLChips() {
+                const triggerW = content.querySelector('#tmod-ccl-trigger').offsetWidth;
+                cclChips.style.width = triggerW + 'px';
                 cclChips.innerHTML = [...selectedCCL].map(id => {
                     const item = CCL_ITEMS.find(c => c.id === id);
                     const short = item.label.length > 24 ? item.label.slice(0, 22) + '…' : item.label;
