@@ -1292,7 +1292,6 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         const content = panel.querySelector('#tmod-panel-content');
         if (!content) return;
 
-        panel.style.width = '360px';
         panel.style.minWidth = '360px';
 
         const LANGUAGES = [
@@ -1340,7 +1339,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                         ${LANGUAGES.map(l => `<option value="${l.value}">${l.label}</option>`).join('')}
                     </select>
                 </div>
-                <div style="margin-bottom: 12px; position: relative;">
+                <div style="margin-bottom: 12px; position: relative; width: 100%; box-sizing: border-box;">
                     <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 6px;">Метки контента</label>
                     <div id="tmod-ccl-trigger" style="display: flex; align-items: center; justify-content: space-between; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; cursor: pointer; user-select: none;">
                         <span id="tmod-ccl-trigger-text">Выбрано: 0</span>
