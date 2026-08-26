@@ -7,58 +7,74 @@
         * { box-sizing: border-box; }
         body {
             width: 300px;
-            padding: 20px;
             margin: 0;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #0e0e10;
             color: #efeff1;
         }
-        h1 {
-            color: #9146FF;
-            font-size: 20px;
-            margin: 0 0 10px 0;
-            text-align: center;
+        header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            background: #18181b;
+            border-bottom: 1px solid #3a3a3d;
         }
+        header svg { flex-shrink: 0; }
+        header h1 {
+            margin: 0;
+            font-size: 14px;
+            font-weight: 600;
+            color: #efeff1;
+        }
+        main { padding: 16px; }
         .status {
             text-align: center;
             padding: 15px;
-            margin: 10px 0;
-            border-radius: 6px;
+            margin-bottom: 10px;
+            border-radius: 8px;
             font-size: 14px;
-        }
-        .status.loading {
-            background: #1f1f23;
+            border: 1px solid #3a3a3d;
+            background: #18181b;
             color: #adadb8;
         }
         .status.success {
-            background: #00ff0033;
             color: #00ff00;
-            border: 1px solid #00ff00;
+            border-color: #005c00;
         }
         .status.error {
-            background: #ff000033;
             color: #ff6b6b;
-            border: 1px solid #ff0000;
+            border-color: #7a2222;
         }
         .btn {
             width: 100%;
             padding: 12px;
-            background: #9146FF;
+            background: linear-gradient(90deg, #9146FF, #772ce8);
             color: white;
             border: none;
-            border-radius: 4px;
+            border-radius: 8px;
             cursor: pointer;
             font-size: 14px;
             font-weight: 600;
             margin-top: 10px;
+            transition: all 0.2s;
+            font-family: inherit;
         }
-        .btn:hover { background: #772ce8; }
-        .btn:disabled { background: #3a3a3d; cursor: not-allowed; }
+        .btn:hover { filter: brightness(1.12); transform: scale(1.01); }
+        .btn.secondary { background: #18181b; border: 1px solid #3a3a3d; color: #efeff1; }
+        .btn.secondary:hover { background: #26262c; border-color: #4f4f52; }
+        .btn:disabled { background: #3a3a3d; cursor: not-allowed; transform: none; }
+        .user {
+            text-align: center;
+            margin-top: 12px;
+            font-size: 13px;
+            color: #adadb8;
+        }
         .spinner {
             display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid #1f1f23;
+            width: 18px;
+            height: 18px;
+            border: 2px solid #3a3a3d;
             border-top-color: #9146FF;
             border-radius: 50%;
             animation: spin 1s linear infinite;
@@ -67,28 +83,32 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
         .hidden { display: none; }
-        p { margin: 10px 0; font-size: 13px; color: #adadb8; }
     </style>
 </head>
 <body>
-    <h1>🛡️ ModPanel</h1>
+    <header>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="#9146FF"><path fill-rule="evenodd" d="M15.504 2H22v6.496L10.35 17.35 12 19l-1.5 1.5-2.785-2.785L3.5 22 2 20.5l4.285-4.215L3.5 13.5 5 12l1.65 1.65L15.504 2ZM20 7.504 8.923 15.923l-.846-.846L16.496 4H20v3.504Z" clip-rule="evenodd"></path></svg>
+        <h1>Панель модератора</h1>
+    </header>
 
-    <div id="loading" class="status loading">
-        <span class="spinner"></span>Проверка...
-    </div>
+    <main>
+        <div id="loading" class="status">
+            <span class="spinner"></span>Проверка...
+        </div>
 
-    <div id="notLoggedIn" class="status error hidden">
-        Требуется вход
-    </div>
+        <div id="notLoggedIn" class="status error hidden">
+            Требуется вход
+        </div>
 
-    <div id="loggedIn" class="status success hidden">
-        ✅ Вы вошли!
-    </div>
+        <div id="loggedIn" class="status success hidden">
+            Вы вошли
+        </div>
 
-    <button id="loginBtn" class="btn hidden">🔐 Войти через Twitch</button>
-    <button id="logoutBtn" class="btn hidden" style="background: #3a3a3d;">🚪 Выйти</button>
+        <button id="loginBtn" class="btn hidden">Войти через Twitch</button>
+        <button id="logoutBtn" class="btn secondary hidden">Выйти</button>
 
-    <p id="userInfo" class="hidden" style="text-align: center; color: #adadb8;"></p>
+        <p id="userInfo" class="user hidden"></p>
+    </main>
 
     <script src="popup.js" type="module"></script>
 </body>

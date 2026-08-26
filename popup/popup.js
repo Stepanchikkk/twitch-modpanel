@@ -30,7 +30,7 @@ async function getUserInfo() {
 // Начало OAuth
 function login() {
     loginBtn.disabled = true;
-    loginBtn.textContent = '⏳ Открытие...';
+    loginBtn.textContent = 'Открытие...';
 
     chrome.runtime.sendMessage({ type: 'OAUTH_START' }, (response) => {
         console.log('[Popup] OAuth response:', response);
@@ -39,7 +39,7 @@ function login() {
             location.reload();
         } else {
             loginBtn.disabled = false;
-            loginBtn.textContent = '🔐 Войти через Twitch';
+            loginBtn.textContent = 'Войти через Twitch';
             const errorMsg = response?.error || 'Неизвестная ошибка';
             console.error('[Popup] Error:', errorMsg);
             alert('Ошибка: ' + errorMsg);
@@ -66,7 +66,7 @@ async function updateUI() {
 
         const userInfo = await getUserInfo();
         if (userInfo) {
-            userInfoEl.textContent = `✅ Вы вошли как: ${userInfo.login}`;
+            userInfoEl.textContent = `Вы вошли как: ${userInfo.login}`;
             userInfoEl.classList.remove('hidden');
         }
     } else {
