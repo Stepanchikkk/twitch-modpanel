@@ -815,46 +815,41 @@
         function renderHistory() {
             return loadHistory().then(history => {
                 if (!history.length) return '';
-                const makeChip = (h, i) => {
-                    const stripe = h.color === 'primary'
-                        ? (getChannelAccentColor() || '#9147ff')
-                        : (ANNOUNCE_COLORS.find(c => c.value === h.color)?.stripe || '#9147ff');
-                    const isGrad = stripe.includes('gradient(');
-                    // Нейтральный фон чипса, цветная капсула-индикатор слева
-                    const indStyle = isGrad
-                        ? `background-image: ${stripe};`
-                        : `background-color: ${stripe};`;
+                const arrowSvg = `<svg width="16" height="16" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="m14.207 5 1.414 1.414-5.793 5.793L15.621 18l-1.414 1.414L7 12.207 14.207 5Z" fill="currentColor"></path></svg>`;
+                const arrowBtn = (cls, label, svg, disabled) => `
+                    <button type="button" class="tmod-history-nav ${cls}" aria-label="${label}" ${disabled ? 'disabled' : ''}
+                        style="flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; background: #18181b; border: 1px solid ${disabled ? '#2a2a2d' : '#3a3a3d'}; color: ${disabled ? '#5a5a5f' : '#efeff1'}; cursor: ${disabled ? 'not-allowed' : 'pointer'}; display: flex; align-items: center; justify-content: center; opacity: ${disabled ? '0.4' : '1'}; transition: opacity 0.15s;">
+                        ${svg}
+                    </button>`;
+
+                return loadHistory().then(history => {
+                    if (!history.length) return '';
                     return `
-                        <button type="button" class="tmod-history-item" data-index="${i}"
-                            style="flex: 0 0 auto; padding: 5px 10px; border-radius: 999px; color: #efeff1; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; min-width: 0; display: inline-flex; align-items: center; gap: 8px; border: 1px solid #3a3a3d; background: #18181b;">
-                            <span style="flex: 0 0 auto; width: 10px; height: 10px; border-radius: 999px; ${isGrad ? `background-image: ${stripe};` : `background-color: ${stripe};`}"></span>
-                            <span style="overflow: hidden; text-overflow: ellipsis; max-width: 100%;">${h.text.slice(0, 50)}…</span>
-                        </button>
-                    `;
-                };
-                return `
-                    <div class="tmod-history-bar" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 4px 0;">
-                        <button type="button" class="tmod-history-nav tmod-history-prev" aria-label="Предыдущие анонсы"
-                            style="flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; background: #18181b; border: 1px solid #3a3a3d; color: #efeff1; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center;">←</button>
-                        <div class="tmod-history-track" style="flex: 1; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -ms-overflow-style: none; display: flex; gap: 6px; padding: 2px 4px;">
-                            ${history.map((h, i) => {
-                                const stripe = h.color === 'primary'
-                                    ? (getChannelAccentColor() || '#9147ff')
-                                    : (ANNOUNCE_COLORS.find(c => c.value === h.color)?.stripe || '#9147ff');
-                                const isGrad = stripe.includes('gradient(');
-                                return `
-                                    <button type="button" class="tmod-history-item" data-index="${i}"
-                                        style="flex: 0 0 auto; padding: 5px 10px; border-radius: 999px; color: #efeff1; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; min-width: 0; display: inline-flex; align-items: center; gap: 8px; border: 1px solid #3a3a3d; background: #18181b;">
-                                        <span style="flex: 0 0 auto; width: 10px; height: 10px; border-radius: 999px; ${isGrad ? `background-image: ${stripe};` : `background-color: ${stripe};`}"></span>
-                                        <span style="overflow: hidden; text-overflow: ellipsis; max-width: 100%;">${h.text.slice(0, 50)}…</span>
-                                    </button>
-                                `;
-                            }).join('')}
+                        <div class="tmod-history-bar" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 4px 0;">
+                            ${arrowBtn('tmod-history-prev', 'Предыдущие анонсы', arrowSvg.replace('<svg', '<svg transform="rotate(180)"'), true)}
+                            <div class="tmod-history-track" style="flex: 1; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -ms-overflow-style: none; display: flex; gap: 6px; padding: 2px 4px; min-width: 0;">
+                                ${history.map((h, i) => {
+                                    const stripe = h.color === 'primary'
+                                        ? (getChannelAccentColor() || '#9147ff')
+                                        : (ANNOUNCE_COLORS.find(c => c.value === h.color)?.stripe || '#9147ff');
+                                    const isGrad = stripe.includes('gradient(');
+                                    const indStyle = isGrad ? `background-image: ${stripe};` : `background-color: ${stripe};`;
+                                    const fullText = h.text;
+                                    const displayText = fullText.slice(0, 40);
+                                    const needsEllipsis = fullText.length > 40;
+                                    return `
+                                        <button type="button" class="tmod-history-item" data-index="${i}" title="${fullText}"
+                                            style="flex: 0 0 auto; padding: 5px 10px; border-radius: 999px; color: #efeff1; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; min-width: 0; display: inline-flex; align-items: center; gap: 8px; border: 1px solid #3a3a3d; background: #18181b;">
+                                            <span style="flex: 0 0 auto; width: 10px; height: 10px; border-radius: 999px; ${isGrad ? `background-image: ${stripe};` : `background-color: ${stripe};`}"></span>
+                                            <span style="overflow: hidden; text-overflow: ellipsis;">${displayText}${needsEllipsis ? '…' : ''}</span>
+                                        </button>
+                                    `;
+                                }).join('')}
+                            </div>
+                            ${arrowBtn('tmod-history-next', 'Следующие анонсы', arrowSvg, true)}
                         </div>
-                        <button type="button" class="tmod-history-nav tmod-history-next" aria-label="Следующие анонсы"
-                            style="flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; background: #18181b; border: 1px solid #3a3a3d; color: #efeff1; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center;">→</button>
-                    </div>
-                `;
+                    `;
+                });
             });
         }
 
@@ -878,8 +873,25 @@
         renderHistory().then(html => {
             const wrap = content.querySelector('#tmod-history-wrap');
             if (wrap) wrap.innerHTML = html;
-            // Делегирование кликов: пункты истории + навигация
+            // Делегирование кликов: пункты истории + навигация + скролл
             if (wrap) {
+                const track = wrap.querySelector('.tmod-history-track');
+                const prevBtn = wrap.querySelector('.tmod-history-prev');
+                const nextBtn = wrap.querySelector('.tmod-history-next');
+
+                function updateNav() {
+                    if (!track) return;
+                    const atStart = track.scrollLeft <= 1;
+                    const atEnd = track.scrollLeft + track.clientWidth >= track.scrollWidth - 1;
+                    if (prevBtn) prevBtn.disabled = atStart;
+                    if (nextBtn) nextBtn.disabled = atEnd;
+                }
+
+                if (track) {
+                    track.addEventListener('scroll', updateNav);
+                    updateNav();
+                }
+
                 wrap.addEventListener('click', (e) => {
                     const item = e.target.closest('.tmod-history-item');
                     if (item) {
@@ -901,7 +913,7 @@
                         });
                     }
                     const nav = e.target.closest('.tmod-history-nav');
-                    if (nav) {
+                    if (nav && !nav.disabled) {
                         const track = wrap.querySelector('.tmod-history-track');
                         if (track) {
                             const scrollAmount = track.clientWidth * 0.8;
