@@ -38,19 +38,42 @@
         { value: 'purple', label: 'Фиолетовый', stripe: `linear-gradient(${DEFAULT_TWITCH_PURPLE}, #ff75e6)` }
     ];
 
-    // Акцент канала Твитч кладёт инлайном в border-color элемента primary-анонса
-    // (.announcement-line без модификатора класса). Если анонсов в чате нет или
-    // акцент не настроен (рендерится как .announcement-line--<цвет>) — вернём null.
+    // Акцент канала определяем каскадом (первый удачный источник побеждает):
+    // 1) CSS-переменная --color-accent из обёрток ScAccentRegionCssVars
+    // 2) фон декоративной полоски карточек (.tw-hover-accent-effect → ScEdgeLeft)
+    // 3) инлайн border-color у primary-анонса в чате (.announcement-line без модификатора)
+    // Если ничего не нашлось — null, рисуем дефолтный фиолетовый градиент.
+    function isValidColor(value) {
+        return !!value && value !== 'rgba(0, 0, 0, 0)' && value.trim() !== '' && !value.startsWith('url(');
+    }
+
     function getChannelAccentColor() {
+        try {
+            const accentRegion = document.querySelector('[class*="ScAccentRegionCssVars"]');
+            if (accentRegion) {
+                const cssVar = getComputedStyle(accentRegion).getPropertyValue('--color-accent').trim();
+                if (isValidColor(cssVar)) return cssVar;
+            }
+        } catch (e) {}
+
+        try {
+            const edge = document.querySelector('.tw-hover-accent-effect [class*="ScEdgeLeft"]');
+            if (edge) {
+                const bg = getComputedStyle(edge).backgroundColor;
+                if (isValidColor(bg)) return bg;
+            }
+        } catch (e) {}
+
         try {
             const lines = document.querySelectorAll('.announcement-line');
             for (const line of lines) {
                 if (/announcement-line--/.test(line.className)) continue;
                 const style = getComputedStyle(line);
                 const color = style.borderInlineStartColor || style.borderLeftColor;
-                if (color && color !== 'rgba(0, 0, 0, 0)') return color;
+                if (isValidColor(color)) return color;
             }
         } catch (e) {}
+
         return null;
     }
 
