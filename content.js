@@ -1610,6 +1610,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 const cookie = await new Promise((resolve) => {
                     chrome.cookies.get({ url: 'https://www.twitch.tv', name: 'auth-token' }, (c) => resolve(c));
                 });
+                console.log('[ModPanel] cookie:', cookie ? cookie.value.substring(0, 10) + '...' : 'null', 'oauth:', token.substring(0, 10) + '...');
                 if (cookie && cookie.value) gqlToken = cookie.value;
             } catch (e) { console.log('[ModPanel] cookie read failed:', e); }
         }
