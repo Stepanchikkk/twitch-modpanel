@@ -810,18 +810,44 @@
         function renderHistory() {
             return loadHistory().then(history => {
                 if (!history.length) return '';
+                const makeChip = (h, i) => {
+                    const stripe = h.color === 'primary'
+                        ? (getChannelAccentColor() || '#9147ff')
+                        : (ANNOUNCE_COLORS.find(c => c.value === h.color)?.stripe || '#9147ff');
+                    const isGrad = stripe.includes('gradient(');
+                    const chipStyle = isGrad
+                        ? `background: ${stripe};`
+                        : `background: ${stripe};`;
+                    return `
+                        <button type="button" class="tmod-history-item" data-index="${i}"
+                            style="flex: 0 0 auto; padding: 6px 12px; border-radius: 999px; color: #efeff1; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; display: inline-flex; align-items: center; gap: 6px; border: none; ${chipStyle};">
+                            ${h.text.slice(0, 50)}…
+                        </button>
+                    `;
+                };
                 return `
-                    <div id="tmod-history" style="margin-bottom: 10px; padding: 8px; background: #18181b; border: 1px solid #3a3a3d; border-radius: 4px;">
-                        <div style="font-size: 12px; color: #adadb8; margin-bottom: 6px; font-weight: 600;">История анонсов</div>
-                        <div style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 80px; overflow-y: auto;">
-                            ${history.map((h, i) => `
-                                <button type="button" class="tmod-history-item" data-index="${i}"
-                                    style="flex: 1 0 auto; min-width: 100px; padding: 6px 10px; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 3px; color: #efeff1; font-size: 11px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px;">
-                                    <span style="width: 8px; height: 8px; border-radius: 50%; background: ${h.color === 'primary' ? (getChannelAccentColor() || '#9147ff') : (ANNOUNCE_COLORS.find(c => c.value === h.color)?.stripe || '#9147ff')}"></span>
-                                    <span>${h.text.slice(0, 60)}</span>
-                                </button>
-                            `).join('')}
+                    <div class="tmod-history-bar" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 4px 0;">
+                        <button type="button" class="tmod-history-nav tmod-history-prev" aria-label="Предыдущие анонсы"
+                            style="flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; background: #18181b; border: 1px solid #3a3a3d; color: #efeff1; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center;">←</button>
+                        <div class="tmod-history-track" style="flex: 1; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -ms-overflow-style: none; display: flex; gap: 6px; padding: 2px 4px;">
+                            ${history.map((h, i) => {
+                                const stripe = h.color === 'primary'
+                                    ? (getChannelAccentColor() || '#9147ff')
+                                    : (ANNOUNCE_COLORS.find(c => c.value === h.color)?.stripe || '#9147ff');
+                                const isGrad = stripe.includes('gradient(');
+                                const chipStyle = isGrad
+                                    ? `background-image: ${stripe};`
+                                    : `background-color: ${stripe};`;
+                                return `
+                                    <button type="button" class="tmod-history-item" data-index="${i}"
+                                        style="flex: 0 0 auto; padding: 6px 12px; border-radius: 999px; color: #efeff1; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; display: inline-flex; align-items: center; gap: 6px; border: none; ${chipStyle};">
+                                        ${h.text.slice(0, 50)}…
+                                    </button>
+                                `;
+                            }).join('')}
                         </div>
+                        <button type="button" class="tmod-history-nav tmod-history-next" aria-label="Следующие анонсы"
+                            style="flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; background: #18181b; border: 1px solid #3a3a3d; color: #efeff1; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center;">→</button>
                     </div>
                 `;
             });
@@ -847,12 +873,12 @@
         renderHistory().then(html => {
             const wrap = content.querySelector('#tmod-history-wrap');
             if (wrap) wrap.innerHTML = html;
-            // Делегирование кликов по пунктам истории
+            // Делегирование кликов: пункты истории + навигация
             if (wrap) {
                 wrap.addEventListener('click', (e) => {
-                    const btn = e.target.closest('.tmod-history-item');
-                    if (btn) {
-                        const idx = parseInt(btn.dataset.index, 10);
+                    const item = e.target.closest('.tmod-history-item');
+                    if (item) {
+                        const idx = parseInt(item.dataset.index, 10);
                         loadHistory().then(history => {
                             const entry = history[idx];
                             if (entry) {
@@ -861,7 +887,6 @@
                                     textarea.value = entry.text;
                                     textarea.focus();
                                 }
-                                // Также восстанавливаем цвет
                                 if (entry.color && ANNOUNCE_COLORS.some(c => c.value === entry.color)) {
                                     selected.value = entry.color;
                                     updateButton();
@@ -869,6 +894,14 @@
                                 }
                             }
                         });
+                    }
+                    const nav = e.target.closest('.tmod-history-nav');
+                    if (nav) {
+                        const track = wrap.querySelector('.tmod-history-track');
+                        if (track) {
+                            const scrollAmount = track.clientWidth * 0.8;
+                            track.scrollBy({ left: nav.classList.contains('tmod-history-next') ? scrollAmount : -scrollAmount, behavior: 'smooth' });
+                        }
                     }
                 });
             }
