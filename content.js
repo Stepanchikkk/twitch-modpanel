@@ -61,7 +61,16 @@
         if (TMOD_DEBUG) console.log('[ModPanel][accent]', label, value);
     }
 
+    let cachedAccentColor = null;
+    let accentProbedAt = 0;
+
     function getChannelAccentColor() {
+        if (cachedAccentColor) { debugLog('cache', cachedAccentColor); return cachedAccentColor; }
+        // Неудачные попытки повторяем не чаще раза в 30 секунд,
+        // чтобы не дёргать DOM при каждом открытии списка.
+        if (accentProbedAt && Date.now() - accentProbedAt < 30000) return null;
+        accentProbedAt = Date.now();
+
         let result = null;
 
         try {
@@ -122,17 +131,12 @@
         }
 
         if (!result) debugLog('result', 'fallback');
+        if (result) cachedAccentColor = result;
         return result;
     }
 
     // Ручной вызов из консоли страницы: PAGE_WINDOW.getTMODAccent()
     try { PAGE_WINDOW.getTMODAccent = getChannelAccentColor; } catch (e) {}
-
-    function getPrimaryStripe() {
-        const accent = getChannelAccentColor();
-        if (accent) return accent;
-        return `linear-gradient(${DEFAULT_TWITCH_PURPLE}, #ff75e6)`;
-    }
 
     // ============================================================================
     // Адаптеры платформы (хранилище / HTTP / иконки / уведомления)
@@ -755,23 +759,35 @@
         const colorList = content.querySelector('#tmod-color-list');
 
         function stripeFor(color) {
-            return color.value === 'primary' ? getPrimaryStripe() : color.stripe;
+            return color.value === 'primary' ? (getChannelAccentColor() || `linear-gradient(${DEFAULT_TWITCH_PURPLE}, #ff75e6)`) : color.stripe;
         }
 
         function renderOptions() {
-            colorList.innerHTML = ANNOUNCE_COLORS.map((c, i) => `
+            colorList.innerHTML = ANNOUNCE_COLORS.map((c, i) => {
+                const stripe = stripeFor(c);
+                const isSolid = !stripe.includes('gradient(');
+                const borderColorStyle = isSolid
+                    ? `border-inline-start-color:${stripe}; border-inline-end-color:${stripe};`
+                    : 'border-image-source:' + stripe + ';';
+                return `
                 <div class="tmod-option${c.value === selected.value ? ' tmod-option-selected' : ''}" data-value="${c.value}"
-                     style="${i > 0 ? 'box-shadow: inset 0 1px 0 #26262c;' : ''} border-image-source: ${stripeFor(c)};">
+                     style="${i > 0 ? 'box-shadow: inset 0 1px 0 #26262c;' : ''} ${borderColorStyle}">
                     <span>${c.label}</span>
-                </div>
-            `).join('');
+                </div>`;
+            }).join('');
         }
 
         function updateButton() {
             const current = ANNOUNCE_COLORS.find(c => c.value === selected.value);
+            const stripe = stripeFor(current);
             colorLabel.textContent = current.label;
-            colorStripe.style.backgroundImage = stripeFor(current);
-            colorStripe.style.backgroundColor = 'transparent';
+            if (stripe.includes('gradient(')) {
+                colorStripe.style.backgroundImage = stripe;
+                colorStripe.style.backgroundColor = 'transparent';
+            } else {
+                colorStripe.style.backgroundImage = 'none';
+                colorStripe.style.backgroundColor = stripe;
+            }
         }
 
         renderOptions();
@@ -963,6 +979,10 @@
         } else {
             injectButton();
         }
+        // Прогрев кэша акцента канала: React дорисовывает чат/хедер позже,
+        // поэтому пробуем пару раз с задержкой, чтобы к открытию панели цвет уже был в кэше.
+        setTimeout(getChannelAccentColor, 3000);
+        setTimeout(getChannelAccentColor, 12000);
     }
 
     // Меню Tampermonkey (в расширении эту роль играет popup/)
