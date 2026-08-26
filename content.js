@@ -1604,16 +1604,25 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
             variables: { input }
         });
 
+        let gqlToken = token;
+        if (IS_EXTENSION && typeof chrome !== 'undefined' && chrome.cookies) {
+            try {
+                const cookie = await new Promise((resolve) => {
+                    chrome.cookies.get({ url: 'https://www.twitch.tv', name: 'auth-token' }, (c) => resolve(c));
+                });
+                if (cookie && cookie.value) gqlToken = cookie.value;
+            } catch (e) { console.log('[ModPanel] cookie read failed:', e); }
+        }
+
         let resp;
         if (IS_EXTENSION) {
             resp = await fetch('https://gql.twitch.tv/gql', {
                 method: 'POST',
                 headers: {
                     'Client-Id': GQL_CLIENT_ID,
-                    'Authorization': 'OAuth ' + token,
+                    'Authorization': 'OAuth ' + gqlToken,
                     'Content-Type': 'application/json'
                 },
-                credentials: 'include',
                 body
             }).then(async (r) => ({ status: r.status, ok: r.ok, text: await r.text() }))
               .catch((e) => ({ error: e.message }));
@@ -1622,7 +1631,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 method: 'POST',
                 headers: {
                     'Client-Id': GQL_CLIENT_ID,
-                    'Authorization': 'OAuth ' + token,
+                    'Authorization': 'OAuth ' + gqlToken,
                     'Content-Type': 'application/json'
                 },
                 body

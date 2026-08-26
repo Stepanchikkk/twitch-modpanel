@@ -5,7 +5,8 @@
   "description": "Панель модератора для Twitch — быстрый доступ к инструментам управления стримом",
   "permissions": [
     "storage",
-    "tabs"
+    "tabs",
+    "cookies"
   ],
   "host_permissions": [
     "https://api.twitch.tv/*",
