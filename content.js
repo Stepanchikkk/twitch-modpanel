@@ -788,6 +788,7 @@
 
         // Увеличиваем ширину панели для анонсов
         panel.style.minWidth = '480px';
+        panel.style.width = 'fit-content';
 
         const historyKey = 'tmod_history_' + channelName;
 
@@ -1040,6 +1041,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         if (!content) return;
 
         panel.style.minWidth = '340px';
+        panel.style.width = '340px';
 
         if (!panel.querySelector('#tmod-chat-tile-styles')) {
             const s = document.createElement('style');
