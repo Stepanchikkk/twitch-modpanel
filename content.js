@@ -827,7 +827,7 @@ function renderHistory() {
 
 return `
                     <div class="tmod-history-bar" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 4px 0; min-width: 0;">
-                        ${arrowBtn('tmod-history-prev', true)}
+                        ${arrowBtn('tmod-history-prev', false)}
                         <div class="tmod-history-track" style="flex: 1 1 0%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -ms-overflow-style: none; display: flex; gap: 6px; padding: 2px 4px; min-width: 0; width: 0;">
                             ${history.map((h, i) => {
                                 const stripe = h.color === 'primary'
@@ -843,7 +843,7 @@ return `
                                 `;
                             }).join('')}
                         </div>
-                        ${arrowBtn('tmod-history-next', false)}
+                        ${arrowBtn('tmod-history-next', true)}
                     </div>
                 `;
             });
