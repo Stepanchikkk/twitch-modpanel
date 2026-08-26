@@ -1605,13 +1605,11 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         });
 
         let gqlToken = token;
-        if (IS_EXTENSION && typeof chrome !== 'undefined' && chrome.cookies) {
+        if (IS_EXTENSION && typeof chrome !== 'undefined' && chrome.runtime) {
             try {
-                const cookie = await new Promise((resolve) => {
-                    chrome.cookies.get({ url: 'https://www.twitch.tv', name: 'auth-token' }, (c) => resolve(c));
-                });
-                console.log('[ModPanel] cookie:', cookie ? cookie.value.substring(0, 10) + '...' : 'null', 'oauth:', token.substring(0, 10) + '...');
-                if (cookie && cookie.value) gqlToken = cookie.value;
+                const resp = await chrome.runtime.sendMessage({ type: 'GET_AUTH_COOKIE' });
+                console.log('[ModPanel] cookie resp:', resp);
+                if (resp && resp.success && resp.value) gqlToken = resp.value;
             } catch (e) { console.log('[ModPanel] cookie read failed:', e); }
         }
 

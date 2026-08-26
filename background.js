@@ -163,6 +163,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } else if (message.type === 'OAUTH_GET_USER') {
         getUserInfo().then(user => sendResponse({ success: true, user }));
         return true;
+    } else if (message.type === 'GET_AUTH_COOKIE') {
+        chrome.cookies.get({ url: 'https://www.twitch.tv', name: 'auth-token' }, (cookie) => {
+            sendResponse({ success: !!(cookie && cookie.value), value: cookie ? cookie.value : null });
+        });
+        return true;
     }
 
     sendResponse({ success: false, error: 'Unknown type' });
