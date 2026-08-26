@@ -1041,7 +1041,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         if (!content) return;
 
         panel.style.minWidth = '360px';
-        panel.style.width = '420px';
+        panel.style.width = '460px';
 
         if (!panel.querySelector('#tmod-chat-tile-styles')) {
             const s = document.createElement('style');
@@ -1065,7 +1065,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 .tmod-dd { position: relative; flex-shrink: 0; }
                 .tmod-dd-btn { display: flex; align-items: center; justify-content: space-between; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 10px; padding: 2px 8px; height: 20px; font-size: 11px; color: #efeff1; cursor: pointer; transition: border-color 0.15s; white-space: nowrap; }
                 .tmod-dd-btn:hover { border-color: #53535f; }
-                .tmod-dd-list { position: absolute; bottom: calc(100% + 4px); left: 0; right: 0; background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 6px; padding: 4px 0; z-index: 10; display: none; max-height: 200px; overflow-y: auto; }
+                .tmod-dd-list { position: absolute; bottom: calc(100% + 4px); left: 0; right: 0; background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 6px; padding: 4px 0; z-index: 10; display: none; overflow: hidden; }
                 .tmod-dd-list.open { display: block; }
                 .tmod-dd-item { padding: 5px 8px; font-size: 11px; color: #efeff1; cursor: pointer; transition: background 0.1s; }
                 .tmod-dd-item:hover { background: #26262c; }
