@@ -786,6 +786,9 @@
         const content = panel.querySelector('#tmod-panel-content');
         if (!content) return;
 
+        // Увеличиваем ширину панели для анонсов
+        panel.style.minWidth = '480px';
+
         const historyKey = 'tmod_history_' + channelName;
 
         function loadHistory() {
@@ -822,16 +825,16 @@ function renderHistory() {
                         ${rotated ? `<svg width="16" height="16" viewBox="0 0 24 24" focusable="false" aria-hidden="true" style="transform: rotate(180deg);"><path d="m14.207 5 1.414 1.414-5.793 5.793L15.621 18l-1.414 1.414L7 12.207 14.207 5Z" fill="currentColor"></path></svg>` : `<svg width="16" height="16" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="m14.207 5 1.414 1.414-5.793 5.793L15.621 18l-1.414 1.414L7 12.207 14.207 5Z" fill="currentColor"></path></svg>`}
                     </button>`;
 
-                return `
+return `
                     <div class="tmod-history-bar" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 4px 0; min-width: 0;">
-                        ${arrowBtn('tmod-history-prev', true)}
+                        ${arrowBtn('tmod-history-next', false)}
                         <div class="tmod-history-track" style="flex: 1 1 0%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -ms-overflow-style: none; display: flex; gap: 6px; padding: 2px 4px; min-width: 0; width: 0;">
                             ${history.map((h, i) => {
                                 const stripe = h.color === 'primary'
                                     ? (getChannelAccentColor() || '#9147ff')
                                     : (ANNOUNCE_COLORS.find(c => c.value === h.color)?.stripe || '#9147ff');
                                 const fullText = h.text;
-return `
+                                return `
                                     <button type="button" class="tmod-history-item" data-index="${i}" title="${fullText}"
                                         style="flex: 0 0 auto; padding: 5px 10px; border-radius: 999px; color: #efeff1; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px; min-width: 0; display: inline-flex; align-items: center; gap: 8px; border: 1px solid #3a3a3d; background: #18181b;">
                                         <span style="flex: 0 0 auto; width: 10px; height: 10px; border-radius: 999px; ${stripe.includes('gradient(') ? `background-image: ${stripe};` : `background-color: ${stripe};`}"></span>
@@ -840,7 +843,7 @@ return `
                                 `;
                             }).join('')}
                         </div>
-                        ${arrowBtn('tmod-history-next', false)}
+                        ${arrowBtn('tmod-history-prev', true)}
                     </div>
                 `;
             });
