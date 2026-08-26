@@ -511,7 +511,8 @@
                 'channel:manage:redemptions',
                 'user:read:moderated_channels',
                 'chat:read',
-                'chat:edit'
+                'chat:edit',
+                'channel:manage:broadcast'
             ].join(' ');
 
             const authUrl = `https://id.twitch.tv/oauth2/authorize` +
@@ -666,6 +667,7 @@
         const predictionIconUrl = iconUrl('icon-prediction.svg');
         const clipIconUrl = iconUrl('icon-clip.svg');
         const rewardsIconUrl = iconUrl('icon-rewards.svg');
+        const streamIconUrl = iconUrl('icon-stream.svg');
 
         panel.innerHTML = `
             <style>
@@ -721,6 +723,7 @@
                     <button class="tmod-feature-btn" data-feature="prediction"><img src="${predictionIconUrl}" alt=""><span class="tmod-label">Прогноз</span></button>
                     <button class="tmod-feature-btn" data-feature="clip"><img src="${clipIconUrl}" alt=""><span class="tmod-label">Клип</span></button>
                     <button class="tmod-feature-btn" data-feature="rewards"><img src="${rewardsIconUrl}" alt=""><span class="tmod-label">Награды</span></button>
+                    <button class="tmod-feature-btn" data-feature="stream"><img src="${streamIconUrl}" alt=""><span class="tmod-label">Стрим</span></button>
                 </div>
             </div>
         `;
@@ -772,6 +775,7 @@
                 else if (feature === 'prediction') sendToChatInput('/prediction');
                 else if (feature === 'clip') showClipSection(panel);
                 else if (feature === 'rewards') sendToChatInput('/requests');
+                else if (feature === 'stream') showStreamSection(panel);
             });
         });
 
@@ -1276,6 +1280,198 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
             statusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Клип создан!</span>';
             setTimeout(() => { panel.remove(); createPanel(); }, 1500);
         };
+    }
+
+    function showStreamSection(panel) {
+        const channelName = window.location.pathname.slice(1);
+        const content = panel.querySelector('#tmod-panel-content');
+        if (!content) return;
+
+        panel.style.minWidth = '360px';
+
+        const LANGUAGES = [
+            { value: '', label: 'Не указан' },
+            { value: 'ru', label: 'Русский' },
+            { value: 'en', label: 'English' },
+            { value: 'uk', label: 'Українська' },
+            { value: 'be', label: 'Беларуская' },
+            { value: 'kk', label: 'Қазақша' },
+            { value: 'de', label: 'Deutsch' },
+            { value: 'es', label: 'Español' },
+            { value: 'fr', label: 'Français' },
+            { value: 'pt', label: 'Português' },
+            { value: 'ja', label: '日本語' },
+            { value: 'ko', label: '한국어' },
+            { value: 'zh', label: '中文' },
+            { value: 'pl', label: 'Polski' },
+            { value: 'tr', label: 'Türkçe' },
+            { value: 'it', label: 'Italiano' },
+            { value: 'th', label: 'ไทย' },
+            { value: 'vi', label: 'Tiếng Việt' },
+            { value: 'ar', label: 'العربية' }
+        ];
+
+        content.innerHTML = `
+            <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;"><span>\u2190</span> <span>Назад</span></button>
+            <div id="tmod-stream-loading" style="text-align: center; color: #adadb8; padding: 20px;">Загрузка данных стрима...</div>
+            <div id="tmod-stream-form" style="display: none;">
+                <div style="margin-bottom: 12px;">
+                    <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 4px;">Название стрима</label>
+                    <input type="text" id="tmod-stream-title" maxlength="140" placeholder="Название трансляции" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
+                </div>
+                <div style="margin-bottom: 12px; position: relative;">
+                    <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 4px;">Категория / Игра</label>
+                    <input type="text" id="tmod-stream-category" placeholder="Поиск категории..." autocomplete="off" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
+                    <div id="tmod-cat-results" style="position: absolute; top: 100%; left: 0; right: 0; background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 0 0 4px 4px; display: none; z-index: 10; max-height: 150px; overflow: hidden;"></div>
+                </div>
+                <div style="margin-bottom: 12px;">
+                    <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 4px;">Теги (через запятую, до 20)</label>
+                    <input type="text" id="tmod-stream-tags" placeholder="тег1, тег2, ..." style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
+                </div>
+                <div style="margin-bottom: 12px;">
+                    <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 4px;">Язык</label>
+                    <select id="tmod-stream-lang" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
+                        ${LANGUAGES.map(l => `<option value="${l.value}">${l.label}</option>`).join('')}
+                    </select>
+                </div>
+                <button id="tmod-stream-save" style="width: 100%; background: #9146FF; color: white; border: none; border-radius: 4px; padding: 10px; font-size: 14px; font-weight: 600; cursor: pointer;">Сохранить</button>
+                <div id="tmod-stream-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
+            </div>
+        `;
+
+        content.querySelector('#tmod-back').onclick = () => { panel.remove(); panelOpen = false; setTimeout(() => createPanel(), 10); };
+
+        const rect = panel.getBoundingClientRect();
+        if (rect.top < 0) { panel.style.bottom = Math.max(10, panelPosition.bottom + rect.top) + 'px'; }
+
+        let selectedGameId = null;
+
+        async function loadChannelData() {
+            const token = await getToken();
+            if (!token) return null;
+            const broadcasterId = await getChannelId(channelName, token);
+            if (!broadcasterId) return null;
+            const resp = await apiRequest(`https://api.twitch.tv/helix/channels?broadcaster_id=${broadcasterId}`, {
+                headers: { 'Authorization': `Bearer ${token}`, 'Client-Id': CLIENT_ID }
+            });
+            if (resp.error || !resp.ok) return null;
+            try {
+                const data = JSON.parse(resp.text);
+                return data.data[0];
+            } catch { return null; }
+        }
+
+        loadChannelData().then(ch => {
+            const loadingDiv = content.querySelector('#tmod-stream-loading');
+            const formDiv = content.querySelector('#tmod-stream-form');
+            if (!ch) { loadingDiv.style.color = '#ff6b6b'; loadingDiv.textContent = 'Ошибка загрузки'; return; }
+            loadingDiv.style.display = 'none';
+            formDiv.style.display = 'block';
+
+            const titleInput = content.querySelector('#tmod-stream-title');
+            const catInput = content.querySelector('#tmod-stream-category');
+            const tagsInput = content.querySelector('#tmod-stream-tags');
+            const langSelect = content.querySelector('#tmod-stream-lang');
+            const catResults = content.querySelector('#tmod-cat-results');
+
+            titleInput.value = ch.title || '';
+            catInput.value = ch.game_name || '';
+            selectedGameId = ch.game_id || null;
+            langSelect.value = ch.broadcaster_language || '';
+
+            if (ch.tags && ch.tags.length) {
+                tagsInput.value = ch.tags.join(', ');
+            }
+
+            let searchTimeout = null;
+            catInput.addEventListener('input', () => {
+                clearTimeout(searchTimeout);
+                const q = catInput.value.trim();
+                if (q.length < 2) { catResults.style.display = 'none'; catResults.innerHTML = ''; return; }
+                searchTimeout = setTimeout(async () => {
+                    const token = await getToken();
+                    if (!token) return;
+                    const resp = await apiRequest(`https://api.twitch.tv/helix/search/categories?query=${encodeURIComponent(q)}&first=5`, {
+                        headers: { 'Authorization': `Bearer ${token}`, 'Client-Id': CLIENT_ID }
+                    });
+                    if (resp.error || !resp.ok) return;
+                    try {
+                        const data = JSON.parse(resp.text);
+                        if (!data.data || !data.data.length) { catResults.style.display = 'none'; return; }
+                        catResults.innerHTML = data.data.map(c =>
+                            `<div class="tmod-cat-item" data-id="${c.id}" data-name="${c.name}" style="padding: 8px 10px; font-size: 13px; color: #efeff1; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.1s;">
+                                <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${c.name}</span>
+                            </div>`
+                        ).join('');
+                        catResults.style.display = 'block';
+                        catResults.querySelectorAll('.tmod-cat-item').forEach(item => {
+                            item.onmouseenter = () => item.style.background = '#26262c';
+                            item.onmouseleave = () => item.style.background = '';
+                            item.onclick = () => {
+                                catInput.value = item.dataset.name;
+                                selectedGameId = item.dataset.id;
+                                catResults.style.display = 'none';
+                            };
+                        });
+                    } catch { catResults.style.display = 'none'; }
+                }, 300);
+            });
+
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('#tmod-stream-category') && !e.target.closest('#tmod-cat-results')) {
+                    catResults.style.display = 'none';
+                }
+            });
+
+            content.querySelector('#tmod-stream-save').onclick = async () => {
+                const statusDiv = content.querySelector('#tmod-stream-status');
+                const token = await getToken();
+                if (!token) { statusDiv.innerHTML = '<span style="color:#ff6b6b;">Нет токена</span>'; return; }
+                const broadcasterId = await getChannelId(channelName, token);
+                if (!broadcasterId) { statusDiv.innerHTML = '<span style="color:#ff6b6b;">Ошибка ID</span>'; return; }
+
+                const body = {};
+                const newTitle = titleInput.value.trim();
+                const newGameId = selectedGameId || undefined;
+                const newLang = langSelect.value || undefined;
+                const rawTags = tagsInput.value.split(',').map(t => t.trim()).filter(Boolean).slice(0, 20);
+
+                if (newTitle !== (ch.title || '')) body.title = newTitle;
+                if (newGameId && newGameId !== ch.game_id) body.game_id = newGameId;
+                if (newLang !== (ch.broadcaster_language || '')) body.broadcaster_language = newLang;
+                if (rawTags.join(',') !== (ch.tags || []).join(',')) body.tags = rawTags;
+
+                if (!Object.keys(body).length) {
+                    statusDiv.innerHTML = '<span style="color:#adadb8;">Нет изменений</span>';
+                    return;
+                }
+
+                statusDiv.style.color = '#adadb8';
+                statusDiv.textContent = 'Сохранение...';
+
+                const resp = await apiRequest(`https://api.twitch.tv/helix/channels?broadcaster_id=${broadcasterId}`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Client-Id': CLIENT_ID,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(body)
+                });
+
+                if (resp.status === 204 || (resp.ok && !resp.error)) {
+                    statusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Сохранено!</span>';
+                    setTimeout(() => { panel.remove(); createPanel(); }, 1500);
+                } else {
+                    try {
+                        const err = JSON.parse(resp.text);
+                        statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + (err.message || 'Ошибка') + '</span>';
+                    } catch {
+                        statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">Ошибка: ' + resp.status + '</span>';
+                    }
+                }
+            };
+        });
     }
 
     // ============================================================================
