@@ -495,7 +495,7 @@
             min-width: 340px;
         `;
 
-        const logoUrl = iconUrl('icon128.png');
+        const headerIcon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path fill-rule="evenodd" d="M15.504 2H22v6.496L10.35 17.35 12 19l-1.5 1.5-2.785-2.785L3.5 22 2 20.5l4.285-4.215L3.5 13.5 5 12l1.65 1.65L15.504 2ZM20 7.504 8.923 15.923l-.846-.846L16.496 4H20v3.504Z" clip-rule="evenodd"></path></svg>';
         const announceIconUrl = iconUrl('icon-announce.svg');
         const chatIconUrl = iconUrl('icon-chat.svg');
         const pollIconUrl = iconUrl('icon-poll.svg');
@@ -524,7 +524,7 @@
             </style>
             <div class="tmod-no-select" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #18181b; border-bottom: 1px solid #3a3a3d; cursor: move; border-radius: 8px 8px 0 0;" id="tmod-panel-header">
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <img src="${logoUrl}" style="width: 24px; height: 24px; object-fit: contain;" alt="">
+                    ${headerIcon}
                     <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: #efeff1; pointer-events: none;">Панель модератора</h3>
                 </div>
                 <button id="tmod-panel-close" style="background: none; border: none; color: #adadb8; cursor: pointer; padding: 4px; font-size: 18px;">✕</button>
