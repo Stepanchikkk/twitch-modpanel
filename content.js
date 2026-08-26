@@ -656,7 +656,7 @@
             user-select: none;
             -webkit-user-select: none;
             width: fit-content;
-            min-width: 340px;
+            min-width: 360px;
         `;
 
         const headerIcon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path fill-rule="evenodd" d="M15.504 2H22v6.496L10.35 17.35 12 19l-1.5 1.5-2.785-2.785L3.5 22 2 20.5l4.285-4.215L3.5 13.5 5 12l1.65 1.65L15.504 2ZM20 7.504 8.923 15.923l-.846-.846L16.496 4H20v3.504Z" clip-rule="evenodd"></path></svg>';
@@ -713,7 +713,7 @@
                 </div>
                 <button id="tmod-panel-close" style="background: none; border: none; color: #adadb8; cursor: pointer; padding: 4px; font-size: 18px;">✕</button>
             </div>
-            <div style="padding: 8px; border-radius: 0 0 8px 8px; min-width: 340px; box-sizing: border-box;" id="tmod-panel-content">
+            <div style="padding: 8px; border-radius: 0 0 8px 8px; min-width: 360px; box-sizing: border-box;" id="tmod-panel-content">
                 <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
                     <button class="tmod-feature-btn" data-feature="announce"><img src="${announceIconUrl}" alt=""><span class="tmod-label">Анонс</span></button>
                     <button class="tmod-feature-btn" data-feature="chat"><img src="${chatIconUrl}" alt=""><span class="tmod-label">Чат</span></button>
@@ -1040,8 +1040,8 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         const content = panel.querySelector('#tmod-panel-content');
         if (!content) return;
 
-        panel.style.minWidth = '340px';
-        panel.style.width = '340px';
+        panel.style.minWidth = '360px';
+        panel.style.width = '360px';
 
         if (!panel.querySelector('#tmod-chat-tile-styles')) {
             const s = document.createElement('style');
@@ -1054,7 +1054,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 .tmod-tile-icon { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; }
                 .tmod-tile-icon svg { width: 22px; height: 22px; }
                 .tmod-tile-bottom { display: flex; align-items: flex-end; gap: 4px; margin-top: auto; min-width: 0; }
-                .tmod-tile-label { font-size: 10px; color: #adadb8; line-height: 1.25; flex: 1 1 0; min-width: 0; word-wrap: break-word; overflow-wrap: break-word; hyphens: auto; }
+                .tmod-tile-label { font-size: 12px; color: #efeff1; line-height: 1.3; flex: 1 1 0; min-width: 0; word-wrap: break-word; overflow-wrap: break-word; hyphens: none; }
                 .tmod-tt-track { width: 30px; height: 16px; background: #3a3a3d; border-radius: 8px; position: relative; cursor: pointer; transition: background 0.25s; flex-shrink: 0; }
                 .tmod-tt-track.on { background: #00f593; }
                 .tmod-tt-thumb { width: 12px; height: 12px; background: #fff; border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: transform 0.25s; display: flex; align-items: center; justify-content: center; }
