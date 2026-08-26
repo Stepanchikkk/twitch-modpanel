@@ -818,22 +818,22 @@ function renderHistory() {
                 const arrowSvg = `<svg width="16" height="16" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="m14.207 5 1.414 1.414-5.793 5.793L15.621 18l-1.414 1.414L7 12.207 14.207 5Z" fill="currentColor"></path></svg>`;
                 const arrowBtn = (cls, rotated) => `
                     <button type="button" class="tmod-history-nav ${cls}" aria-label="${rotated ? 'Предыдущие' : 'Следующие'} анонсы"
-                        style="flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; background: #18181b; border: 1px solid #3a3a3d; color: #efeff1; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; visibility: hidden; transition: opacity 0.15s, visibility 0.15s;">
+                        style="flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; background: #18181b; border: 1px solid #3a3a3d; color: #efeff1; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.15s, visibility 0.15s;">
                         ${rotated ? `<svg width="16" height="16" viewBox="0 0 24 24" focusable="false" aria-hidden="true" style="transform: rotate(180deg);"><path d="m14.207 5 1.414 1.414-5.793 5.793L15.621 18l-1.414 1.414L7 12.207 14.207 5Z" fill="currentColor"></path></svg>` : `<svg width="16" height="16" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="m14.207 5 1.414 1.414-5.793 5.793L15.621 18l-1.414 1.414L7 12.207 14.207 5Z" fill="currentColor"></path></svg>`}
                     </button>`;
 
                 return `
-                    <div class="tmod-history-bar" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 4px 0; width: 100%;">
+                    <div class="tmod-history-bar" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 4px 0; min-width: 0;">
                         ${arrowBtn('tmod-history-prev', true)}
-                        <div class="tmod-history-track" style="flex: 1 1 0%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -ms-overflow-style: none; display: flex; gap: 6px; padding: 2px 4px; min-width: 0;">
+                        <div class="tmod-history-track" style="flex: 1 1 0%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -ms-overflow-style: none; display: flex; gap: 6px; padding: 2px 4px; min-width: 0; width: 0;">
                             ${history.map((h, i) => {
                                 const stripe = h.color === 'primary'
                                     ? (getChannelAccentColor() || '#9147ff')
                                     : (ANNOUNCE_COLORS.find(c => c.value === h.color)?.stripe || '#9147ff');
                                 const fullText = h.text;
-                                return `
+return `
                                     <button type="button" class="tmod-history-item" data-index="${i}" title="${fullText}"
-                                        style="flex: 0 0 auto; padding: 5px 10px; border-radius: 999px; color: #efeff1; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; min-width: 0; display: inline-flex; align-items: center; gap: 8px; border: 1px solid #3a3a3d; background: #18181b;">
+                                        style="flex: 0 0 auto; padding: 5px 10px; border-radius: 999px; color: #efeff1; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px; min-width: 0; display: inline-flex; align-items: center; gap: 8px; border: 1px solid #3a3a3d; background: #18181b;">
                                         <span style="flex: 0 0 auto; width: 10px; height: 10px; border-radius: 999px; ${stripe.includes('gradient(') ? `background-image: ${stripe};` : `background-color: ${stripe};`}"></span>
                                         <span style="overflow: hidden; text-overflow: ellipsis; max-width: 100%;">${h.text.slice(0, 45)}</span>
                                     </button>
