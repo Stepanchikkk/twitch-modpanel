@@ -1091,8 +1091,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
             { value: 10, label: '10 сек' },
             { value: 20, label: '20 сек' },
             { value: 30, label: '30 сек' },
-            { value: 60, label: '60 сек' },
-            { value: 120, label: '120 сек' }
+            { value: 60, label: '60 сек' }
         ];
 
         const tile = (id, icon, label, control, extra) =>
