@@ -803,10 +803,24 @@
 
         // Кастомный дропдаун цветов
         const selected = { value: 'primary' };
+        const lastColorKey = 'tmod_color_' + channelName;
         const colorBtn = content.querySelector('#tmod-color-btn');
         const colorStripe = content.querySelector('#tmod-color-stripe');
         const colorLabel = content.querySelector('#tmod-color-label');
         const colorList = content.querySelector('#tmod-color-list');
+
+        // Восстанавливаем последний выбранный на этом канале цвет
+        storageGet(lastColorKey).then((saved) => {
+            if (saved && ANNOUNCE_COLORS.some(c => c.value === saved) && selected.value !== saved) {
+                selected.value = saved;
+                renderOptions();
+                updateButton();
+            }
+        });
+
+        function rememberColor() {
+            storageSet(lastColorKey, selected.value);
+        }
 
         function stripeFor(color) {
             return color.value === 'primary' ? (getChannelAccentColor() || `linear-gradient(${DEFAULT_TWITCH_PURPLE}, #ff75e6)`) : color.stripe;
@@ -866,6 +880,7 @@
             e.stopPropagation();
             selected.value = opt.dataset.value;
             updateButton();
+            rememberColor();
             colorList.hidden = true;
         });
 
