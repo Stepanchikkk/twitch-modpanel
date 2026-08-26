@@ -786,8 +786,50 @@
         const content = panel.querySelector('#tmod-panel-content');
         if (!content) return;
 
+        const historyKey = 'tmod_history_' + channelName;
+
+        function loadHistory() {
+            return storageGet(historyKey).then(history => {
+                try { return JSON.parse(history || '[]'); } catch { return []; }
+            });
+        }
+
+        function saveHistory(history) {
+            return storageSet(historyKey, JSON.stringify(history));
+        }
+
+        function addToHistory(text, color) {
+            loadHistory().then(history => {
+                const entry = { text, color, time: Date.now() };
+                history.unshift(entry);
+                if (history.length > 10) history.pop();
+                saveHistory(history);
+            });
+        }
+
+        function renderHistory() {
+            return loadHistory().then(history => {
+                if (!history.length) return '';
+                return `
+                    <div id="tmod-history" style="margin-bottom: 10px; padding: 8px; background: #18181b; border: 1px solid #3a3a3d; border-radius: 4px;">
+                        <div style="font-size: 12px; color: #adadb8; margin-bottom: 6px; font-weight: 600;">История анонсов</div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 80px; overflow-y: auto;">
+                            ${history.map((h, i) => `
+                                <button type="button" class="tmod-history-item" data-index="${i}"
+                                    style="flex: 1 0 auto; min-width: 100px; padding: 6px 10px; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 3px; color: #efeff1; font-size: 11px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px;">
+                                    <span style="width: 8px; height: 8px; border-radius: 50%; background: ${h.color === 'primary' ? (getChannelAccentColor() || '#9147ff') : (ANNOUNCE_COLORS.find(c => c.value === h.color)?.stripe || '#9147ff')}"></span>
+                                    <span>${h.text.slice(0, 60)}</span>
+                                </button>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
         content.innerHTML = `
             <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;"><span>←</span> <span>Назад</span></button>
+            <div id="tmod-history-wrap"></div>
             <textarea id="tmod-announce-text" placeholder="Текст анонса (макс. 500 символов)" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 10px; font-size: 14px; resize: vertical;" rows="4"></textarea>
             <div id="tmod-color-wrap">
                 <button type="button" class="tmod-select-btn" id="tmod-color-btn">
@@ -800,6 +842,37 @@
             <button id="tmod-send-announce" style="width: 100%; background: #9146FF; color: white; border: none; border-radius: 4px; padding: 10px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 10px;">Отправить</button>
             <div id="tmod-announce-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
         `;
+
+        // Загружаем и рендерим историю
+        renderHistory().then(html => {
+            const wrap = content.querySelector('#tmod-history-wrap');
+            if (wrap) wrap.innerHTML = html;
+            // Делегирование кликов по пунктам истории
+            if (wrap) {
+                wrap.addEventListener('click', (e) => {
+                    const btn = e.target.closest('.tmod-history-item');
+                    if (btn) {
+                        const idx = parseInt(btn.dataset.index, 10);
+                        loadHistory().then(history => {
+                            const entry = history[idx];
+                            if (entry) {
+                                const textarea = content.querySelector('#tmod-announce-text');
+                                if (textarea) {
+                                    textarea.value = entry.text;
+                                    textarea.focus();
+                                }
+                                // Также восстанавливаем цвет
+                                if (entry.color && ANNOUNCE_COLORS.some(c => c.value === entry.color)) {
+                                    selected.value = entry.color;
+                                    updateButton();
+                                    renderOptions();
+                                }
+                            }
+                        });
+                    }
+                });
+            }
+        });
 
         // Кастомный дропдаун цветов
         const selected = { value: 'primary' };
@@ -891,16 +964,17 @@
 
         content.querySelector('#tmod-back').addEventListener('click', () => { panel.remove(); panelOpen = false; setTimeout(() => createPanel(), 10); });
 
-        content.querySelector('#tmod-send-announce').addEventListener('click', async () => {
+content.querySelector('#tmod-send-announce').addEventListener('click', async () => {
             const text = content.querySelector('#tmod-announce-text').value.trim();
             const color = selected.value;
             const statusDiv = content.querySelector('#tmod-announce-status');
-            if (!text) { statusDiv.style.color = '#ff6b6b'; statusDiv.textContent = 'Введите текст'; return; }
-            if (text.length > 500) { statusDiv.style.color = '#ff6b6b'; statusDiv.textContent = 'Текст слишком длинный'; return; }
-            statusDiv.style.color = '#adadb8'; statusDiv.textContent = 'Отправка...';
+            if (!text) { statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">Введите текст</span>'; return; }
+            if (text.length > 500) { statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">Текст слишком длинный</span>'; return; }
+            statusDiv.innerHTML = ICON_OK + '<span style="color:#adadb8;">Отправка...</span>';
             const result = await sendAnnouncement(channelName, text, color);
             if (result.success) {
                 statusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Анонс отправлен!</span>';
+                addToHistory(text, color);
                 if (color === 'primary') learnAccentFromChat();
                 setTimeout(() => { panel.remove(); createPanel(); }, 1500);
             }
