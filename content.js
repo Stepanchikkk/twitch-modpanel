@@ -1334,16 +1334,14 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                         ${LANGUAGES.map(l => `<option value="${l.value}">${l.label}</option>`).join('')}
                     </select>
                 </div>
-                <div style="margin-bottom: 12px;">
+                <div style="margin-bottom: 12px; position: relative;">
                     <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 6px;">Метки контента</label>
-                    <div style="display: flex; flex-direction: column; gap: 6px;">
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #efeff1;"><input type="checkbox" id="tmod-ccl-mature" style="accent-color: #9146FF;"> 18+</label>
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #efeff1;"><input type="checkbox" id="tmod-ccl-debut" style="accent-color: #9146FF;"> Дебют</label>
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #efeff1;"><input type="checkbox" id="tmod-ccl-music" style="accent-color: #9146FF;"> Музыка</label>
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #efeff1;"><input type="checkbox" id="tmod-ccl-live_event" style="accent-color: #9146FF;"> Живое событие</label>
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #efeff1;"><input type="checkbox" id="tmod-ccl_premium" style="accent-color: #9146FF;"> Премиум</label>
-                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #efeff1;"><input type="checkbox" id="tmod-ccl-educational" style="accent-color: #9146FF;"> Образовательный</label>
+                    <div id="tmod-ccl-trigger" style="display: flex; align-items: center; justify-content: space-between; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; cursor: pointer; user-select: none;">
+                        <span id="tmod-ccl-trigger-text">Выбрано: 0</span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#adadb8" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
                     </div>
+                    <div id="tmod-ccl-dropdown" style="position: absolute; bottom: calc(100% + 4px); left: 0; right: 0; background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 4px; display: none; z-index: 10; max-height: 200px; overflow-y: auto;"></div>
+                    <div id="tmod-ccl-chips" style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;"></div>
                 </div>
                 <div style="margin-bottom: 12px;">
                     <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #efeff1;"><input type="checkbox" id="tmod-stream-branded" style="accent-color: #9146FF;"> Брендированный контент</label>
@@ -1397,13 +1395,72 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 tagsInput.value = ch.tags.join(', ');
             }
 
+            const CCL_ITEMS = [
+                { id: 'DebatedSocialIssuesAndPolitics', label: 'Политика и острые социальные вопросы' },
+                { id: 'DrugsIntoxication', label: 'Наркотики, опьянение или чрезмерное употребление табака' },
+                { id: 'Gambling', label: 'Азартные игры' },
+                { id: 'MatureGame', label: 'Игра c рейтингом «Для взрослых»' },
+                { id: 'ProfanityVulgarity', label: 'Значительное употребление ненормативной лексики и вульгарных выражений' },
+                { id: 'SexualThemes', label: 'Сексуализированные темы' },
+                { id: 'ViolentGraphic', label: 'Насилие и натуралистичное изображение насилия' }
+            ];
+
             const ccl = ch.content_classification_labels || [];
-            content.querySelector('#tmod-ccl-mature').checked = ccl.includes('mature');
-            content.querySelector('#tmod-ccl-debut').checked = ccl.includes('debut');
-            content.querySelector('#tmod-ccl-music').checked = ccl.includes('music');
-            content.querySelector('#tmod-ccl-live_event').checked = ccl.includes('live_event');
-            content.querySelector('#tmod-ccl_premium').checked = ccl.includes('premium');
-            content.querySelector('#tmod-ccl-educational').checked = ccl.includes('educational');
+            const selectedCCL = new Set(ccl.filter(v => CCL_ITEMS.some(c => c.id === v)));
+
+            const cclDropdown = content.querySelector('#tmod-ccl-dropdown');
+            const cclTriggerText = content.querySelector('#tmod-ccl-trigger-text');
+            const cclChips = content.querySelector('#tmod-ccl-chips');
+
+            cclDropdown.innerHTML = CCL_ITEMS.map(item => `
+                <label style="display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 12px; color: #efeff1; cursor: pointer; transition: background 0.1s;" onmouseenter="this.style.background='#26262c'" onmouseleave="this.style.background=''">
+                    <input type="checkbox" value="${item.id}" ${selectedCCL.has(item.id) ? 'checked' : ''} style="accent-color: #9146FF;">
+                    <span>${item.label}</span>
+                </label>
+            `).join('');
+
+            function renderCCLChips() {
+                cclChips.innerHTML = [...selectedCCL].map(id => {
+                    const item = CCL_ITEMS.find(c => c.id === id);
+                    const short = item.label.length > 24 ? item.label.slice(0, 22) + '…' : item.label;
+                    return `<span title="${item.label}" style="display: inline-flex; align-items: center; gap: 4px; background: #3a3a3d; color: #efeff1; border-radius: 4px; padding: 2px 8px; font-size: 11px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        ${short}
+                        <span data-ccl-remove="${id}" style="cursor: pointer; color: #adadb8; margin-left: 2px; font-size: 13px; line-height: 1;">×</span>
+                    </span>`;
+                }).join('');
+                cclTriggerText.textContent = `Выбрано: ${selectedCCL.size}`;
+
+                cclChips.querySelectorAll('[data-ccl-remove]').forEach(el => {
+                    el.onclick = (e) => {
+                        e.stopPropagation();
+                        const removeId = el.dataset.cclRemove;
+                        selectedCCL.delete(removeId);
+                        const cb = cclDropdown.querySelector(`input[value="${removeId}"]`);
+                        if (cb) cb.checked = false;
+                        renderCCLChips();
+                    };
+                });
+            }
+
+            cclDropdown.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                cb.addEventListener('change', () => {
+                    if (cb.checked) selectedCCL.add(cb.value); else selectedCCL.delete(cb.value);
+                    renderCCLChips();
+                });
+            });
+
+            content.querySelector('#tmod-ccl-trigger').onclick = () => {
+                const dd = content.querySelector('#tmod-ccl-dropdown');
+                dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+            };
+
+            content.addEventListener('click', (e) => {
+                if (!e.target.closest('#tmod-ccl-trigger') && !e.target.closest('#tmod-ccl-dropdown')) {
+                    cclDropdown.style.display = 'none';
+                }
+            });
+
+            renderCCLChips();
             content.querySelector('#tmod-stream-branded').checked = !!ch.is_branded_content;
 
             let searchTimeout = null;
@@ -1459,13 +1516,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 const newLang = langSelect.value || undefined;
                 const rawTags = tagsInput.value.split(',').map(t => t.trim()).filter(Boolean).slice(0, 20);
 
-                const newCCL = [];
-                if (content.querySelector('#tmod-ccl-mature').checked) newCCL.push('mature');
-                if (content.querySelector('#tmod-ccl-debut').checked) newCCL.push('debut');
-                if (content.querySelector('#tmod-ccl-music').checked) newCCL.push('music');
-                if (content.querySelector('#tmod-ccl-live_event').checked) newCCL.push('live_event');
-                if (content.querySelector('#tmod-ccl_premium').checked) newCCL.push('premium');
-                if (content.querySelector('#tmod-ccl-educational').checked) newCCL.push('educational');
+                const newCCL = [...selectedCCL];
                 const newBranded = content.querySelector('#tmod-stream-branded').checked;
 
                 if (newTitle !== (ch.title || '')) body.title = newTitle;
