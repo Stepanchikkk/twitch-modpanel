@@ -1046,24 +1046,26 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
             s.id = 'tmod-chat-tile-styles';
             s.textContent = `
                 @keyframes tmod-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-                .tmod-tile-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-                .tmod-tile { background: #18181b; border: 1px solid #26262c; border-radius: 8px; padding: 16px 10px 14px; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: border-color 0.15s, background 0.3s; min-height: 110px; }
+                .tmod-tile-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+                .tmod-tile { background: #18181b; border: 1px solid #26262c; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 6px; transition: border-color 0.15s, background 0.3s; min-height: 80px; }
                 .tmod-tile:hover { border-color: #3a3a3d; }
-                .tmod-tile-icon { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; }
-                .tmod-tile-label { font-size: 12px; color: #adadb8; text-align: center; line-height: 1.3; }
-                .tmod-tt-track { width: 36px; height: 20px; background: #3a3a3d; border-radius: 10px; position: relative; cursor: pointer; transition: background 0.25s; flex-shrink: 0; margin-top: auto; }
+                .tmod-tile-icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; }
+                .tmod-tile-icon svg { width: 18px; height: 18px; }
+                .tmod-tile-bottom { display: flex; align-items: flex-end; gap: 4px; margin-top: auto; }
+                .tmod-tile-label { font-size: 11px; color: #adadb8; line-height: 1.3; flex: 1 1 0; word-wrap: break-word; overflow-wrap: break-word; hyphens: auto; }
+                .tmod-tt-track { width: 32px; height: 18px; background: #3a3a3d; border-radius: 9px; position: relative; cursor: pointer; transition: background 0.25s; flex-shrink: 0; }
                 .tmod-tt-track.on { background: #00f593; }
-                .tmod-tt-thumb { width: 16px; height: 16px; background: #fff; border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: transform 0.25s; display: flex; align-items: center; justify-content: center; }
-                .tmod-tt-track.on .tmod-tt-thumb { transform: translateX(16px); }
-                .tmod-tile-spinner { width: 12px; height: 12px; border: 1.5px solid rgba(0,0,0,0.15); border-top-color: #333; border-radius: 50%; animation: tmod-spin 0.6s linear infinite; }
+                .tmod-tt-thumb { width: 14px; height: 14px; background: #fff; border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: transform 0.25s; display: flex; align-items: center; justify-content: center; }
+                .tmod-tt-track.on .tmod-tt-thumb { transform: translateX(14px); }
+                .tmod-tile-spinner { width: 10px; height: 10px; border: 1.5px solid rgba(0,0,0,0.15); border-top-color: #333; border-radius: 50%; animation: tmod-spin 0.6s linear infinite; }
                 .tmod-tile-clear { cursor: pointer; }
                 .tmod-tile-clear.success { background: #0e3a1e !important; border-color: #00f593 !important; }
-                .tmod-dd { position: relative; margin-top: auto; width: 100%; }
-                .tmod-dd-btn { display: flex; align-items: center; justify-content: space-between; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; padding: 5px 8px; font-size: 12px; color: #efeff1; cursor: pointer; transition: border-color 0.15s; }
+                .tmod-dd { position: relative; flex-shrink: 0; }
+                .tmod-dd-btn { display: flex; align-items: center; justify-content: space-between; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; padding: 3px 6px; font-size: 10px; color: #efeff1; cursor: pointer; transition: border-color 0.15s; white-space: nowrap; }
                 .tmod-dd-btn:hover { border-color: #53535f; }
                 .tmod-dd-list { position: absolute; bottom: calc(100% + 4px); left: 0; right: 0; background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 6px; padding: 4px 0; z-index: 10; display: none; max-height: 200px; overflow-y: auto; }
                 .tmod-dd-list.open { display: block; }
-                .tmod-dd-item { padding: 6px 10px; font-size: 12px; color: #efeff1; cursor: pointer; transition: background 0.1s; }
+                .tmod-dd-item { padding: 5px 8px; font-size: 11px; color: #efeff1; cursor: pointer; transition: background 0.1s; }
                 .tmod-dd-item:hover { background: #26262c; }
                 .tmod-dd-item.active { color: #9146FF; }
             `;
@@ -1077,7 +1079,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         const SVG_CLEAR = `<svg width="22" height="22" viewBox="0 0 24 24" fill="#ff6b6b"><path d="M9 10h2v2H9v-2Zm6 0h-2v2h2v-2Z"></path><path fill-rule="evenodd" d="m12 22-3-3H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4l-3 3Zm-2.172-5L12 19.172 14.172 17H19V5H5v12h4.828Z" clip-rule="evenodd"></path></svg>`;
         const SVG_SHIELD = `<svg width="22" height="22" viewBox="0 0 24 24" fill="#4d9fff"><path fill-rule="evenodd" d="M19.004 4.867C19.663 4.955 20.329 5 21 5l-.436 4.802a14 14 0 0 1-5.543 9.932L12 22l-3.021-2.266a14 14 0 0 1-5.542-9.932L3 5a15 15 0 0 0 9-3 15 15 0 0 0 7.004 2.867ZM13 10V5a17 17 0 0 0 5.823 1.86l-.251 2.76a12 12 0 0 1-4.751 8.514L13 18.75V10Zm-2 0V5a17.001 17.001 0 0 1-5.823 1.86l.251 2.76a12 12 0 0 0 4.751 8.514l.821.616V10Z" clip-rule="evenodd"></path></svg>`;
         const SVG_CHECK_SM = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`;
-        const SVG_CHECK_LG = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00f593" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`;
+        const SVG_CHECK_LG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00f593" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`;
         const SVG_CHEVRON = `<svg width="10" height="10" viewBox="0 0 24 24" fill="#adadb8"><path d="M7 10l5 5 5-5z"/></svg>`;
 
         const SLOW_OPTIONS = [
@@ -1094,8 +1096,10 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         const tile = (id, icon, label, control, extra) =>
             `<div class="tmod-tile ${extra || ''}" id="${id}">
                 <div class="tmod-tile-icon">${icon}</div>
-                <div class="tmod-tile-label">${label}</div>
-                ${control}
+                <div class="tmod-tile-bottom">
+                    <div class="tmod-tile-label">${label}</div>
+                    ${control}
+                </div>
             </div>`;
 
         const toggleCtrl = (id) =>
