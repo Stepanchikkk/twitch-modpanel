@@ -1041,6 +1041,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         if (!content) return;
 
         panel.style.minWidth = '360px';
+        panel.style.width = '420px';
 
         if (!panel.querySelector('#tmod-chat-tile-styles')) {
             const s = document.createElement('style');
@@ -1054,15 +1055,15 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 .tmod-tile-icon svg { width: 22px; height: 22px; }
                 .tmod-tile-bottom { display: flex; align-items: flex-end; gap: 4px; margin-top: auto; min-width: 0; }
                 .tmod-tile-label { font-size: 12px; color: #efeff1; line-height: 1.3; flex: 1 1 0; min-width: 0; word-wrap: break-word; overflow-wrap: break-word; hyphens: none; }
-                .tmod-tt-track { width: 30px; height: 16px; background: #3a3a3d; border-radius: 8px; position: relative; cursor: pointer; transition: background 0.25s; flex-shrink: 0; }
+                .tmod-tt-track { width: 36px; height: 20px; background: #3a3a3d; border-radius: 10px; position: relative; cursor: pointer; transition: background 0.25s; flex-shrink: 0; }
                 .tmod-tt-track.on { background: #00f593; }
-                .tmod-tt-thumb { width: 12px; height: 12px; background: #fff; border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: transform 0.25s; display: flex; align-items: center; justify-content: center; }
-                .tmod-tt-track.on .tmod-tt-thumb { transform: translateX(14px); }
+                .tmod-tt-thumb { width: 16px; height: 16px; background: #fff; border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: transform 0.25s; display: flex; align-items: center; justify-content: center; }
+                .tmod-tt-track.on .tmod-tt-thumb { transform: translateX(16px); }
                 .tmod-tile-spinner { width: 10px; height: 10px; border: 1.5px solid rgba(0,0,0,0.15); border-top-color: #333; border-radius: 50%; animation: tmod-spin 0.6s linear infinite; }
                 .tmod-tile-clear { cursor: pointer; }
                 .tmod-tile-clear.success { background: #0e3a1e !important; border-color: #00f593 !important; }
                 .tmod-dd { position: relative; flex-shrink: 0; }
-                .tmod-dd-btn { display: flex; align-items: center; justify-content: space-between; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; padding: 2px 5px; font-size: 9px; color: #efeff1; cursor: pointer; transition: border-color 0.15s; white-space: nowrap; }
+                .tmod-dd-btn { display: flex; align-items: center; justify-content: space-between; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 10px; padding: 2px 8px; height: 20px; font-size: 11px; color: #efeff1; cursor: pointer; transition: border-color 0.15s; white-space: nowrap; }
                 .tmod-dd-btn:hover { border-color: #53535f; }
                 .tmod-dd-list { position: absolute; bottom: calc(100% + 4px); left: 0; right: 0; background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 6px; padding: 4px 0; z-index: 10; display: none; max-height: 200px; overflow-y: auto; }
                 .tmod-dd-list.open { display: block; }
@@ -1079,7 +1080,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         const SVG_SLOW = `<svg width="22" height="22" viewBox="0 0 24 24" fill="#36d7b7"><path fill-rule="evenodd" d="M21 4.47a8 8 0 0 1-3.884 6.86l-.973.584a.1.1 0 0 0 0 .172l.973.584a8.008 8.008 0 0 1 .774.528A8 8 0 0 1 21 19.53V22H3v-2.47a8 8 0 0 1 3.884-6.86l.973-.584a.1.1 0 0 0 0-.172l-.973-.584A7.998 7.998 0 0 1 3 4.47V2h18v2.47ZM18.44 17a5.999 5.999 0 0 0-2.353-2.615l-.973-.584c-1.36-.816-1.36-2.786 0-3.602l.973-.584A6 6 0 0 0 19 4.47V4H5v.47a6 6 0 0 0 2.913 5.145l.973.584c1.36.816 1.36 2.786 0 3.602l-.973.584A5.998 5.998 0 0 0 5.559 17h12.882Z" clip-rule="evenodd"></path></svg>`;
         const SVG_CLEAR = `<svg width="22" height="22" viewBox="0 0 24 24" fill="#ff6b6b"><path d="M9 10h2v2H9v-2Zm6 0h-2v2h2v-2Z"></path><path fill-rule="evenodd" d="m12 22-3-3H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4l-3 3Zm-2.172-5L12 19.172 14.172 17H19V5H5v12h4.828Z" clip-rule="evenodd"></path></svg>`;
         const SVG_SHIELD = `<svg width="22" height="22" viewBox="0 0 24 24" fill="#4d9fff"><path fill-rule="evenodd" d="M19.004 4.867C19.663 4.955 20.329 5 21 5l-.436 4.802a14 14 0 0 1-5.543 9.932L12 22l-3.021-2.266a14 14 0 0 1-5.542-9.932L3 5a15 15 0 0 0 9-3 15 15 0 0 0 7.004 2.867ZM13 10V5a17 17 0 0 0 5.823 1.86l-.251 2.76a12 12 0 0 1-4.751 8.514L13 18.75V10Zm-2 0V5a17.001 17.001 0 0 1-5.823 1.86l.251 2.76a12 12 0 0 0 4.751 8.514l.821.616V10Z" clip-rule="evenodd"></path></svg>`;
-        const SVG_CHECK_SM = `<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`;
+        const SVG_CHECK_SM = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`;
         const SVG_CHECK_LG = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00f593" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`;
         const SVG_CHEVRON = `<svg width="10" height="10" viewBox="0 0 24 24" fill="#adadb8"><path d="M7 10l5 5 5-5z"/></svg>`;
 
