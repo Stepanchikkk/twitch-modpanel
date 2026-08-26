@@ -821,12 +821,14 @@ function renderHistory() {
                 const arrowSvg = `<svg width="16" height="16" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="m14.207 5 1.414 1.414-5.793 5.793L15.621 18l-1.414 1.414L7 12.207 14.207 5Z" fill="currentColor"></path></svg>`;
                 const arrowBtn = (cls, rotated) => `
                     <button type="button" class="tmod-history-nav ${cls}" aria-label="${rotated ? 'Предыдущие' : 'Следующие'} анонсы"
-                        style="flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; background: #18181b; border: 1px solid #3a3a3d; color: #efeff1; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.15s, visibility 0.15s;">
+                        style="flex: 0 0 auto; max-width: 0; height: 28px; border-radius: 999px; background: #18181b; border: 1px solid #3a3a3d; color: #efeff1; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; overflow: hidden; pointer-events: none; transition: max-width 0.2s ease, opacity 0.2s ease;">
+                        <span style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex: 0 0 28px;">
                         ${rotated ? `<svg width="16" height="16" viewBox="0 0 24 24" focusable="false" aria-hidden="true" style="transform: rotate(180deg);"><path d="m14.207 5 1.414 1.414-5.793 5.793L15.621 18l-1.414 1.414L7 12.207 14.207 5Z" fill="currentColor"></path></svg>` : `<svg width="16" height="16" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="m14.207 5 1.414 1.414-5.793 5.793L15.621 18l-1.414 1.414L7 12.207 14.207 5Z" fill="currentColor"></path></svg>`}
+                        </span>
                     </button>`;
 
 return `
-                    <div class="tmod-history-bar" style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 4px 0; min-width: 0;">
+                    <div class="tmod-history-bar" style="display: flex; align-items: center; gap: 0; margin-bottom: 8px; padding: 4px 0; min-width: 0;">
                         ${arrowBtn('tmod-history-prev', false)}
                         <div class="tmod-history-track" style="flex: 1 1 0%; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -ms-overflow-style: none; display: flex; gap: 6px; padding: 2px 4px; min-width: 0; width: 0;">
                             ${history.map((h, i) => {
@@ -879,11 +881,11 @@ return `
                     if (!track || !prevBtn || !nextBtn) return;
                     const atStart = track.scrollLeft <= 1;
                     const atEnd = track.scrollLeft + track.clientWidth >= track.scrollWidth - 1;
+                    prevBtn.style.maxWidth = atStart ? '0' : '28px';
                     prevBtn.style.opacity = atStart ? '0' : '1';
-                    prevBtn.style.visibility = atStart ? 'hidden' : 'visible';
-                    nextBtn.style.opacity = atEnd ? '0' : '1';
-                    nextBtn.style.visibility = atEnd ? 'hidden' : 'visible';
                     prevBtn.style.pointerEvents = atStart ? 'none' : 'auto';
+                    nextBtn.style.maxWidth = atEnd ? '0' : '28px';
+                    nextBtn.style.opacity = atEnd ? '0' : '1';
                     nextBtn.style.pointerEvents = atEnd ? 'none' : 'auto';
                 }
 
@@ -913,7 +915,7 @@ return `
                         });
                     }
                     const nav = e.target.closest('.tmod-history-nav');
-                    if (nav && nav.style.visibility !== 'hidden') {
+                    if (nav && nav.style.maxWidth !== '0') {
                         const track = wrap.querySelector('.tmod-history-track');
                         if (track) {
                             const scrollAmount = track.clientWidth * 0.8;
