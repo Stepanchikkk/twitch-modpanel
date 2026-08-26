@@ -1039,61 +1039,214 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         const content = panel.querySelector('#tmod-panel-content');
         if (!content) return;
 
+        panel.style.minWidth = '390px';
+
+        if (!panel.querySelector('#tmod-chat-tile-styles')) {
+            const s = document.createElement('style');
+            s.id = 'tmod-chat-tile-styles';
+            s.textContent = `
+                @keyframes tmod-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+                .tmod-tile-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+                .tmod-tile { background: #18181b; border: 1px solid #26262c; border-radius: 8px; padding: 16px 10px 14px; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: border-color 0.15s, background 0.3s; min-height: 110px; }
+                .tmod-tile:hover { border-color: #3a3a3d; }
+                .tmod-tile-icon { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; }
+                .tmod-tile-label { font-size: 12px; color: #adadb8; text-align: center; line-height: 1.3; }
+                .tmod-tt-track { width: 36px; height: 20px; background: #3a3a3d; border-radius: 10px; position: relative; cursor: pointer; transition: background 0.25s; flex-shrink: 0; margin-top: auto; }
+                .tmod-tt-track.on { background: #00f593; }
+                .tmod-tt-thumb { width: 16px; height: 16px; background: #fff; border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: transform 0.25s; display: flex; align-items: center; justify-content: center; }
+                .tmod-tt-track.on .tmod-tt-thumb { transform: translateX(16px); }
+                .tmod-tile-spinner { width: 12px; height: 12px; border: 1.5px solid rgba(0,0,0,0.15); border-top-color: #333; border-radius: 50%; animation: tmod-spin 0.6s linear infinite; }
+                .tmod-tile-clear { cursor: pointer; }
+                .tmod-tile-clear.success { background: #0e3a1e !important; border-color: #00f593 !important; }
+                .tmod-dd { position: relative; margin-top: auto; width: 100%; }
+                .tmod-dd-btn { display: flex; align-items: center; justify-content: space-between; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; padding: 5px 8px; font-size: 12px; color: #efeff1; cursor: pointer; transition: border-color 0.15s; }
+                .tmod-dd-btn:hover { border-color: #53535f; }
+                .tmod-dd-list { position: absolute; bottom: calc(100% + 4px); left: 0; right: 0; background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 6px; padding: 4px 0; z-index: 10; display: none; max-height: 200px; overflow-y: auto; }
+                .tmod-dd-list.open { display: block; }
+                .tmod-dd-item { padding: 6px 10px; font-size: 12px; color: #efeff1; cursor: pointer; transition: background 0.1s; }
+                .tmod-dd-item:hover { background: #26262c; }
+                .tmod-dd-item.active { color: #9146FF; }
+            `;
+            panel.appendChild(s);
+        }
+
+        const SVG_FOLLOWER = `<svg width="22" height="22" viewBox="0 0 24 24"><path fill="#e040fb" fill-rule="evenodd" d="M10.964 5.422A5.075 5.075 0 0 0 7.429 4H7C4.239 4 2 6.175 2 8.857v.417a4.79 4.79 0 0 0 1.464 3.434L12 21l8.535-8.292A4.788 4.788 0 0 0 22 9.274v-.417C22 6.175 19.761 4 17 4h-.429a5.076 5.076 0 0 0-3.536 1.423L12 6.429l-1.036-1.007Z" clip-rule="evenodd"></path></svg>`;
+        const SVG_SUBSCRIBER = `<svg width="22" height="22" viewBox="0 0 24 24"><path fill="#ffc044" fill-rule="evenodd" d="M14.026 9.626 12 5.114 9.974 9.626l-4.909.514 3.666 3.28-1.029 4.815L12 15.775l4.298 2.46-1.03-4.816 3.667-3.279-4.91-.514ZM8.62 7.756l-5.525.58c-1.052.11-1.476 1.405-.69 2.109l4.127 3.691-1.153 5.395c-.22 1.028.89 1.828 1.808 1.303L12 18.08l4.812 2.755c.917.525 2.028-.275 1.808-1.303l-1.153-5.395 4.127-3.691c.787-.704.362-2-.69-2.11l-5.525-.578-2.262-5.037c-.43-.96-1.803-.96-2.234 0L8.62 7.757Z" clip-rule="evenodd"></path></svg>`;
+        const SVG_EMOTE = `<svg width="22" height="22" viewBox="0 0 24 24" fill="#9146ff"><path d="M12 19a3 3 0 0 0 3-3H9a3 3 0 0 0 3 3Zm-6-6.5a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0ZM16.5 11a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z"></path><path fill-rule="evenodd" d="M1 12C1 5.925 5.925 1 12 1s11 4.925 11 11-4.925 11-11 11S1 18.075 1 12Zm11 9a9 9 0 1 1 0-18 9 9 0 0 1 0 18Z" clip-rule="evenodd"></path></svg>`;
+        const SVG_SLOW = `<svg width="22" height="22" viewBox="0 0 24 24" fill="#36d7b7"><path fill-rule="evenodd" d="M21 4.47a8 8 0 0 1-3.884 6.86l-.973.584a.1.1 0 0 0 0 .172l.973.584a8.008 8.008 0 0 1 .774.528A8 8 0 0 1 21 19.53V22H3v-2.47a8 8 0 0 1 3.884-6.86l.973-.584a.1.1 0 0 0 0-.172l-.973-.584A7.998 7.998 0 0 1 3 4.47V2h18v2.47ZM18.44 17a5.999 5.999 0 0 0-2.353-2.615l-.973-.584c-1.36-.816-1.36-2.786 0-3.602l.973-.584A6 6 0 0 0 19 4.47V4H5v.47a6 6 0 0 0 2.913 5.145l.973.584c1.36.816 1.36 2.786 0 3.602l-.973.584A5.998 5.998 0 0 0 5.559 17h12.882Z" clip-rule="evenodd"></path></svg>`;
+        const SVG_CLEAR = `<svg width="22" height="22" viewBox="0 0 24 24" fill="#ff6b6b"><path d="M9 10h2v2H9v-2Zm6 0h-2v2h2v-2Z"></path><path fill-rule="evenodd" d="m12 22-3-3H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4l-3 3Zm-2.172-5L12 19.172 14.172 17H19V5H5v12h4.828Z" clip-rule="evenodd"></path></svg>`;
+        const SVG_SHIELD = `<svg width="22" height="22" viewBox="0 0 24 24" fill="#4d9fff"><path fill-rule="evenodd" d="M19.004 4.867C19.663 4.955 20.329 5 21 5l-.436 4.802a14 14 0 0 1-5.543 9.932L12 22l-3.021-2.266a14 14 0 0 1-5.542-9.932L3 5a15 15 0 0 0 9-3 15 15 0 0 0 7.004 2.867ZM13 10V5a17 17 0 0 0 5.823 1.86l-.251 2.76a12 12 0 0 1-4.751 8.514L13 18.75V10Zm-2 0V5a17.001 17.001 0 0 1-5.823 1.86l.251 2.76a12 12 0 0 0 4.751 8.514l.821.616V10Z" clip-rule="evenodd"></path></svg>`;
+        const SVG_CHECK_SM = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`;
+        const SVG_CHECK_LG = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00f593" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`;
+        const SVG_CHEVRON = `<svg width="10" height="10" viewBox="0 0 24 24" fill="#adadb8"><path d="M7 10l5 5 5-5z"/></svg>`;
+
+        const SLOW_OPTIONS = [
+            { value: 0, label: 'Выкл' },
+            { value: 3, label: '3 сек' },
+            { value: 5, label: '5 сек' },
+            { value: 10, label: '10 сек' },
+            { value: 20, label: '20 сек' },
+            { value: 30, label: '30 сек' },
+            { value: 60, label: '60 сек' },
+            { value: 120, label: '120 сек' }
+        ];
+
+        const tile = (id, icon, label, control, extra) =>
+            `<div class="tmod-tile ${extra || ''}" id="${id}">
+                <div class="tmod-tile-icon">${icon}</div>
+                <div class="tmod-tile-label">${label}</div>
+                ${control}
+            </div>`;
+
+        const toggleCtrl = (id) =>
+            `<div class="tmod-tt-track" id="${id}"><div class="tmod-tt-thumb"></div></div>`;
+
+        const dropdownCtrl = (id) => {
+            const items = SLOW_OPTIONS.map(o => `<div class="tmod-dd-item" data-value="${o.value}">${o.label}</div>`).join('');
+            return `<div class="tmod-dd" id="${id}"><div class="tmod-dd-btn"><span class="tmod-dd-val">...</span>${SVG_CHEVRON}</div><div class="tmod-dd-list">${items}</div></div>`;
+        };
+
         content.innerHTML = `
-            <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;"><span>←</span> <span>Назад</span></button>
+            <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;"><span>\u2190</span> <span>Назад</span></button>
             <div id="tmod-chat-loading" style="text-align: center; color: #adadb8; padding: 20px;">Загрузка настроек...</div>
-            <div id="tmod-chat-settings" style="display: none;">
-                <div class="tmod-toggle" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #26262c;"><span style="font-size: 14px; color: #efeff1;">Только для подписчиков</span><label style="position: relative; display: inline-block; width: 40px; height: 20px; cursor: pointer;"><input type="checkbox" id="tmod-sub-only" style="opacity: 0; width: 0; height: 0;"><span style="position: absolute; inset: 0; background-color: #3a3a3d; border-radius: 10px; transition: 0.2s;"></span><span style="position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background-color: #adadb8; border-radius: 50%; transition: 0.2s;"></span></label></div>
-                <div class="tmod-toggle" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #26262c;"><span style="font-size: 14px; color: #efeff1;">Только для фолловеров</span><label style="position: relative; display: inline-block; width: 40px; height: 20px; cursor: pointer;"><input type="checkbox" id="tmod-follower-only" style="opacity: 0; width: 0; height: 0;"><span style="position: absolute; inset: 0; background-color: #3a3a3d; border-radius: 10px; transition: 0.2s;"></span><span style="position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background-color: #adadb8; border-radius: 50%; transition: 0.2s;"></span></label></div>
-                <div class="tmod-toggle" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #26262c;"><span style="font-size: 14px; color: #efeff1;">Только эмодзи</span><label style="position: relative; display: inline-block; width: 40px; height: 20px; cursor: pointer;"><input type="checkbox" id="tmod-emote-only" style="opacity: 0; width: 0; height: 0;"><span style="position: absolute; inset: 0; background-color: #3a3a3d; border-radius: 10px; transition: 0.2s;"></span><span style="position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background-color: #adadb8; border-radius: 50%; transition: 0.2s;"></span></label></div>
-                <div class="tmod-toggle" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #26262c;"><span style="font-size: 14px; color: #efeff1;">Slow Mode</span><label style="position: relative; display: inline-block; width: 40px; height: 20px; cursor: pointer;"><input type="checkbox" id="tmod-slow-mode" style="opacity: 0; width: 0; height: 0;"><span style="position: absolute; inset: 0; background-color: #3a3a3d; border-radius: 10px; transition: 0.2s;"></span><span style="position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background-color: #adadb8; border-radius: 50%; transition: 0.2s;"></span></label></div>
-                <div id="tmod-slow-wait" style="display: none; margin-top: 15px; padding: 12px; background: #18181b; border-radius: 4px;"><input type="number" id="tmod-slow-time" min="0" max="120" value="30" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 10px; font-size: 14px;"><span style="font-size: 12px; color: #adadb8; margin-top: 5px; display: block;">секунд между сообщениями</span></div>
-                <div class="tmod-toggle" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #26262c;"><span style="font-size: 14px; color: #efeff1;">Shield Mode</span><label style="position: relative; display: inline-block; width: 40px; height: 20px; cursor: pointer;"><input type="checkbox" id="tmod-shield-mode" style="opacity: 0; width: 0; height: 0;"><span style="position: absolute; inset: 0; background-color: #3a3a3d; border-radius: 10px; transition: 0.2s;"></span><span style="position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background-color: #adadb8; border-radius: 50%; transition: 0.2s;"></span></label></div>
-                <button id="tmod-clear-chat" style="width: 100%; background: #ff4444; color: white; border: none; border-radius: 4px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 15px;">${ICON_TRASH}Очистить чат</button>
-                <button id="tmod-save-chat" style="width: 100%; background: #9146FF; color: white; border: none; border-radius: 4px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 10px;">Сохранить</button>
-                <div id="tmod-chat-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
+            <div id="tmod-chat-grid" style="display: none;">
+                <div class="tmod-tile-grid">
+                    ${tile('tmod-tile-follower', SVG_FOLLOWER, 'Только для фолловеров', toggleCtrl('tmod-tt-follower'))}
+                    ${tile('tmod-tile-subscriber', SVG_SUBSCRIBER, 'Только для подписчиков', toggleCtrl('tmod-tt-subscriber'))}
+                    ${tile('tmod-tile-emote', SVG_EMOTE, 'Только эмодзи', toggleCtrl('tmod-tt-emote'))}
+                    ${tile('tmod-tile-slow', SVG_SLOW, 'Медленный режим', dropdownCtrl('tmod-dd-slow'))}
+                    ${tile('tmod-tile-clear', SVG_CLEAR, 'Очистить чат', '', 'tmod-tile-clear')}
+                    ${tile('tmod-tile-shield', SVG_SHIELD, 'Защитный режим', toggleCtrl('tmod-tt-shield'))}
+                </div>
             </div>
         `;
-
-        const toggleStyle = document.createElement('style');
-        toggleStyle.textContent = `.tmod-toggle-active span:first-of-type { background-color: #9146FF !important; } .tmod-toggle-active span:last-of-type { transform: translateX(20px) !important; background-color: #fff !important; } .tmod-toggle label:hover span:first-of-type { background-color: #4f4f52; } .tmod-toggle-active label:hover span:first-of-type { background-color: #772ce8 !important; }`;
-        panel.appendChild(toggleStyle);
 
         const rect = panel.getBoundingClientRect();
         if (rect.top < 0) { panel.style.bottom = Math.max(10, panelPosition.bottom + rect.top) + 'px'; }
 
-        getChatSettings(channelName).then((settings) => {
+        const closeDD = (e) => { if (!e.target.closest('.tmod-dd')) content.querySelectorAll('.tmod-dd-list.open').forEach(l => l.classList.remove('open')); };
+        document.addEventListener('click', closeDD);
+
+        const cleanup = () => document.removeEventListener('click', closeDD);
+        content.querySelector('#tmod-back').onclick = () => { cleanup(); panel.remove(); panelOpen = false; setTimeout(() => createPanel(), 10); };
+
+        getChatSettings(channelName).then(settings => {
             const loadingDiv = content.querySelector('#tmod-chat-loading');
-            const settingsDiv = content.querySelector('#tmod-chat-settings');
-            if (!settings) { loadingDiv.style.color = '#ff6b6b'; loadingDiv.textContent = 'Ошибка'; return; }
-            loadingDiv.style.display = 'none'; settingsDiv.style.display = 'block';
+            const gridDiv = content.querySelector('#tmod-chat-grid');
+            if (!settings) { loadingDiv.style.color = '#ff6b6b'; loadingDiv.textContent = 'Ошибка загрузки'; return; }
+            loadingDiv.style.display = 'none';
+            gridDiv.style.display = 'block';
 
-            function updateToggle(checkbox) { const label = checkbox.closest('label'); label.classList.toggle('tmod-toggle-active', checkbox.checked); }
+            function ttSet(el, on) { el.classList.toggle('on', on); }
+            function ttLoading(el) { el.querySelector('.tmod-tt-thumb').innerHTML = '<div class="tmod-tile-spinner"></div>'; }
+            function ttConfirmed(el) { el.querySelector('.tmod-tt-thumb').innerHTML = SVG_CHECK_SM; }
+            function ttClear(el) { el.querySelector('.tmod-tt-thumb').innerHTML = ''; }
 
-            const sub = content.querySelector('#tmod-sub-only'), follower = content.querySelector('#tmod-follower-only');
-            const emote = content.querySelector('#tmod-emote-only'), slow = content.querySelector('#tmod-slow-mode');
-            const shield = content.querySelector('#tmod-shield-mode');
+            function makeToggleHandler(trackEl, settingKey) {
+                return async () => {
+                    if (trackEl.querySelector('.tmod-tile-spinner')) return;
+                    const turningOn = !trackEl.classList.contains('on');
+                    ttSet(trackEl, turningOn);
+                    ttLoading(trackEl);
+                    const body = {};
+                    body[settingKey] = turningOn;
+                    const result = await updateChatSettings(channelName, body);
+                    if (result.success) {
+                        if (turningOn) ttConfirmed(trackEl); else ttClear(trackEl);
+                    } else {
+                        ttSet(trackEl, !turningOn);
+                        ttClear(trackEl);
+                    }
+                };
+            }
 
-            sub.checked = settings.subscriberMode; follower.checked = settings.followerMode;
-            emote.checked = settings.emoteMode; slow.checked = settings.slowMode;
-            content.querySelector('#tmod-slow-time').value = settings.slowModeWaitTime || 30;
+            const followerTrack = content.querySelector('#tmod-tt-follower');
+            ttSet(followerTrack, settings.followerMode);
+            if (settings.followerMode) ttConfirmed(followerTrack);
+            followerTrack.onclick = makeToggleHandler(followerTrack, 'followerMode');
 
-            updateToggle(sub); updateToggle(follower); updateToggle(emote); updateToggle(slow);
+            const subTrack = content.querySelector('#tmod-tt-subscriber');
+            ttSet(subTrack, settings.subscriberMode);
+            if (settings.subscriberMode) ttConfirmed(subTrack);
+            subTrack.onclick = makeToggleHandler(subTrack, 'subscriberMode');
 
-            sub.onchange = () => updateToggle(sub); follower.onchange = () => updateToggle(follower);
-            emote.onchange = () => updateToggle(emote);
-            slow.onchange = () => { updateToggle(slow); content.querySelector('#tmod-slow-wait').style.display = slow.checked ? 'block' : 'none'; };
-            shield.onchange = () => { updateToggle(shield); sendToChatInput(shield.checked ? '/shield' : '/shieldoff'); };
+            const emoteTrack = content.querySelector('#tmod-tt-emote');
+            ttSet(emoteTrack, settings.emoteMode);
+            if (settings.emoteMode) ttConfirmed(emoteTrack);
+            emoteTrack.onclick = makeToggleHandler(emoteTrack, 'emoteMode');
 
-            content.querySelector('#tmod-clear-chat').onclick = () => { if (confirm('Очистить чат?')) { sendToChatInput('/clear'); const s = content.querySelector('#tmod-chat-status'); s.innerHTML = ICON_OK + '<span style="color:#00ff00;">Чат очищен!</span>'; setTimeout(() => { s.innerHTML = ''; }, 2000); } };
-            content.querySelector('#tmod-back').onclick = () => { panel.remove(); panelOpen = false; setTimeout(() => createPanel(), 10); };
-            content.querySelector('#tmod-save-chat').onclick = async () => {
-                const statusDiv = content.querySelector('#tmod-chat-status');
-                const newSettings = { subscriberMode: sub.checked, followerMode: follower.checked, emoteMode: emote.checked, slowMode: slow.checked, slowModeWaitTime: parseInt(content.querySelector('#tmod-slow-time').value) || 30 };
-                statusDiv.style.color = '#adadb8'; statusDiv.textContent = 'Сохранение...';
-                const result = await updateChatSettings(channelName, newSettings);
-                if (result.success) { statusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Сохранено!</span>'; setTimeout(() => { panel.remove(); createPanel(); }, 1500); }
-                else { statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + result.error + '</span>'; }
+            const dd = content.querySelector('#tmod-dd-slow');
+            const ddBtn = dd.querySelector('.tmod-dd-btn');
+            const ddList = dd.querySelector('.tmod-dd-list');
+            const ddVal = dd.querySelector('.tmod-dd-val');
+            let curSlow = settings.slowMode ? (settings.slowModeWaitTime || 30) : 0;
+
+            function ddLabel() {
+                const o = SLOW_OPTIONS.find(o => o.value === curSlow);
+                ddVal.textContent = o ? o.label : 'Выкл';
+            }
+            ddLabel();
+
+            ddBtn.onclick = (e) => {
+                e.stopPropagation();
+                ddList.classList.toggle('open');
+                ddList.querySelectorAll('.tmod-dd-item').forEach(i => i.classList.toggle('active', parseInt(i.dataset.value) === curSlow));
+            };
+
+            ddList.querySelectorAll('.tmod-dd-item').forEach(item => {
+                item.onclick = async (e) => {
+                    e.stopPropagation();
+                    const val = parseInt(item.dataset.value);
+                    if (val === curSlow) { ddList.classList.remove('open'); return; }
+                    ddList.classList.remove('open');
+                    ddVal.textContent = '...';
+                    const result = await updateChatSettings(channelName, { slowMode: val > 0, slowModeWaitTime: val || 30 });
+                    if (result.success) { curSlow = val; }
+                    ddLabel();
+                };
+            });
+
+            const clearTile = content.querySelector('#tmod-tile-clear');
+            const clearIcon = clearTile.querySelector('.tmod-tile-icon');
+            const clearLabel = clearTile.querySelector('.tmod-tile-label');
+            const origIcon = clearIcon.innerHTML;
+            const origLabel = clearLabel.textContent;
+
+            clearTile.onclick = async () => {
+                if (clearTile.style.pointerEvents === 'none') return;
+                clearTile.style.pointerEvents = 'none';
+                clearIcon.innerHTML = '<div class="tmod-tile-spinner" style="width:22px;height:22px;border-width:2px;"></div>';
+                clearLabel.textContent = 'Очистка...';
+                sendToChatInput('/clear');
+                await new Promise(r => setTimeout(r, 800));
+                clearTile.classList.add('success');
+                clearIcon.innerHTML = SVG_CHECK_LG;
+                clearLabel.textContent = 'Чат очищен';
+                await new Promise(r => setTimeout(r, 2000));
+                clearTile.classList.remove('success');
+                clearIcon.innerHTML = origIcon;
+                clearLabel.textContent = origLabel;
+                clearTile.style.pointerEvents = '';
+            };
+
+            const shieldTrack = content.querySelector('#tmod-tt-shield');
+            shieldTrack.onclick = async () => {
+                if (shieldTrack.querySelector('.tmod-tile-spinner')) return;
+                const turningOn = !shieldTrack.classList.contains('on');
+                ttSet(shieldTrack, turningOn);
+                ttLoading(shieldTrack);
+                if (turningOn) {
+                    sendToChatInput('/shield');
+                    window.open(
+                        'https://www.twitch.tv/popout/moderator/' + channelName + '/_/shield-mode/settings',
+                        'tmod-shield',
+                        'width=500,height=600,scrollbars=yes,resizable=yes'
+                    );
+                    ttConfirmed(shieldTrack);
+                } else {
+                    sendToChatInput('/shieldoff');
+                    ttClear(shieldTrack);
+                }
             };
         });
     }
