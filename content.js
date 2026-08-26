@@ -707,6 +707,11 @@
                 }
                 .tmod-option:hover { background: #26262c !important; }
                 .tmod-option-selected { background: #1f1f23 !important; }
+                #tmod-ccl-dropdown::-webkit-scrollbar { width: 4px; }
+                #tmod-ccl-dropdown::-webkit-scrollbar-track { background: transparent; }
+                #tmod-ccl-dropdown::-webkit-scrollbar-thumb { background: #3a3a3d; border-radius: 2px; }
+                #tmod-ccl-dropdown::-webkit-scrollbar-thumb:hover { background: #555; }
+                #tmod-ccl-dropdown { scrollbar-width: thin; scrollbar-color: #3a3a3d transparent; }
             </style>
             <div class="tmod-no-select" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #18181b; border-bottom: 1px solid #3a3a3d; cursor: move; border-radius: 8px 8px 0 0;" id="tmod-panel-header">
                 <div style="display: flex; align-items: center; gap: 10px;">
@@ -1287,6 +1292,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         const content = panel.querySelector('#tmod-panel-content');
         if (!content) return;
 
+        panel.style.width = '360px';
         panel.style.minWidth = '360px';
 
         const LANGUAGES = [
@@ -1341,10 +1347,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#adadb8" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
                     </div>
                     <div id="tmod-ccl-dropdown" style="position: absolute; bottom: calc(100% + 4px); left: 0; right: 0; background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 4px; display: none; z-index: 10; max-height: 200px; overflow-y: auto;"></div>
-                    <div id="tmod-ccl-chips" style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px;"></div>
-                </div>
-                <div style="margin-bottom: 12px;">
-                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #efeff1;"><input type="checkbox" id="tmod-stream-branded" style="accent-color: #9146FF;"> Брендированный контент</label>
+                    <div id="tmod-ccl-chips" style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; width: 100%; box-sizing: border-box;"></div>
                 </div>
                 <button id="tmod-stream-save" style="width: 100%; background: #9146FF; color: white; border: none; border-radius: 4px; padding: 10px; font-size: 14px; font-weight: 600; cursor: pointer;">Сохранить</button>
                 <div id="tmod-stream-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
@@ -1461,7 +1464,6 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
             });
 
             renderCCLChips();
-            content.querySelector('#tmod-stream-branded').checked = !!ch.is_branded_content;
 
             let searchTimeout = null;
             catInput.addEventListener('input', () => {
@@ -1517,14 +1519,12 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 const rawTags = tagsInput.value.split(',').map(t => t.trim()).filter(Boolean).slice(0, 20);
 
                 const newCCL = [...selectedCCL];
-                const newBranded = content.querySelector('#tmod-stream-branded').checked;
 
                 if (newTitle !== (ch.title || '')) body.title = newTitle;
                 if (newGameId && newGameId !== ch.game_id) body.game_id = newGameId;
                 if (newLang !== (ch.broadcaster_language || '')) body.broadcaster_language = newLang;
                 if (rawTags.join(',') !== (ch.tags || []).join(',')) body.tags = rawTags;
                 if (newCCL.join(',') !== (ch.content_classification_labels || []).join(',')) body.content_classification_labels = newCCL;
-                if (newBranded !== !!ch.is_branded_content) body.is_branded_content = newBranded;
 
                 if (!Object.keys(body).length) {
                     statusDiv.innerHTML = '<span style="color:#adadb8;">Нет изменений</span>';
