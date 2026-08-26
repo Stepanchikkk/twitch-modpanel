@@ -800,6 +800,11 @@
 
         function addToHistory(text, color) {
             loadHistory().then(history => {
+                // Дедуп: если такой же текст уже есть — убираем старый, новый идёт вперёд
+                const idx = history.findIndex(h => h.text === text && h.color === color);
+                if (idx !== -1) {
+                    history.splice(idx, 1);
+                }
                 const entry = { text, color, time: Date.now() };
                 history.unshift(entry);
                 if (history.length > 10) history.pop();
@@ -815,13 +820,15 @@
                         ? (getChannelAccentColor() || '#9147ff')
                         : (ANNOUNCE_COLORS.find(c => c.value === h.color)?.stripe || '#9147ff');
                     const isGrad = stripe.includes('gradient(');
-                    const chipStyle = isGrad
-                        ? `background: ${stripe};`
-                        : `background: ${stripe};`;
+                    // Нейтральный фон чипса, цветная капсула-индикатор слева
+                    const indStyle = isGrad
+                        ? `background-image: ${stripe};`
+                        : `background-color: ${stripe};`;
                     return `
                         <button type="button" class="tmod-history-item" data-index="${i}"
-                            style="flex: 0 0 auto; padding: 6px 12px; border-radius: 999px; color: #efeff1; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; display: inline-flex; align-items: center; gap: 6px; border: none; ${chipStyle};">
-                            ${h.text.slice(0, 50)}…
+                            style="flex: 0 0 auto; padding: 5px 10px; border-radius: 999px; color: #efeff1; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; min-width: 0; display: inline-flex; align-items: center; gap: 8px; border: 1px solid #3a3a3d; background: #18181b;">
+                            <span style="flex: 0 0 auto; width: 10px; height: 10px; border-radius: 999px; ${isGrad ? `background-image: ${stripe};` : `background-color: ${stripe};`}"></span>
+                            <span style="overflow: hidden; text-overflow: ellipsis; max-width: 100%;">${h.text.slice(0, 50)}…</span>
                         </button>
                     `;
                 };
@@ -835,13 +842,11 @@
                                     ? (getChannelAccentColor() || '#9147ff')
                                     : (ANNOUNCE_COLORS.find(c => c.value === h.color)?.stripe || '#9147ff');
                                 const isGrad = stripe.includes('gradient(');
-                                const chipStyle = isGrad
-                                    ? `background-image: ${stripe};`
-                                    : `background-color: ${stripe};`;
                                 return `
                                     <button type="button" class="tmod-history-item" data-index="${i}"
-                                        style="flex: 0 0 auto; padding: 6px 12px; border-radius: 999px; color: #efeff1; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; display: inline-flex; align-items: center; gap: 6px; border: none; ${chipStyle};">
-                                        ${h.text.slice(0, 50)}…
+                                        style="flex: 0 0 auto; padding: 5px 10px; border-radius: 999px; color: #efeff1; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; min-width: 0; display: inline-flex; align-items: center; gap: 8px; border: 1px solid #3a3a3d; background: #18181b;">
+                                        <span style="flex: 0 0 auto; width: 10px; height: 10px; border-radius: 999px; ${isGrad ? `background-image: ${stripe};` : `background-color: ${stripe};`}"></span>
+                                        <span style="overflow: hidden; text-overflow: ellipsis; max-width: 100%;">${h.text.slice(0, 50)}…</span>
                                     </button>
                                 `;
                             }).join('')}
