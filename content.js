@@ -795,9 +795,9 @@
         const content = panel.querySelector('#tmod-panel-content');
         if (!content) return;
 
-        // Увеличиваем ширину панели для анонсов
-        panel.style.minWidth = '480px';
-        panel.style.width = 'fit-content';
+        const savedWidth = panel.getBoundingClientRect().width + 'px';
+        panel.style.minWidth = savedWidth;
+        panel.style.width = savedWidth;
 
         const historyKey = 'tmod_history_' + channelName;
 
@@ -1049,8 +1049,9 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         const content = panel.querySelector('#tmod-panel-content');
         if (!content) return;
 
-        panel.style.minWidth = '360px';
-        panel.style.width = '460px';
+        const savedWidth = panel.getBoundingClientRect().width + 'px';
+        panel.style.minWidth = savedWidth;
+        panel.style.width = savedWidth;
 
         if (!panel.querySelector('#tmod-chat-tile-styles')) {
             const s = document.createElement('style');
@@ -1292,7 +1293,9 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         const content = panel.querySelector('#tmod-panel-content');
         if (!content) return;
 
-        panel.style.minWidth = '360px';
+        const savedWidth = panel.getBoundingClientRect().width + 'px';
+        panel.style.width = savedWidth;
+        panel.style.minWidth = savedWidth;
 
         const LANGUAGES = [
             { value: '', label: 'Не указан' },
