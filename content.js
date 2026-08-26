@@ -512,6 +512,7 @@
                 'user:read:moderated_channels',
                 'chat:read',
                 'chat:edit',
+                'user:write:chat',
                 'channel:manage:broadcast'
             ].join(' ');
 
@@ -1519,21 +1520,23 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 const broadcasterId = await getChannelId(channelName, token);
                 if (!broadcasterId) { statusDiv.innerHTML = '<span style="color:#ff6b6b;">Ошибка ID</span>'; return; }
 
-                const body = {};
                 const newTitle = titleInput.value.trim();
                 const newGameId = selectedGameId || undefined;
+                const newGameName = catInput.value.trim();
                 const newLang = langSelect.value || undefined;
                 const rawTags = tagsInput.value.split(',').map(t => t.trim()).filter(Boolean).slice(0, 20);
-
                 const newCCL = [...selectedCCL];
 
-                if (newTitle !== (ch.title || '')) body.title = newTitle;
-                if (newGameId && newGameId !== ch.game_id) body.game_id = newGameId;
-                if (newLang !== (ch.broadcaster_language || '')) body.broadcaster_language = newLang;
-                if (rawTags.join(',') !== (ch.tags || []).join(',')) body.tags = rawTags;
-                if (newCCL.join(',') !== (ch.content_classification_labels || []).join(',')) body.content_classification_labels = newCCL;
+                const gqlBody = {};
+                const helixBody = {};
 
-                if (!Object.keys(body).length) {
+                if (newTitle !== (ch.title || '')) gqlBody.status = newTitle;
+                if (newGameId && newGameId !== ch.game_id) gqlBody.game = newGameName || newGameId;
+                if (newLang !== (ch.broadcaster_language || '')) gqlBody.broadcasterLanguage = newLang;
+                if (rawTags.join(',') !== (ch.tags || []).join(',')) helixBody.tags = rawTags;
+                if (newCCL.join(',') !== (ch.content_classification_labels || []).join(',')) helixBody.content_classification_labels = newCCL;
+
+                if (!Object.keys(gqlBody).length && !Object.keys(helixBody).length) {
                     statusDiv.innerHTML = '<span style="color:#adadb8;">Нет изменений</span>';
                     return;
                 }
@@ -1541,29 +1544,79 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 statusDiv.style.color = '#adadb8';
                 statusDiv.textContent = 'Сохранение...';
 
-                const resp = await apiRequest(`https://api.twitch.tv/helix/channels?broadcaster_id=${broadcasterId}`, {
-                    method: 'PATCH',
-                    headers: {
-                        'Authorization': `Bearer ${token}`,
-                        'Client-Id': CLIENT_ID,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(body)
-                });
+                const errors = [];
 
-                if (resp.status === 204 || (resp.ok && !resp.error)) {
+                if (Object.keys(gqlBody).length) {
+                    const gqlResult = await gqlUpdateBroadcastSettings(token, broadcasterId, gqlBody);
+                    if (!gqlResult.success) errors.push(gqlResult.error);
+                }
+
+                if (Object.keys(helixBody).length) {
+                    const helixResp = await apiRequest(`https://api.twitch.tv/helix/channels?broadcaster_id=${broadcasterId}`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Client-Id': CLIENT_ID,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(helixBody)
+                    });
+                    if (!(helixResp.status === 204 || (helixResp.ok && !helixResp.error))) {
+                        try {
+                            const err = JSON.parse(helixResp.text);
+                            errors.push(err.message || 'Helix error');
+                        } catch {
+                            errors.push('Helix: ' + helixResp.status);
+                        }
+                    }
+                }
+
+                if (errors.length) {
+                    statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + errors.join('; ') + '</span>';
+                } else {
                     statusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Сохранено!</span>';
                     setTimeout(() => { panel.remove(); createPanel(); }, 1500);
-                } else {
-                    try {
-                        const err = JSON.parse(resp.text);
-                        statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + (err.message || 'Ошибка') + '</span>';
-                    } catch {
-                        statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">Ошибка: ' + resp.status + '</span>';
-                    }
                 }
             };
         });
+    }
+
+    // ============================================================================
+    // GQL: UpdateBroadcastSettings (работает для модераторов)
+    // ============================================================================
+
+    const GQL_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
+
+    async function gqlUpdateBroadcastSettings(token, broadcasterUserId, opts) {
+        const input = { userID: broadcasterUserId };
+        if (opts.status !== undefined) input.status = opts.status;
+        if (opts.game !== undefined) input.game = opts.game;
+        if (opts.broadcasterLanguage !== undefined) input.broadcasterLanguage = opts.broadcasterLanguage;
+
+        const resp = await apiRequest('https://gql.twitch.tv/gql', {
+            method: 'POST',
+            headers: {
+                'Client-Id': GQL_CLIENT_ID,
+                'Authorization': 'OAuth ' + token,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                operationName: 'UpdateBroadcastSettings',
+                query: 'mutation UpdateBroadcastSettings($input: UpdateBroadcastSettingsInput!) { updateBroadcastSettings(input: $input) { broadcastSettings { title game { id name } } } }',
+                variables: { input }
+            })
+        });
+
+        if (resp.error) return { success: false, error: resp.error };
+        try {
+            const json = JSON.parse(resp.text);
+            if (json.errors && json.errors.length) {
+                return { success: false, error: json.errors[0].message };
+            }
+            return { success: true, data: json.data };
+        } catch {
+            return { success: false, error: 'Parse error' };
+        }
     }
 
     // ============================================================================
