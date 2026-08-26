@@ -513,7 +513,9 @@
                 'chat:read',
                 'chat:edit',
                 'user:write:chat',
-                'channel:manage:broadcast'
+                'channel:manage:broadcast',
+                'moderator:manage:shoutouts',
+                'moderator:read:chatters'
             ].join(' ');
 
             const authUrl = `https://id.twitch.tv/oauth2/authorize` +
@@ -734,6 +736,7 @@
                     <button class="tmod-feature-btn" data-feature="clip"><img src="${clipIconUrl}" alt=""><span class="tmod-label">Клип</span></button>
                     <button class="tmod-feature-btn" data-feature="rewards"><img src="${rewardsIconUrl}" alt=""><span class="tmod-label">Награды</span></button>
                     <button class="tmod-feature-btn" data-feature="stream"><img src="${streamIconUrl}" alt=""><span class="tmod-label">Стрим</span></button>
+                    <button class="tmod-feature-btn" data-feature="shoutout"><svg viewBox="0 0 24 24" fill="white" width="24" height="24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 12h-2v-2h2v2zm0-4h-2V6h2v4z"/></svg><span class="tmod-label">Шаутаут</span></button>
                 </div>
             </div>
         `;
@@ -786,6 +789,7 @@
                 else if (feature === 'clip') showClipSection(panel);
                 else if (feature === 'rewards') sendToChatInput('/requests');
                 else if (feature === 'stream') showStreamSection(panel);
+                else if (feature === 'shoutout') showShoutoutSection(panel);
             });
         });
 
@@ -1494,6 +1498,126 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                     setTimeout(() => { panel.remove(); createPanel(); }, 1500);
                 }
             };
+        });
+    }
+
+    // ============================================================================
+    // Шаутаут
+    // ============================================================================
+
+    function showShoutoutSection(panel) {
+        const channelName = window.location.pathname.slice(1);
+        const content = panel.querySelector('#tmod-panel-content');
+        if (!content) return;
+
+        const savedWidth = panel.getBoundingClientRect().width + 'px';
+        panel.style.width = savedWidth;
+        panel.style.minWidth = savedWidth;
+
+        content.innerHTML = `
+            <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;"><span>\u2190</span> <span>Назад</span></button>
+            <div id="tmod-so-loading" style="text-align: center; color: #adadb8; padding: 20px;">Загрузка зрителей...</div>
+            <div id="tmod-so-form" style="display: none;">
+                <div style="margin-bottom: 10px; position: relative;">
+                    <input type="text" id="tmod-so-search" placeholder="Поиск пользователя..." autocomplete="off" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
+                </div>
+                <div id="tmod-so-list" style="max-height: 400px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #3a3a3d transparent;"></div>
+                <div id="tmod-so-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
+            </div>
+        `;
+
+        content.querySelector('#tmod-back').onclick = () => { panel.remove(); panelOpen = false; setTimeout(() => createPanel(), 10); };
+
+        const rect = panel.getBoundingClientRect();
+        if (rect.top < 0) { panel.style.bottom = Math.max(10, panelPosition.bottom + rect.top) + 'px'; }
+
+        async function loadChatters() {
+            const token = await getToken();
+            if (!token) return [];
+            const broadcasterId = await getChannelId(channelName, token);
+            if (!broadcasterId) return [];
+            const userId = await getCurrentUserId(token);
+            if (!userId) return [];
+            const resp = await apiRequest(`https://api.twitch.tv/helix/chat/chatters?broadcaster_id=${broadcasterId}&moderator_id=${userId}&first=1000`, {
+                headers: { 'Authorization': `Bearer ${token}`, 'Client-Id': CLIENT_ID }
+            });
+            if (resp.error || !resp.ok) return [];
+            try { return JSON.parse(resp.text).data || []; } catch { return []; }
+        }
+
+        async function sendShoutout(recipientLogin) {
+            const token = await getToken();
+            if (!token) return { error: 'Нет токена' };
+            const broadcasterId = await getChannelId(channelName, token);
+            if (!broadcasterId) return { error: 'Ошибка ID канала' };
+            const userId = await getCurrentUserId(token);
+            if (!userId) return { error: 'Ошибка ID пользователя' };
+            const userResp = await apiRequest(`https://api.twitch.tv/helix/users?login=${encodeURIComponent(recipientLogin)}`, {
+                headers: { 'Authorization': `Bearer ${token}`, 'Client-Id': CLIENT_ID }
+            });
+            if (userResp.error || !userResp.ok) return { error: 'Пользователь не найден' };
+            let recipientId;
+            try { recipientId = JSON.parse(userResp.text).data[0].id; } catch { return { error: 'Ошибка ID получателя' }; }
+            const resp = await apiRequest(`https://api.twitch.tv/helix/chat/shoutouts?from_broadcaster_id=${broadcasterId}&to_broadcaster_id=${recipientId}&moderator_id=${userId}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Client-Id': CLIENT_ID }
+            });
+            if (resp.status === 204 || (resp.ok && !resp.error)) return { success: true };
+            try { const e = JSON.parse(resp.text); return { error: e.message || e.error || ('HTTP ' + resp.status) }; }
+            catch { return { error: 'HTTP ' + resp.status }; }
+        }
+
+        loadChatters().then(chatters => {
+            const loadingDiv = content.querySelector('#tmod-so-loading');
+            const formDiv = content.querySelector('#tmod-so-form');
+            const listDiv = content.querySelector('#tmod-so-list');
+            const searchInput = content.querySelector('#tmod-so-search');
+
+            if (!chatters.length) {
+                loadingDiv.style.color = '#ff6b6b';
+                loadingDiv.textContent = 'Нет зрителей или ошибка загрузки';
+                return;
+            }
+            loadingDiv.style.display = 'none';
+            formDiv.style.display = 'block';
+
+            function renderList(query) {
+                const q = (query || '').toLowerCase();
+                const filtered = q ? chatters.filter(c => c.user_name.toLowerCase().includes(q) || c.user_login.toLowerCase().includes(q)) : chatters;
+                listDiv.innerHTML = filtered.map(c => `
+                    <div class="tmod-so-item" data-login="${c.user_login}" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid #26262c; cursor: pointer; transition: background 0.1s;">
+                        <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                            <img src="https://static-cdn.jtvnw.net/jtv_user_pictures/${c.user_login}-image-70x70.png" style="width: 28px; height: 28px; border-radius: 50%; background: #26262c; flex-shrink: 0;" onerror="this.style.display='none'">
+                            <span style="font-size: 13px; color: #efeff1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${c.user_name}</span>
+                        </div>
+                        <span style="font-size: 12px; color: #9146FF; white-space: nowrap; flex-shrink: 0;">Шаутаут</span>
+                    </div>
+                `).join('');
+
+                listDiv.querySelectorAll('.tmod-so-item').forEach(item => {
+                    item.onmouseenter = () => item.style.background = '#26262c';
+                    item.onmouseleave = () => item.style.background = '';
+                    item.onclick = async () => {
+                        const statusDiv = content.querySelector('#tmod-so-status');
+                        const login = item.dataset.login;
+                        item.style.opacity = '0.5';
+                        item.style.pointerEvents = 'none';
+                        statusDiv.textContent = 'Отправка шаутаута...';
+                        statusDiv.style.color = '#adadb8';
+                        const result = await sendShoutout(login);
+                        if (result.success) {
+                            statusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Шаутаут отправлен!</span>';
+                        } else {
+                            statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + result.error + '</span>';
+                        }
+                        item.style.opacity = '1';
+                        item.style.pointerEvents = '';
+                    };
+                });
+            }
+
+            renderList('');
+            searchInput.addEventListener('input', () => renderList(searchInput.value.trim()));
         });
     }
 

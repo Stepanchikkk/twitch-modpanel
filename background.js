@@ -26,7 +26,9 @@ function startOAuth() {
             'user:read:moderated_channels',
             'chat:read',
             'chat:edit',
-            'channel:manage:broadcast'
+            'channel:manage:broadcast',
+            'moderator:manage:shoutouts',
+            'moderator:read:chatters'
         ].join(' ');
         
         const authUrl = `https://id.twitch.tv/oauth2/authorize` +
