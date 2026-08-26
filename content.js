@@ -23,6 +23,11 @@
     let panelElement = null;
     let panelPosition = null;
 
+    const ICON_OK = '<svg style="vertical-align:-2px;margin-right:4px;" width="13" height="13" viewBox="0 0 24 24" fill="#00ff00"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
+    const ICON_ERR = '<svg style="vertical-align:-2px;margin-right:4px;" width="13" height="13" viewBox="0 0 24 24" fill="#ff6b6b"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
+    const ICON_TRASH = '<svg style="vertical-align:-3px;margin-right:6px;" width="15" height="15" viewBox="0 0 24 24" fill="white"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>';
+    const ICON_CLIP = '<svg style="vertical-align:-3px;margin-right:6px;" width="15" height="15" viewBox="0 0 24 24" fill="white"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg>';
+
     // ============================================================================
     // Адаптеры платформы (хранилище / HTTP / иконки / уведомления)
     // ============================================================================
@@ -605,7 +610,7 @@
             <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;"><span>←</span> <span>Назад</span></button>
             <textarea id="tmod-announce-text" placeholder="Текст анонса (макс. 500 символов)" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 10px; font-size: 14px; resize: vertical;" rows="4"></textarea>
             <select id="tmod-announce-color" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px; margin-top: 10px;">
-                <option value="primary">🔴 Красный (Primary)</option><option value="blue">🔵 Синий</option><option value="green">🟢 Зелёный</option><option value="orange">🟠 Оранжевый</option><option value="purple">🟣 Фиолетовый</option>
+                <option value="primary">Primary</option><option value="blue">Синий</option><option value="green">Зелёный</option><option value="orange">Оранжевый</option><option value="purple">Фиолетовый</option>
             </select>
             <button id="tmod-send-announce" style="width: 100%; background: #9146FF; color: white; border: none; border-radius: 4px; padding: 10px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 10px;">Отправить</button>
             <div id="tmod-announce-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
@@ -626,8 +631,8 @@
             if (text.length > 500) { statusDiv.style.color = '#ff6b6b'; statusDiv.textContent = 'Текст слишком длинный'; return; }
             statusDiv.style.color = '#adadb8'; statusDiv.textContent = 'Отправка...';
             const result = await sendAnnouncement(channelName, text, color);
-            if (result.success) { statusDiv.style.color = '#00ff00'; statusDiv.textContent = '✅ Анонс отправлен!'; setTimeout(() => { panel.remove(); createPanel(); }, 1500); }
-            else { statusDiv.style.color = '#ff6b6b'; statusDiv.textContent = '❌ ' + result.error; }
+            if (result.success) { statusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Анонс отправлен!</span>'; setTimeout(() => { panel.remove(); createPanel(); }, 1500); }
+            else { statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + result.error + '</span>'; }
         });
     }
 
@@ -646,7 +651,7 @@
                 <div class="tmod-toggle" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #26262c;"><span style="font-size: 14px; color: #efeff1;">Slow Mode</span><label style="position: relative; display: inline-block; width: 40px; height: 20px; cursor: pointer;"><input type="checkbox" id="tmod-slow-mode" style="opacity: 0; width: 0; height: 0;"><span style="position: absolute; inset: 0; background-color: #3a3a3d; border-radius: 10px; transition: 0.2s;"></span><span style="position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background-color: #adadb8; border-radius: 50%; transition: 0.2s;"></span></label></div>
                 <div id="tmod-slow-wait" style="display: none; margin-top: 15px; padding: 12px; background: #18181b; border-radius: 4px;"><input type="number" id="tmod-slow-time" min="0" max="120" value="30" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 10px; font-size: 14px;"><span style="font-size: 12px; color: #adadb8; margin-top: 5px; display: block;">секунд между сообщениями</span></div>
                 <div class="tmod-toggle" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #26262c;"><span style="font-size: 14px; color: #efeff1;">Shield Mode</span><label style="position: relative; display: inline-block; width: 40px; height: 20px; cursor: pointer;"><input type="checkbox" id="tmod-shield-mode" style="opacity: 0; width: 0; height: 0;"><span style="position: absolute; inset: 0; background-color: #3a3a3d; border-radius: 10px; transition: 0.2s;"></span><span style="position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background-color: #adadb8; border-radius: 50%; transition: 0.2s;"></span></label></div>
-                <button id="tmod-clear-chat" style="width: 100%; background: #ff4444; color: white; border: none; border-radius: 4px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 15px;">🗑️ Очистить чат</button>
+                <button id="tmod-clear-chat" style="width: 100%; background: #ff4444; color: white; border: none; border-radius: 4px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 15px;">${ICON_TRASH}Очистить чат</button>
                 <button id="tmod-save-chat" style="width: 100%; background: #9146FF; color: white; border: none; border-radius: 4px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 10px;">Сохранить</button>
                 <div id="tmod-chat-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
             </div>
@@ -682,15 +687,15 @@
             slow.onchange = () => { updateToggle(slow); content.querySelector('#tmod-slow-wait').style.display = slow.checked ? 'block' : 'none'; };
             shield.onchange = () => { updateToggle(shield); sendToChatInput(shield.checked ? '/shield' : '/shieldoff'); };
 
-            content.querySelector('#tmod-clear-chat').onclick = () => { if (confirm('Очистить чат?')) { sendToChatInput('/clear'); const s = content.querySelector('#tmod-chat-status'); s.style.color = '#00ff00'; s.textContent = '✅ Чат очищен!'; setTimeout(() => { s.textContent = ''; }, 2000); } };
+            content.querySelector('#tmod-clear-chat').onclick = () => { if (confirm('Очистить чат?')) { sendToChatInput('/clear'); const s = content.querySelector('#tmod-chat-status'); s.innerHTML = ICON_OK + '<span style="color:#00ff00;">Чат очищен!</span>'; setTimeout(() => { s.innerHTML = ''; }, 2000); } };
             content.querySelector('#tmod-back').onclick = () => { panel.remove(); panelOpen = false; setTimeout(() => createPanel(), 10); };
             content.querySelector('#tmod-save-chat').onclick = async () => {
                 const statusDiv = content.querySelector('#tmod-chat-status');
                 const newSettings = { subscriberMode: sub.checked, followerMode: follower.checked, emoteMode: emote.checked, slowMode: slow.checked, slowModeWaitTime: parseInt(content.querySelector('#tmod-slow-time').value) || 30 };
                 statusDiv.style.color = '#adadb8'; statusDiv.textContent = 'Сохранение...';
                 const result = await updateChatSettings(channelName, newSettings);
-                if (result.success) { statusDiv.style.color = '#00ff00'; statusDiv.textContent = '✅ Сохранено!'; setTimeout(() => { panel.remove(); createPanel(); }, 1500); }
-                else { statusDiv.style.color = '#ff6b6b'; statusDiv.textContent = '❌ ' + result.error; }
+                if (result.success) { statusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Сохранено!</span>'; setTimeout(() => { panel.remove(); createPanel(); }, 1500); }
+                else { statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + result.error + '</span>'; }
             };
         });
     }
@@ -703,7 +708,7 @@
             <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;"><span>←</span> <span>Назад</span></button>
             <div style="text-align: center; color: #adadb8; font-size: 13px; margin-bottom: 15px;">Создание клипа из текущего момента стрима</div>
             <input type="text" id="tmod-clip-title" placeholder="Название клипа (необязательно)" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 10px; font-size: 14px; margin-bottom: 10px;">
-            <button id="tmod-create-clip" style="width: 100%; background: #9146FF; color: white; border: none; border-radius: 4px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer;">🎬 Создать клип</button>
+            <button id="tmod-create-clip" style="width: 100%; background: #9146FF; color: white; border: none; border-radius: 4px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer;">${ICON_CLIP}Создать клип</button>
             <div id="tmod-clip-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
         `;
 
@@ -712,7 +717,7 @@
             const title = content.querySelector('#tmod-clip-title').value.trim();
             sendToChatInput(title ? '/clip "' + title + '"' : '/clip');
             const statusDiv = content.querySelector('#tmod-clip-status');
-            statusDiv.style.color = '#00ff00'; statusDiv.textContent = '✅ Клип создан!';
+            statusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Клип создан!</span>';
             setTimeout(() => { panel.remove(); createPanel(); }, 1500);
         };
     }
@@ -745,9 +750,9 @@
             if (!token) {
                 const result = await authorize();
                 if (result.success) {
-                    notify('✅ Вход: ' + ((result.user && result.user.login) || 'выполнен'));
+                    notify('Вход: ' + ((result.user && result.user.login) || 'выполнен'));
                 } else {
-                    notify('❌ ' + (result.error || 'Ошибка авторизации'));
+                    notify('Ошибка: ' + (result.error || 'авторизация не удалась'));
                 }
                 return;
             }
@@ -775,11 +780,11 @@
 
     // Меню Tampermonkey (в расширении эту роль играет popup/)
     if (!IS_EXTENSION && typeof GM_registerMenuCommand === 'function') {
-        GM_registerMenuCommand('🔐 Войти', async () => {
+        GM_registerMenuCommand('Войти', async () => {
             const result = await authorize();
-            notify(result.success ? '✅ Вход: ' + ((result.user && result.user.login) || 'выполнен') : '❌ ' + (result.error || 'Ошибка'));
+            notify(result.success ? 'Вход: ' + ((result.user && result.user.login) || 'выполнен') : 'Ошибка: ' + (result.error || 'не удалось войти'));
         });
-        GM_registerMenuCommand('🚪 Выйти', async () => {
+        GM_registerMenuCommand('Выйти', async () => {
             await setToken(null);
             await setUserInfo(null);
             notify('Выход выполнен');

@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         * { box-sizing: border-box; }
+        html { background: #0e0e10; }
         body {
             width: 300px;
             margin: 0;
@@ -20,7 +21,7 @@
             background: #18181b;
             border-bottom: 1px solid #3a3a3d;
         }
-        header svg { flex-shrink: 0; }
+        header img { flex-shrink: 0; width: 20px; height: 20px; object-fit: contain; }
         header h1 {
             margin: 0;
             font-size: 14px;
@@ -87,7 +88,7 @@
 </head>
 <body>
     <header>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="#9146FF"><path fill-rule="evenodd" d="M15.504 2H22v6.496L10.35 17.35 12 19l-1.5 1.5-2.785-2.785L3.5 22 2 20.5l4.285-4.215L3.5 13.5 5 12l1.65 1.65L15.504 2ZM20 7.504 8.923 15.923l-.846-.846L16.496 4H20v3.504Z" clip-rule="evenodd"></path></svg>
+        <img src="../icons/icon128.png" alt="">
         <h1>Панель модератора</h1>
     </header>
 
@@ -97,15 +98,19 @@
         </div>
 
         <div id="notLoggedIn" class="status error hidden">
-            Требуется вход
+            <svg style="vertical-align:-2px;margin-right:4px;" width="13" height="13" viewBox="0 0 24 24" fill="#ff6b6b"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>Требуется вход
         </div>
 
         <div id="loggedIn" class="status success hidden">
-            Вы вошли
+            <svg style="vertical-align:-2px;margin-right:4px;" width="13" height="13" viewBox="0 0 24 24" fill="#00ff00"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>Вы вошли
         </div>
 
-        <button id="loginBtn" class="btn hidden">Войти через Twitch</button>
-        <button id="logoutBtn" class="btn secondary hidden">Выйти</button>
+        <button id="loginBtn" class="btn hidden">
+            <svg style="vertical-align:-3px;margin-right:6px;" width="15" height="15" viewBox="0 0 24 24" fill="white"><path d="M11 7 9.6 8.4l2.6 2.6H2v2h10.2l-2.6 2.6L11 17l5-5zM18 4h-8v2h8v12h-8v2h8c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2z"/></svg>Войти через Twitch
+        </button>
+        <button id="logoutBtn" class="btn secondary hidden">
+            <svg style="vertical-align:-3px;margin-right:6px;" width="15" height="15" viewBox="0 0 24 24" fill="#efeff1"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4z"/></svg>Выйти
+        </button>
 
         <p id="userInfo" class="user hidden"></p>
     </main>
