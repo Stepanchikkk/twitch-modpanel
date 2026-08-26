@@ -1396,7 +1396,6 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                     ${thumb ? `<img src="${thumb}" style="width: 60px; height: 84px; object-fit: cover; border-radius: 4px; flex-shrink: 0; background: #26262c;" onerror="this.style.display='none'">` : ''}
                     <div style="min-width: 0;">
                         <div style="font-size: 14px; font-weight: 600; color: #efeff1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${gameName}</div>
-                        <div style="font-size: 11px; color: #adadb8; margin-top: 2px;">ID: ${gameId}</div>
                     </div>`;
                 catCard.style.display = 'flex';
             }
