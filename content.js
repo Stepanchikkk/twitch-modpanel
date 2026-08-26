@@ -1334,6 +1334,20 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                         ${LANGUAGES.map(l => `<option value="${l.value}">${l.label}</option>`).join('')}
                     </select>
                 </div>
+                <div style="margin-bottom: 12px;">
+                    <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 6px;">Метки контента</label>
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #efeff1;"><input type="checkbox" id="tmod-ccl-mature" style="accent-color: #9146FF;"> 18+</label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #efeff1;"><input type="checkbox" id="tmod-ccl-debut" style="accent-color: #9146FF;"> Дебют</label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #efeff1;"><input type="checkbox" id="tmod-ccl-music" style="accent-color: #9146FF;"> Музыка</label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #efeff1;"><input type="checkbox" id="tmod-ccl-live_event" style="accent-color: #9146FF;"> Живое событие</label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #efeff1;"><input type="checkbox" id="tmod-ccl_premium" style="accent-color: #9146FF;"> Премиум</label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #efeff1;"><input type="checkbox" id="tmod-ccl-educational" style="accent-color: #9146FF;"> Образовательный</label>
+                    </div>
+                </div>
+                <div style="margin-bottom: 12px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: #efeff1;"><input type="checkbox" id="tmod-stream-branded" style="accent-color: #9146FF;"> Брендированный контент</label>
+                </div>
                 <button id="tmod-stream-save" style="width: 100%; background: #9146FF; color: white; border: none; border-radius: 4px; padding: 10px; font-size: 14px; font-weight: 600; cursor: pointer;">Сохранить</button>
                 <div id="tmod-stream-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
             </div>
@@ -1382,6 +1396,15 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
             if (ch.tags && ch.tags.length) {
                 tagsInput.value = ch.tags.join(', ');
             }
+
+            const ccl = ch.content_classification_labels || [];
+            content.querySelector('#tmod-ccl-mature').checked = ccl.includes('mature');
+            content.querySelector('#tmod-ccl-debut').checked = ccl.includes('debut');
+            content.querySelector('#tmod-ccl-music').checked = ccl.includes('music');
+            content.querySelector('#tmod-ccl-live_event').checked = ccl.includes('live_event');
+            content.querySelector('#tmod-ccl_premium').checked = ccl.includes('premium');
+            content.querySelector('#tmod-ccl-educational').checked = ccl.includes('educational');
+            content.querySelector('#tmod-stream-branded').checked = !!ch.is_branded_content;
 
             let searchTimeout = null;
             catInput.addEventListener('input', () => {
@@ -1436,10 +1459,21 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 const newLang = langSelect.value || undefined;
                 const rawTags = tagsInput.value.split(',').map(t => t.trim()).filter(Boolean).slice(0, 20);
 
+                const newCCL = [];
+                if (content.querySelector('#tmod-ccl-mature').checked) newCCL.push('mature');
+                if (content.querySelector('#tmod-ccl-debut').checked) newCCL.push('debut');
+                if (content.querySelector('#tmod-ccl-music').checked) newCCL.push('music');
+                if (content.querySelector('#tmod-ccl-live_event').checked) newCCL.push('live_event');
+                if (content.querySelector('#tmod-ccl_premium').checked) newCCL.push('premium');
+                if (content.querySelector('#tmod-ccl-educational').checked) newCCL.push('educational');
+                const newBranded = content.querySelector('#tmod-stream-branded').checked;
+
                 if (newTitle !== (ch.title || '')) body.title = newTitle;
                 if (newGameId && newGameId !== ch.game_id) body.game_id = newGameId;
                 if (newLang !== (ch.broadcaster_language || '')) body.broadcaster_language = newLang;
                 if (rawTags.join(',') !== (ch.tags || []).join(',')) body.tags = rawTags;
+                if (newCCL.join(',') !== (ch.content_classification_labels || []).join(',')) body.content_classification_labels = newCCL;
+                if (newBranded !== !!ch.is_branded_content) body.is_branded_content = newBranded;
 
                 if (!Object.keys(body).length) {
                     statusDiv.innerHTML = '<span style="color:#adadb8;">Нет изменений</span>';
