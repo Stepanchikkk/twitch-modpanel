@@ -1528,15 +1528,14 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 const newCCL = [...selectedCCL];
 
                 const gqlBody = {};
-                const helixBody = {};
+                let tagsChanged = rawTags.join(',') !== (ch.tags || []).join(',');
+                let cclChanged = newCCL.join(',') !== (ch.content_classification_labels || []);
 
                 if (newTitle !== (ch.title || '')) gqlBody.status = newTitle;
                 if (newGameId && newGameId !== ch.game_id) gqlBody.game = newGameName || newGameId;
                 if (newLang !== (ch.broadcaster_language || '')) gqlBody.broadcasterLanguage = newLang;
-                if (rawTags.join(',') !== (ch.tags || []).join(',')) helixBody.tags = rawTags;
-                if (newCCL.join(',') !== (ch.content_classification_labels || []).join(',')) helixBody.content_classification_labels = newCCL;
 
-                if (!Object.keys(gqlBody).length && !Object.keys(helixBody).length) {
+                if (!Object.keys(gqlBody).length && !tagsChanged && !cclChanged) {
                     statusDiv.innerHTML = '<span style="color:#adadb8;">Нет изменений</span>';
                     return;
                 }
@@ -1551,7 +1550,21 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                     if (!gqlResult.success) errors.push(gqlResult.error);
                 }
 
-                if (Object.keys(helixBody).length) {
+                if (tagsChanged) {
+                    statusDiv.textContent = 'Сохранение тегов...';
+                    const tagIds = [];
+                    for (const tagName of rawTags) {
+                        const results = await gqlSearchTags(tagName, token);
+                        const exact = results.find(t => t.localizedName.toLowerCase() === tagName.toLowerCase());
+                        if (exact) tagIds.push(exact.id);
+                        else if (results.length) tagIds.push(results[0].id);
+                    }
+                    const tagResult = await gqlSetContentTags(broadcasterId, tagIds, token);
+                    if (!tagResult.success) errors.push('Теги: ' + tagResult.error);
+                }
+
+                if (cclChanged) {
+                    statusDiv.textContent = 'Сохранение меток...';
                     const helixResp = await apiRequest(`https://api.twitch.tv/helix/channels?broadcaster_id=${broadcasterId}`, {
                         method: 'PATCH',
                         headers: {
@@ -1559,14 +1572,14 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                             'Client-Id': CLIENT_ID,
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify(helixBody)
+                        body: JSON.stringify({ content_classification_labels: newCCL })
                     });
                     if (!(helixResp.status === 204 || (helixResp.ok && !helixResp.error))) {
                         try {
                             const err = JSON.parse(helixResp.text);
-                            errors.push(err.message || 'Helix error');
+                            errors.push('Метки: ' + (err.message || 'Helix error'));
                         } catch {
-                            errors.push('Helix: ' + helixResp.status);
+                            errors.push('Метки: Helix ' + helixResp.status);
                         }
                     }
                 }
@@ -1587,18 +1600,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
 
     const GQL_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
 
-    async function gqlUpdateBroadcastSettings(token, broadcasterUserId, opts) {
-        const input = { userID: broadcasterUserId };
-        if (opts.status !== undefined) input.status = opts.status;
-        if (opts.game !== undefined) input.game = opts.game;
-        if (opts.broadcasterLanguage !== undefined) input.broadcasterLanguage = opts.broadcasterLanguage;
-
-        const body = JSON.stringify({
-            operationName: 'UpdateBroadcastSettings',
-            query: 'mutation UpdateBroadcastSettings($input: UpdateBroadcastSettingsInput!) { updateBroadcastSettings(input: $input) { broadcastSettings { title game { id name } } } }',
-            variables: { input }
-        });
-
+    async function gqlGetSessionToken(token) {
         let gqlToken = token;
         if (IS_EXTENSION && typeof chrome !== 'undefined' && chrome.runtime) {
             try {
@@ -1606,6 +1608,12 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 if (resp && resp.success && resp.value) gqlToken = resp.value;
             } catch (e) { console.log('[ModPanel] cookie read failed:', e); }
         }
+        return gqlToken;
+    }
+
+    async function gqlRequest(query, variables, token) {
+        const gqlToken = await gqlGetSessionToken(token);
+        const body = JSON.stringify({ query, variables });
 
         let resp;
         if (IS_EXTENSION) {
@@ -1649,6 +1657,44 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         } catch {
             return { success: false, error: 'Parse error' };
         }
+    }
+
+    async function gqlUpdateBroadcastSettings(token, broadcasterUserId, opts) {
+        const input = { userID: broadcasterUserId };
+        if (opts.status !== undefined) input.status = opts.status;
+        if (opts.game !== undefined) input.game = opts.game;
+        if (opts.broadcasterLanguage !== undefined) input.broadcasterLanguage = opts.broadcasterLanguage;
+
+        return gqlRequest(
+            'mutation UpdateBroadcastSettings($input: UpdateBroadcastSettingsInput!) { updateBroadcastSettings(input: $input) { broadcastSettings { title game { id name } } } }',
+            { input },
+            token
+        );
+    }
+
+    async function gqlSearchTags(query, token) {
+        const result = await gqlRequest(
+            'query SearchContentTags($query: String!) { searchContentTags(query: $query, first: 20) { edges { node { id localizedName } } } }',
+            { query },
+            token
+        );
+        if (!result.success) return [];
+        try { return result.data.searchContentTags.edges.map(e => e.node); } catch { return []; }
+    }
+
+    async function gqlSetContentTags(broadcasterId, tagIds, token) {
+        return gqlRequest(
+            'mutation SetContentTags($input: SetContentTagsInput!) { setContentTags(input: $input) { content { ... on Stream { contentTags { id localizedName } } } } }',
+            {
+                input: {
+                    authorID: broadcasterId,
+                    contentID: broadcasterId,
+                    contentType: 'STREAM',
+                    tagIDs: tagIds
+                }
+            },
+            token
+        );
     }
 
     // ============================================================================
