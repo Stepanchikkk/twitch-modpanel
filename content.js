@@ -713,7 +713,7 @@
                 </div>
                 <button id="tmod-panel-close" style="background: none; border: none; color: #adadb8; cursor: pointer; padding: 4px; font-size: 18px;">✕</button>
             </div>
-            <div style="padding: 8px; border-radius: 0 0 8px 8px;" id="tmod-panel-content">
+            <div style="padding: 8px; border-radius: 0 0 8px 8px; min-width: 392px; box-sizing: border-box;" id="tmod-panel-content">
                 <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
                     <button class="tmod-feature-btn" data-feature="announce"><img src="${announceIconUrl}" alt=""><span class="tmod-label">Анонс</span></button>
                     <button class="tmod-feature-btn" data-feature="chat"><img src="${chatIconUrl}" alt=""><span class="tmod-label">Чат</span></button>
