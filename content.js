@@ -1547,13 +1547,8 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 const errors = [];
 
                 if (Object.keys(gqlBody).length) {
-                    console.log('[ModPanel] GQL input:', JSON.stringify({ broadcasterId, gqlBody }));
                     const gqlResult = await gqlUpdateBroadcastSettings(token, broadcasterId, gqlBody);
-                    console.log('[ModPanel] GQL result:', JSON.stringify(gqlResult));
                     if (!gqlResult.success) errors.push(gqlResult.error);
-                    else if (gqlResult.data && gqlResult.data.updateBroadcastSettings) {
-                        console.log('[ModPanel] GQL response data:', JSON.stringify(gqlResult.data.updateBroadcastSettings));
-                    }
                 }
 
                 if (Object.keys(helixBody).length) {
@@ -1608,7 +1603,6 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         if (IS_EXTENSION && typeof chrome !== 'undefined' && chrome.runtime) {
             try {
                 const resp = await chrome.runtime.sendMessage({ type: 'GET_AUTH_COOKIE' });
-                console.log('[ModPanel] cookie resp:', resp);
                 if (resp && resp.success && resp.value) gqlToken = resp.value;
             } catch (e) { console.log('[ModPanel] cookie read failed:', e); }
         }
