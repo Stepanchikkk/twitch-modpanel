@@ -47,9 +47,16 @@
         return !!value && value !== 'rgba(0, 0, 0, 0)' && value.trim() !== '' && !value.startsWith('url(');
     }
 
-    // Отладка: window.TMOD_DEBUG = true включает логи поиска акцента,
-    // window.getTMODAccent() — ручной вызов детектора из консоли.
-    const TMOD_DEBUG = typeof window !== 'undefined' && window.TMOD_DEBUG === true;
+    // Отладка поиска акцента: включается через localStorage
+    // (в консоли страницы: localStorage.setItem('TMOD_DEBUG','1')),
+    // потому что консоль не видит переменные контент-скрипта/песочницы TM.
+    const PAGE_WINDOW = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
+    let TMOD_DEBUG = false;
+    try {
+        TMOD_DEBUG = localStorage.getItem('TMOD_DEBUG') === '1'
+            || window.TMOD_DEBUG === true
+            || PAGE_WINDOW.TMOD_DEBUG === true;
+    } catch (e) {}
     function debugLog(label, value) {
         if (TMOD_DEBUG) console.log('[ModPanel][accent]', label, value);
     }
@@ -118,9 +125,8 @@
         return result;
     }
 
-    if (typeof window !== 'undefined') {
-        window.getTMODAccent = getChannelAccentColor;
-    }
+    // Ручной вызов из консоли страницы: PAGE_WINDOW.getTMODAccent()
+    try { PAGE_WINDOW.getTMODAccent = getChannelAccentColor; } catch (e) {}
 
     function getPrimaryStripe() {
         const accent = getChannelAccentColor();
