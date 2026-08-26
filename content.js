@@ -1547,8 +1547,13 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 const errors = [];
 
                 if (Object.keys(gqlBody).length) {
+                    console.log('[ModPanel] GQL input:', JSON.stringify({ broadcasterId, gqlBody }));
                     const gqlResult = await gqlUpdateBroadcastSettings(token, broadcasterId, gqlBody);
+                    console.log('[ModPanel] GQL result:', JSON.stringify(gqlResult));
                     if (!gqlResult.success) errors.push(gqlResult.error);
+                    else if (gqlResult.data && gqlResult.data.updateBroadcastSettings) {
+                        console.log('[ModPanel] GQL response data:', JSON.stringify(gqlResult.data.updateBroadcastSettings));
+                    }
                 }
 
                 if (Object.keys(helixBody).length) {
@@ -1593,21 +1598,46 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         if (opts.game !== undefined) input.game = opts.game;
         if (opts.broadcasterLanguage !== undefined) input.broadcasterLanguage = opts.broadcasterLanguage;
 
-        const resp = await apiRequest('https://gql.twitch.tv/gql', {
-            method: 'POST',
-            headers: {
-                'Client-Id': GQL_CLIENT_ID,
-                'Authorization': 'OAuth ' + token,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                operationName: 'UpdateBroadcastSettings',
-                query: 'mutation UpdateBroadcastSettings($input: UpdateBroadcastSettingsInput!) { updateBroadcastSettings(input: $input) { broadcastSettings { title game { id name } } } }',
-                variables: { input }
-            })
+        const body = JSON.stringify({
+            operationName: 'UpdateBroadcastSettings',
+            query: 'mutation UpdateBroadcastSettings($input: UpdateBroadcastSettingsInput!) { updateBroadcastSettings(input: $input) { broadcastSettings { title game { id name } } } }',
+            variables: { input }
         });
 
+        let resp;
+        if (IS_EXTENSION) {
+            resp = await fetch('https://gql.twitch.tv/gql', {
+                method: 'POST',
+                headers: {
+                    'Client-Id': GQL_CLIENT_ID,
+                    'Authorization': 'OAuth ' + token,
+                    'Content-Type': 'application/json'
+                },
+                credentials: 'include',
+                body
+            }).then(async (r) => ({ status: r.status, ok: r.ok, text: await r.text() }))
+              .catch((e) => ({ error: e.message }));
+        } else {
+            resp = await apiRequest('https://gql.twitch.tv/gql', {
+                method: 'POST',
+                headers: {
+                    'Client-Id': GQL_CLIENT_ID,
+                    'Authorization': 'OAuth ' + token,
+                    'Content-Type': 'application/json'
+                },
+                body
+            });
+        }
+
         if (resp.error) return { success: false, error: resp.error };
+        if (!resp.ok) {
+            try {
+                const err = JSON.parse(resp.text);
+                return { success: false, error: err.message || err.error || ('HTTP ' + resp.status) };
+            } catch {
+                return { success: false, error: 'HTTP ' + resp.status };
+            }
+        }
         try {
             const json = JSON.parse(resp.text);
             if (json.errors && json.errors.length) {
