@@ -1342,7 +1342,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                         ${LANGUAGES.map(l => `<option value="${l.value}">${l.label}</option>`).join('')}
                     </select>
                 </div>
-                <div style="margin-bottom: 12px; position: relative;">
+                <div style="margin-bottom: 12px; position: relative; display: flex; flex-direction: column;">
                     <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 6px;">Метки контента</label>
                     <div id="tmod-ccl-trigger" style="display: flex; align-items: center; justify-content: space-between; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; cursor: pointer; user-select: none;">
                         <span id="tmod-ccl-trigger-text">Выбрано: 0</span>
@@ -1425,15 +1425,12 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
             `).join('');
 
             function renderCCLChips() {
-                const triggerW = content.querySelector('#tmod-ccl-trigger').offsetWidth;
-                cclChips.style.width = triggerW + 'px';
                 cclChips.innerHTML = [...selectedCCL].map(id => {
                     const item = CCL_ITEMS.find(c => c.id === id);
-                    const short = item.label.length > 24 ? item.label.slice(0, 22) + '…' : item.label;
-                    return `<span title="${item.label}" style="display: inline-flex; align-items: center; gap: 4px; background: #3a3a3d; color: #efeff1; border-radius: 4px; padding: 2px 8px; font-size: 11px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                        ${short}
-                        <span data-ccl-remove="${id}" style="cursor: pointer; color: #adadb8; margin-left: 2px; font-size: 13px; line-height: 1;">×</span>
-                    </span>`;
+                    return `<div title="${item.label}" style="display: flex; align-items: center; justify-content: space-between; background: #3a3a3d; color: #efeff1; border-radius: 4px; padding: 4px 8px; font-size: 12px; overflow: hidden;">
+                        <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.label}</span>
+                        <span data-ccl-remove="${id}" style="cursor: pointer; color: #adadb8; margin-left: 8px; font-size: 14px; line-height: 1; flex-shrink: 0;">×</span>
+                    </div>`;
                 }).join('');
                 cclTriggerText.textContent = `Выбрано: ${selectedCCL.size}`;
 
