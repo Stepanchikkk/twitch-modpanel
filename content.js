@@ -897,52 +897,56 @@
                     hiddenZone.style.borderColor = '';
                 }
                 const target = over.closest('.tmod-feature-btn');
-                if (dragState.fromHidden === false && target && target !== dragState.btn && target.parentNode === grid) {
-                    const fromIdx = tileOrder.indexOf(dragState.feature);
-                    const toIdx = tileOrder.indexOf(target.dataset.feature);
-                    if (fromIdx !== -1 && toIdx !== -1) {
-                        tileOrder.splice(fromIdx, 1);
-                        tileOrder.splice(toIdx, 0, dragState.feature);
+                if (target && target !== dragState.btn) {
+                    const wrapper = target.closest('.tmod-tile-wrapper');
+                    const inGrid = wrapper && wrapper.parentNode === grid;
+                    if (dragState.fromHidden === false && inGrid) {
+                        const fromIdx = tileOrder.indexOf(dragState.feature);
+                        const toIdx = tileOrder.indexOf(target.dataset.feature);
+                        if (fromIdx !== -1 && toIdx !== -1) {
+                            tileOrder.splice(fromIdx, 1);
+                            tileOrder.splice(toIdx, 0, dragState.feature);
+                            renderTiles();
+                            const newBtn = grid.querySelector(`[data-feature="${dragState.feature}"]`);
+                            if (newBtn) { newBtn.style.opacity = '0.4'; dragState.btn = newBtn; }
+                            saveTilesConfig();
+                        }
+                        if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
+                    } else if (dragState.fromHidden && inGrid) {
+                        if (dragState.placeholder) dragState.placeholder.remove();
+                        const ph = document.createElement('div');
+                        ph.className = 'tmod-drag-placeholder';
+                        ph.style.cssText = 'width:100%;height:100%;border:2px dashed #9146FF;border-radius:8px;background:rgba(145,70,255,0.1);pointer-events:none;box-sizing:border-box;';
+                        wrapper.parentNode.insertBefore(ph, wrapper);
+                        dragState.placeholder = ph;
+                        const toIdx = tileOrder.indexOf(target.dataset.feature);
+                        const fromIdx = tileOrder.indexOf(dragState.feature);
+                        if (fromIdx !== -1) {
+                            tileOrder.splice(fromIdx, 1);
+                            tileOrder.splice(toIdx, 0, dragState.feature);
+                        } else if (toIdx !== -1) {
+                            tileOrder.splice(toIdx, 0, dragState.feature);
+                        }
                         renderTiles();
-                        const newBtn = grid.querySelector(`[data-feature="${dragState.feature}"]`);
-                        if (newBtn) { newBtn.style.opacity = '0.4'; dragState.btn = newBtn; }
                         saveTilesConfig();
-                    }
-                    if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
-                } else if (dragState.fromHidden && target && target.parentNode === grid) {
-                    if (dragState.placeholder) dragState.placeholder.remove();
-                    const ph = document.createElement('div');
-                    ph.className = 'tmod-drag-placeholder';
-                    ph.style.cssText = 'width:100%;height:100%;border:2px dashed #9146FF;border-radius:8px;background:rgba(145,70,255,0.1);pointer-events:none;box-sizing:border-box;';
-                    target.parentNode.insertBefore(ph, target);
-                    dragState.placeholder = ph;
-                    const toIdx = tileOrder.indexOf(target.dataset.feature);
-                    const fromIdx = tileOrder.indexOf(dragState.feature);
-                    if (fromIdx !== -1) {
-                        tileOrder.splice(fromIdx, 1);
-                        tileOrder.splice(toIdx, 0, dragState.feature);
-                    } else if (toIdx !== -1) {
-                        tileOrder.splice(toIdx, 0, dragState.feature);
-                    }
-                    renderTiles();
-                    saveTilesConfig();
-                } else if (dragState.fromHidden && !target && over.closest('#tmod-tiles-grid')) {
-                    if (dragState.placeholder) dragState.placeholder.remove();
-                    const ph = document.createElement('div');
-                    ph.className = 'tmod-drag-placeholder';
-                    ph.style.cssText = 'width:100%;height:100%;border:2px dashed #9146FF;border-radius:8px;background:rgba(145,70,255,0.1);pointer-events:none;box-sizing:border-box;';
-                    grid.appendChild(ph);
-                    dragState.placeholder = ph;
-                    if (tileOrder.includes(dragState.feature)) {
-                        tileOrder = tileOrder.filter(f => f !== dragState.feature);
-                        tileOrder.push(dragState.feature);
+                    } else if (dragState.fromHidden && !target && over.closest('#tmod-tiles-grid')) {
+                        if (dragState.placeholder) dragState.placeholder.remove();
+                        const ph = document.createElement('div');
+                        ph.className = 'tmod-drag-placeholder';
+                        ph.style.cssText = 'width:100%;height:100%;border:2px dashed #9146FF;border-radius:8px;background:rgba(145,70,255,0.1);pointer-events:none;box-sizing:border-box;';
+                        grid.appendChild(ph);
+                        dragState.placeholder = ph;
+                        if (tileOrder.includes(dragState.feature)) {
+                            tileOrder = tileOrder.filter(f => f !== dragState.feature);
+                            tileOrder.push(dragState.feature);
+                        } else {
+                            tileOrder.push(dragState.feature);
+                        }
+                        renderTiles();
+                        saveTilesConfig();
                     } else {
-                        tileOrder.push(dragState.feature);
+                        if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
                     }
-                    renderTiles();
-                    saveTilesConfig();
-                } else {
-                    if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
                 }
             }
         }
