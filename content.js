@@ -910,6 +910,7 @@
                         renderTiles();
                         const newBtn = grid.querySelector(`[data-feature="${dragState.feature}"]`);
                         if (newBtn) { newBtn.style.opacity = '0.4'; dragState.btn = newBtn; }
+                        saveTilesConfig();
                     }
                     if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
                 } else if (dragState.fromHidden && target && target.parentNode === grid) {
@@ -919,6 +920,16 @@
                     ph.style.cssText = 'width:100%;height:100%;border:2px dashed #9146FF;border-radius:8px;background:rgba(145,70,255,0.1);pointer-events:none;box-sizing:border-box;';
                     target.parentNode.insertBefore(ph, target);
                     dragState.placeholder = ph;
+                    const toIdx = tileOrder.indexOf(target.dataset.feature);
+                    const fromIdx = tileOrder.indexOf(dragState.feature);
+                    if (fromIdx !== -1) {
+                        tileOrder.splice(fromIdx, 1);
+                        tileOrder.splice(toIdx, 0, dragState.feature);
+                    } else if (toIdx !== -1) {
+                        tileOrder.splice(toIdx, 0, dragState.feature);
+                    }
+                    renderTiles();
+                    saveTilesConfig();
                 } else if (dragState.fromHidden && !target && over.closest('#tmod-tiles-grid')) {
                     if (dragState.placeholder) dragState.placeholder.remove();
                     const ph = document.createElement('div');
@@ -926,6 +937,14 @@
                     ph.style.cssText = 'width:100%;height:100%;border:2px dashed #9146FF;border-radius:8px;background:rgba(145,70,255,0.1);pointer-events:none;box-sizing:border-box;';
                     grid.appendChild(ph);
                     dragState.placeholder = ph;
+                    if (tileOrder.includes(dragState.feature)) {
+                        tileOrder = tileOrder.filter(f => f !== dragState.feature);
+                        tileOrder.push(dragState.feature);
+                    } else {
+                        tileOrder.push(dragState.feature);
+                    }
+                    renderTiles();
+                    saveTilesConfig();
                 } else {
                     if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
                 }
@@ -947,18 +966,14 @@
             if (wasHidden) {
                 if (!dropHidden) {
                     tileHidden = tileHidden.filter(f => f !== feature);
-                    const target = over && over.closest('.tmod-feature-btn');
-                    let insertAt = tileOrder.length;
-                    if (target && target.parentNode === grid) {
-                        const ti = tileOrder.indexOf(target.dataset.feature);
-                        if (ti !== -1) insertAt = ti;
-                    }
-                    if (!tileOrder.includes(feature)) tileOrder.splice(insertAt, 0, feature);
+                } else {
+                    tileOrder = tileOrder.filter(f => f !== feature);
                 }
             } else if (dropHidden && !tileHidden.includes(feature)) {
                 tileHidden.push(feature);
+                tileOrder = tileOrder.filter(f => f !== feature);
             }
-            renderTiles(); renderHidden(); saveTilesConfig();
+            saveTilesConfig();
             dragState = null;
         }
 
