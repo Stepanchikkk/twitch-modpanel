@@ -747,6 +747,10 @@
                     transform: scale(0.92);
                     opacity: 0.85;
                 }
+                .tmod-edit-mode .tmod-tile-action {
+                    opacity: 1 !important;
+                    pointer-events: auto !important;
+                }
                 .tmod-drag-ghost {
                     transform: scale(1.06) !important;
                     opacity: 1 !important;
@@ -832,8 +836,8 @@
         function tileHtml(feature, hidden) {
             if (!TILE_ICONS[feature]) return '';
             const actionBtn = hidden
-                ? `<button class="tmod-tile-action tmod-tile-add" data-feature="${feature}" title="Показать" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#9146FF;border:none;color:white;font-size:14px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;">+</button>`
-                : `<button class="tmod-tile-action tmod-tile-remove" data-feature="${feature}" title="Скрыть" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#ff6b6b;border:none;color:white;font-size:14px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;">−</button>`;
+                ? `<button class="tmod-tile-action tmod-tile-add" data-feature="${feature}" title="Показать" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:transparent;border:2px solid #9146FF;color:#9146FF;font-size:14px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;opacity:0;pointer-events:none;transition:opacity 0.2s;">+</button>`
+                : `<button class="tmod-tile-action tmod-tile-remove" data-feature="${feature}" title="Скрыть" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:transparent;border:2px solid #ff6b6b;color:#ff6b6b;font-size:14px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;opacity:0;pointer-events:none;transition:opacity 0.2s;">−</button>`;
             return `<div class="tmod-tile-wrapper" style="position:relative;">${actionBtn}<button class="tmod-feature-btn" data-feature="${feature}">${TILE_ICONS[feature]}<span class="tmod-label">${TILE_LABELS[feature]}</span></button></div>`;
         }
 
