@@ -1537,24 +1537,19 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
 
         async function loadChatters() {
             try {
-                const url = `https://tmi.twitch.tv/group/user/${channelName}/chatters`;
-                let text;
-                if (IS_EXTENSION && typeof chrome !== 'undefined' && chrome.runtime) {
-                    const resp = await chrome.runtime.sendMessage({ type: 'FETCH_URL', url });
-                    console.log('[ModPanel] TMI resp:', resp);
-                    if (!resp.success) return [];
-                    text = resp.text;
-                } else {
-                    const resp = await apiRequest(url, {});
-                    if (resp.error || !resp.ok) return [];
-                    text = resp.text;
-                }
-                const data = JSON.parse(text);
-                console.log('[ModPanel] TMI data:', JSON.stringify(data).substring(0, 200));
-                const ch = data.chatters || {};
-                const all = [].concat(ch.broadcaster || [], ch.moderators || [], ch.vips || [], ch.viewers || []);
-                return all.map(login => ({ user_login: login, user_name: login }));
-            } catch (e) { console.log('[ModPanel] TMI error:', e); return []; }
+                const token = await getToken();
+                if (!token) return [];
+                const broadcasterId = await getChannelId(channelName, token);
+                if (!broadcasterId) return [];
+                const userId = await getCurrentUserId(token);
+                if (!userId) return [];
+                const resp = await apiRequest(`https://api.twitch.tv/helix/chat/chatters?broadcaster_id=${broadcasterId}&moderator_id=${userId}&first=1000`, {
+                    headers: { 'Authorization': `Bearer ${token}`, 'Client-Id': CLIENT_ID }
+                });
+                if (resp.error || !resp.ok) return [];
+                const data = JSON.parse(resp.text);
+                return (data.data || []).map(c => ({ user_login: c.user_login, user_name: c.user_name }));
+            } catch { return []; }
         }
 
         async function sendShoutout(recipientLogin) {
