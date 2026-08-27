@@ -2747,10 +2747,9 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         const status = { isBanned: null, isTimedOut: null, isVip: null, isMod: null, isBlocked: null, banExpiresAt: null, banCreatedAt: null };
         let statusChannelId = null;
         if (channel) {
-            const broadcasterId = await getChannelId(channel, token);
+            const [broadcasterId, me] = await Promise.all([getChannelId(channel, token), getCurrentUserId(token)]);
             if (broadcasterId) {
                 statusChannelId = broadcasterId;
-                const me = await getCurrentUserId(token);
                 debugLog('mod-ctx', { channel, broadcasterId, me });
                 const banned = await helixCall(`https://api.twitch.tv/helix/moderation/banned?broadcaster_id=${broadcasterId}&user_id=${userId}`);
                 debugLog('mod-banned-resp', { ok: banned.success, status: banned.status, error: banned.error });
@@ -2963,8 +2962,24 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         }
     }
 
+    // Мгновенно собираемый статус: VIP/мод видны по бейджам сообщения и флагам
+    // сессии без единого запроса к API. Рендерим первым делом — переключатели
+    // ролей не должны ждать долгую цепочку Helix.
+    function applyInstantModStatus() {
+        if (!modMenuEl || !modMenuState) return;
+        const s = modMenuState.status = modMenuState.status || {};
+        const st = modMenuState;
+        const badges = readBadgesFromMessage(st.msgEl);
+        if (s.isVip !== true && (st.isVip === true || badges.isVip === true)) s.isVip = true;
+        if (s.isMod !== true && (st.isModerator === true || badges.isMod === true)) s.isMod = true;
+        if (st.sessionVip === true) s.isVip = true;
+        if (st.sessionMod === true) s.isMod = true;
+        renderModMenuToggles();
+    }
+
     async function refreshModMenuStatus() {
         if (!modMenuEl || !modMenuState || !modMenuState.userId) return;
+        applyInstantModStatus();
         const status = await fetchModStatus(modMenuState.userId);
         if (!modMenuEl || !modMenuState) return;
         modMenuState.status = status;
