@@ -673,6 +673,23 @@
         const rewardsIconUrl = iconUrl('icon-rewards.svg');
         const streamIconUrl = iconUrl('icon-stream.svg');
 
+        const TILE_ICONS = {
+            announce: `<img src="${announceIconUrl}" alt="">`,
+            chat: `<img src="${chatIconUrl}" alt="">`,
+            poll: `<img src="${pollIconUrl}" alt="">`,
+            prediction: `<img src="${predictionIconUrl}" alt="">`,
+            clip: `<img src="${clipIconUrl}" alt="">`,
+            rewards: `<img src="${rewardsIconUrl}" alt="">`,
+            stream: `<svg width="24" height="24" viewBox="0 0 24 24"><path fill="white" fill-rule="evenodd" d="M13.207 7.621 4 16.828V20h3.172l9.207-9.207-3.172-3.172Zm4.586 1.758L14.62 6.207l1.88-1.879L19.672 7.5l-1.88 1.879ZM8 21.999H2v-6L15.086 2.915a2 2 0 0 1 2.828 0l3.172 3.172a2 2 0 0 1 0 2.828L8 22Z" clip-rule="evenodd"></path></svg>`,
+            shoutout: `<svg viewBox="0 0 24 24" fill="white" width="24" height="24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 12h-2v-2h2v2zm0-4h-2V6h2v4z"/></svg>`,
+            raid: `<svg width="24" height="24" viewBox="0 0 24 24"><path fill="white" fill-rule="evenodd" d="M9.364 16.849A1.99 1.99 0 0 0 9 18v2a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2a1.99 1.99 0 0 0-.364-1.15l2.796-4.196A4.62 4.62 0 0 1 22 12a9.95 9.95 0 0 0-.235-2.163C20.777 5.354 16.78 2 12 2S3.223 5.354 2.234 9.837C2.081 10.534 2 11.257 2 12a4.618 4.618 0 0 1 4.568.655l2.796 4.194Zm-2.18-6.199a6.62 6.62 0 0 0-2.848-.95 8.004 8.004 0 0 1 15.328 0c-1 .094-1.976.415-2.848.951a11.72 11.72 0 0 0-9.632 0Zm8.145 1.553a9.722 9.722 0 0 0-6.659 0L11.202 16h1.596l2.531-3.797Z" clip-rule="evenodd"></path></svg>`,
+        };
+        const TILE_LABELS = {
+            announce: 'Анонс', chat: 'Чат', poll: 'Опрос', prediction: 'Прогноз',
+            clip: 'Клип', rewards: 'Награды', stream: 'Стрим', shoutout: 'Отметить', raid: 'Рейд'
+        };
+        const DEFAULT_TILE_ORDER = ['announce', 'chat', 'poll', 'prediction', 'clip', 'rewards', 'stream', 'shoutout', 'raid'];
+
         panel.innerHTML = `
             <style>
                 @keyframes tmod-slide-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
@@ -720,25 +737,46 @@
                 #tmod-cat-results::-webkit-scrollbar-track { background: transparent; }
                 #tmod-cat-results::-webkit-scrollbar-thumb { background: #3a3a3d; border-radius: 2px; }
                 #tmod-cat-results::-webkit-scrollbar-thumb:hover { background: #555; }
+                .tmod-edit-mode .tmod-feature-btn {
+                    transform: scale(0.92);
+                    opacity: 0.85;
+                    transition: transform 0.2s, opacity 0.2s;
+                    cursor: move;
+                }
+                .tmod-edit-mode .tmod-feature-btn:hover {
+                    transform: scale(0.92);
+                    opacity: 0.85;
+                }
+                .tmod-drag-ghost {
+                    transform: scale(1.06) !important;
+                    opacity: 1 !important;
+                    box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
+                    position: fixed !important;
+                    z-index: 999999;
+                    pointer-events: none !important;
+                    margin: 0 !important;
+                }
+                .tmod-edit-mode #tmod-tiles-grid {
+                    min-height: 60px;
+                }
             </style>
             <div class="tmod-no-select" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #18181b; border-bottom: 1px solid #3a3a3d; cursor: move; border-radius: 8px 8px 0 0;" id="tmod-panel-header">
                 <div style="display: flex; align-items: center; gap: 10px;">
                     ${headerIcon}
                     <h3 style="margin: 0; font-size: 14px; font-weight: 600; color: #efeff1; pointer-events: none;">Панель модератора</h3>
                 </div>
-                <button id="tmod-panel-close" style="background: none; border: none; color: #adadb8; cursor: pointer; padding: 4px; font-size: 18px;">✕</button>
+                <div style="display: flex; align-items: center; gap: 2px;">
+                    <button id="tmod-panel-edit" title="Настроить панель" style="background: none; border: none; color: #adadb8; cursor: pointer; padding: 4px; display: flex;"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"/><path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5v11z"/></svg></button>
+                    <button id="tmod-panel-close" style="background: none; border: none; color: #adadb8; cursor: pointer; padding: 4px; font-size: 18px;">✕</button>
+                </div>
             </div>
             <div style="padding: 8px; border-radius: 0 0 8px 8px; min-width: 360px; box-sizing: border-box;" id="tmod-panel-content">
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
-                    <button class="tmod-feature-btn" data-feature="announce"><img src="${announceIconUrl}" alt=""><span class="tmod-label">Анонс</span></button>
-                    <button class="tmod-feature-btn" data-feature="chat"><img src="${chatIconUrl}" alt=""><span class="tmod-label">Чат</span></button>
-                    <button class="tmod-feature-btn" data-feature="poll"><img src="${pollIconUrl}" alt=""><span class="tmod-label">Опрос</span></button>
-                    <button class="tmod-feature-btn" data-feature="prediction"><img src="${predictionIconUrl}" alt=""><span class="tmod-label">Прогноз</span></button>
-                    <button class="tmod-feature-btn" data-feature="clip"><img src="${clipIconUrl}" alt=""><span class="tmod-label">Клип</span></button>
-                    <button class="tmod-feature-btn" data-feature="rewards"><img src="${rewardsIconUrl}" alt=""><span class="tmod-label">Награды</span></button>
-                    <button class="tmod-feature-btn" data-feature="stream"><svg width="24" height="24" viewBox="0 0 24 24"><path fill="white" fill-rule="evenodd" d="M13.207 7.621 4 16.828V20h3.172l9.207-9.207-3.172-3.172Zm4.586 1.758L14.62 6.207l1.88-1.879L19.672 7.5l-1.88 1.879ZM8 21.999H2v-6L15.086 2.915a2 2 0 0 1 2.828 0l3.172 3.172a2 2 0 0 1 0 2.828L8 22Z" clip-rule="evenodd"></path></svg><span class="tmod-label">Стрим</span></button>
-                    <button class="tmod-feature-btn" data-feature="shoutout"><svg viewBox="0 0 24 24" fill="white" width="24" height="24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 12h-2v-2h2v2zm0-4h-2V6h2v4z"/></svg><span class="tmod-label">Отметить</span></button>
-                    <button class="tmod-feature-btn" data-feature="raid"><svg width="24" height="24" viewBox="0 0 24 24"><path fill="white" fill-rule="evenodd" d="M9.364 16.849A1.99 1.99 0 0 0 9 18v2a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2a1.99 1.99 0 0 0-.364-1.15l2.796-4.196A4.62 4.62 0 0 1 22 12a9.95 9.95 0 0 0-.235-2.163C20.777 5.354 16.78 2 12 2S3.223 5.354 2.234 9.837C2.081 10.534 2 11.257 2 12a4.618 4.618 0 0 1 4.568.655l2.796 4.194Zm-2.18-6.199a6.62 6.62 0 0 0-2.848-.95 8.004 8.004 0 0 1 15.328 0c-1 .094-1.976.415-2.848.951a11.72 11.72 0 0 0-9.632 0Zm8.145 1.553a9.722 9.722 0 0 0-6.659 0L11.202 16h1.596l2.531-3.797Z" clip-rule="evenodd"></path></svg><span class="tmod-label">Рейд</span></button>
+                <div id="tmod-tiles-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;"></div>
+                <div id="tmod-tiles-hidden-zone" style="display: none; margin-top: 12px; border-top: 1px dashed #3a3a3d; padding-top: 8px;">
+                    <div style="position: relative; min-height: 60px;">
+                        <div id="tmod-tiles-hidden" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;"></div>
+                        <div id="tmod-tiles-hidden-label" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 12px; color: #adadb8; pointer-events: none; text-align: center;">Перетащи сюда,<br>чтобы скрыть плитку</div>
+                    </div>
                 </div>
             </div>
         `;
@@ -779,21 +817,171 @@
 
         panel.querySelector('#tmod-panel-close').addEventListener('click', () => { panel.remove(); panelOpen = false; panelPosition = null; });
 
-        panel.querySelectorAll('.tmod-feature-btn').forEach(btn => {
-            btn.addEventListener('click', function () {
-                const feature = this.dataset.feature;
-                const rect = panel.getBoundingClientRect();
-                panelPosition = { right: window.innerWidth - rect.right, bottom: window.innerHeight - rect.bottom };
-                if (feature === 'announce') showAnnounceSection(panel);
-                else if (feature === 'chat') showChatSection(panel);
-                else if (feature === 'poll') sendToChatInput('/poll');
-                else if (feature === 'prediction') sendToChatInput('/prediction');
-                else if (feature === 'clip') showClipSection(panel);
-                else if (feature === 'rewards') sendToChatInput('/requests');
-                else if (feature === 'stream') showStreamSection(panel);
-                else if (feature === 'shoutout') showShoutoutSection(panel);
-                else if (feature === 'raid') showRaidSection(panel);
-            });
+        const content = panel.querySelector('#tmod-panel-content');
+        const grid = panel.querySelector('#tmod-tiles-grid');
+        const hiddenZone = panel.querySelector('#tmod-tiles-hidden-zone');
+        const hiddenGrid = panel.querySelector('#tmod-tiles-hidden');
+        const hiddenLabel = panel.querySelector('#tmod-tiles-hidden-label');
+        const editBtn = panel.querySelector('#tmod-panel-edit');
+
+        let tileOrder = null;
+        let tileHidden = [];
+        let tileEditing = false;
+        let dragState = null;
+
+        function tileHtml(feature) {
+            if (!TILE_ICONS[feature]) return '';
+            return `<button class="tmod-feature-btn" data-feature="${feature}">${TILE_ICONS[feature]}<span class="tmod-label">${TILE_LABELS[feature]}</span></button>`;
+        }
+
+        function renderTiles() {
+            const visible = (tileOrder || []).filter(f => !tileHidden.includes(f));
+            grid.innerHTML = visible.map(tileHtml).join('');
+        }
+
+        function renderHidden() {
+            hiddenGrid.innerHTML = tileHidden.map(tileHtml).join('');
+            hiddenLabel.style.display = tileHidden.length ? 'none' : 'block';
+        }
+
+        function saveTilesConfig() {
+            storageSet('tmod_tiles_config', JSON.stringify({ order: tileOrder, hidden: tileHidden }));
+        }
+
+        function activate(feature) {
+            const rect = panel.getBoundingClientRect();
+            panelPosition = { right: window.innerWidth - rect.right, bottom: window.innerHeight - rect.bottom };
+            if (feature === 'announce') showAnnounceSection(panel);
+            else if (feature === 'chat') showChatSection(panel);
+            else if (feature === 'poll') sendToChatInput('/poll');
+            else if (feature === 'prediction') sendToChatInput('/prediction');
+            else if (feature === 'clip') showClipSection(panel);
+            else if (feature === 'rewards') sendToChatInput('/requests');
+            else if (feature === 'stream') showStreamSection(panel);
+            else if (feature === 'shoutout') showShoutoutSection(panel);
+            else if (feature === 'raid') showRaidSection(panel);
+        }
+
+        function startTileDrag(e, btn, fromHidden) {
+            const feature = btn.dataset.feature;
+            const rect = btn.getBoundingClientRect();
+            const ghost = btn.cloneNode(true);
+            ghost.classList.add('tmod-drag-ghost');
+            ghost.style.width = rect.width + 'px';
+            ghost.style.height = rect.height + 'px';
+            ghost.style.left = (e.clientX - rect.width / 2) + 'px';
+            ghost.style.top = (e.clientY - rect.height / 2) + 'px';
+            document.body.appendChild(ghost);
+            btn.style.opacity = '0.4';
+            dragState = { feature, ghost, fromHidden, offsetX: e.clientX - rect.left, offsetY: e.clientY - rect.top, btn };
+        }
+
+        function moveTileDrag(e) {
+            if (!dragState) return;
+            const g = dragState.ghost;
+            g.style.left = (e.clientX - dragState.offsetX) + 'px';
+            g.style.top = (e.clientY - dragState.offsetY) + 'px';
+            const over = document.elementFromPoint(e.clientX, e.clientY);
+            if (over) {
+                const inHidden = over.closest('#tmod-tiles-hidden-zone');
+                if (inHidden) {
+                    hiddenZone.style.background = '#1a1a1e';
+                    hiddenZone.style.borderColor = '#9146FF';
+                } else {
+                    hiddenZone.style.background = '';
+                    hiddenZone.style.borderColor = '';
+                }
+                const target = over.closest('.tmod-feature-btn');
+                if (target && target !== dragState.btn && dragState.fromHidden === false && target.parentNode === grid) {
+                    const fromIdx = tileOrder.indexOf(dragState.feature);
+                    const toIdx = tileOrder.indexOf(target.dataset.feature);
+                    if (fromIdx !== -1 && toIdx !== -1) {
+                        tileOrder.splice(fromIdx, 1);
+                        tileOrder.splice(toIdx, 0, dragState.feature);
+                        renderTiles();
+                        const newBtn = grid.querySelector(`[data-feature="${dragState.feature}"]`);
+                        if (newBtn) { newBtn.style.opacity = '0.4'; dragState.btn = newBtn; }
+                    }
+                }
+            }
+        }
+
+        function endTileDrag(e) {
+            if (!dragState) return;
+            const wasHidden = dragState.fromHidden;
+            const feature = dragState.feature;
+            if (dragState.ghost) dragState.ghost.remove();
+            dragState.btn.style.opacity = '';
+            const over = document.elementFromPoint(e.clientX, e.clientY);
+            const dropHidden = over && over.closest('#tmod-tiles-hidden-zone');
+            hiddenZone.style.background = '';
+            hiddenZone.style.borderColor = '';
+
+            if (wasHidden) {
+                if (!dropHidden) {
+                    tileHidden = tileHidden.filter(f => f !== feature);
+                    const target = over && over.closest('.tmod-feature-btn');
+                    let insertAt = tileOrder.length;
+                    if (target && target.parentNode === grid) {
+                        const ti = tileOrder.indexOf(target.dataset.feature);
+                        if (ti !== -1) insertAt = ti;
+                    }
+                    if (!tileOrder.includes(feature)) tileOrder.splice(insertAt, 0, feature);
+                }
+            } else if (dropHidden && !tileHidden.includes(feature)) {
+                tileHidden.push(feature);
+            }
+            renderTiles(); renderHidden(); saveTilesConfig();
+            dragState = null;
+        }
+
+        editBtn.addEventListener('click', () => {
+            tileEditing = !tileEditing;
+            panel.classList.toggle('tmod-edit-mode', tileEditing);
+            editBtn.style.color = tileEditing ? '#9146FF' : '#adadb8';
+            hiddenZone.style.display = tileEditing ? 'block' : 'none';
+        });
+
+        grid.addEventListener('mousedown', (e) => {
+            if (!tileEditing) return;
+            if (e.button !== 0) return;
+            const btn = e.target.closest('.tmod-feature-btn');
+            if (!btn) return;
+            e.preventDefault();
+            startTileDrag(e, btn, false);
+            document.addEventListener('mousemove', moveTileDrag);
+            document.addEventListener('mouseup', endTileDrag, { once: true });
+        });
+
+        hiddenGrid.addEventListener('mousedown', (e) => {
+            if (!tileEditing) return;
+            if (e.button !== 0) return;
+            const btn = e.target.closest('.tmod-feature-btn');
+            if (!btn) return;
+            e.preventDefault();
+            startTileDrag(e, btn, true);
+            document.addEventListener('mousemove', moveTileDrag);
+            document.addEventListener('mouseup', endTileDrag, { once: true });
+        });
+
+        grid.addEventListener('click', (e) => {
+            if (tileEditing) return;
+            const btn = e.target.closest('.tmod-feature-btn');
+            if (btn) activate(btn.dataset.feature);
+        });
+
+        storageGet('tmod_tiles_config').then(saved => {
+            try {
+                const cfg = JSON.parse(saved || 'null');
+                if (cfg && Array.isArray(cfg.order) && cfg.order.length) {
+                    tileOrder = cfg.order;
+                    tileHidden = Array.isArray(cfg.hidden) ? cfg.hidden : [];
+                } else {
+                    tileOrder = [...DEFAULT_TILE_ORDER];
+                }
+            } catch { tileOrder = [...DEFAULT_TILE_ORDER]; }
+            if (!tileOrder || !tileOrder.length) tileOrder = [...DEFAULT_TILE_ORDER];
+            renderTiles(); renderHidden();
         });
 
         document.documentElement.appendChild(panel);
