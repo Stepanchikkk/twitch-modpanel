@@ -1541,6 +1541,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 let text;
                 if (IS_EXTENSION && typeof chrome !== 'undefined' && chrome.runtime) {
                     const resp = await chrome.runtime.sendMessage({ type: 'FETCH_URL', url });
+                    console.log('[ModPanel] TMI resp:', resp);
                     if (!resp.success) return [];
                     text = resp.text;
                 } else {
@@ -1549,10 +1550,11 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                     text = resp.text;
                 }
                 const data = JSON.parse(text);
+                console.log('[ModPanel] TMI data:', JSON.stringify(data).substring(0, 200));
                 const ch = data.chatters || {};
                 const all = [].concat(ch.broadcaster || [], ch.moderators || [], ch.vips || [], ch.viewers || []);
                 return all.map(login => ({ user_login: login, user_name: login }));
-            } catch { return []; }
+            } catch (e) { console.log('[ModPanel] TMI error:', e); return []; }
         }
 
         async function sendShoutout(recipientLogin) {
