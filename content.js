@@ -1548,7 +1548,21 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 });
                 if (resp.error || !resp.ok) return [];
                 const data = JSON.parse(resp.text);
-                return (data.data || []).map(c => ({ user_login: c.user_login, user_name: c.user_name }));
+                const chatters = (data.data || []).map(c => ({ user_login: c.user_login, user_name: c.user_name, profile_image_url: '' }));
+                const logins = chatters.map(c => c.user_login);
+                for (let i = 0; i < logins.length; i += 100) {
+                    const batch = logins.slice(i, i + 100);
+                    const uResp = await apiRequest(`https://api.twitch.tv/helix/users?login=${batch.map(l => encodeURIComponent(l)).join('&login=')}`, {
+                        headers: { 'Authorization': `Bearer ${token}`, 'Client-Id': CLIENT_ID }
+                    });
+                    if (!uResp.error && uResp.ok) {
+                        const users = (JSON.parse(uResp.text).data || []);
+                        const avatarMap = {};
+                        users.forEach(u => { avatarMap[u.login] = u.profile_image_url; });
+                        chatters.forEach(c => { if (avatarMap[c.user_login]) c.profile_image_url = avatarMap[c.user_login]; });
+                    }
+                }
+                return chatters;
             } catch { return []; }
         }
 
@@ -1594,7 +1608,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 listDiv.innerHTML = filtered.map(c => `
                     <div class="tmod-so-item" data-login="${c.user_login}" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid #26262c; cursor: pointer; transition: background 0.1s;">
                         <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
-                            <div style="width: 28px; height: 28px; border-radius: 50%; background: #9146FF; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 13px; font-weight: 600; color: white;">${c.user_name.charAt(0).toUpperCase()}</div>
+                            ${c.profile_image_url ? `<img src="${c.profile_image_url}" style="width: 28px; height: 28px; border-radius: 50%; background: #26262c; flex-shrink: 0;">` : `<div style="width: 28px; height: 28px; border-radius: 50%; background: #9146FF; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 13px; font-weight: 600; color: white;">${c.user_name.charAt(0).toUpperCase()}</div>`}
                             <span style="font-size: 13px; color: #efeff1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${c.user_name}</span>
                         </div>
                         <span style="font-size: 12px; color: #9146FF; white-space: nowrap; flex-shrink: 0;">Шаутаут</span>
