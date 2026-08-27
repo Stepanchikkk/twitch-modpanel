@@ -753,10 +753,10 @@
             background: #0e0e10;
             border: 1px solid #3a3a3d;
             border-radius: 8px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            box-shadow: none;
             overflow: hidden;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            animation: tmod-slide-in 0.3s ease-out;
+            animation: tmod-slide-in 0.12s ease-out;
             user-select: none;
             -webkit-user-select: none;
             width: fit-content;
