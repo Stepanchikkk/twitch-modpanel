@@ -515,7 +515,8 @@
                 'user:write:chat',
                 'channel:manage:broadcast',
                 'moderator:manage:shoutouts',
-                'moderator:read:chatters'
+                'moderator:read:chatters',
+                'channel:manage:raids'
             ].join(' ');
 
             const authUrl = `https://id.twitch.tv/oauth2/authorize` +
@@ -737,6 +738,7 @@
                     <button class="tmod-feature-btn" data-feature="rewards"><img src="${rewardsIconUrl}" alt=""><span class="tmod-label">Награды</span></button>
                     <button class="tmod-feature-btn" data-feature="stream"><img src="${streamIconUrl}" alt=""><span class="tmod-label">Стрим</span></button>
                     <button class="tmod-feature-btn" data-feature="shoutout"><svg viewBox="0 0 24 24" fill="white" width="24" height="24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 12h-2v-2h2v2zm0-4h-2V6h2v4z"/></svg><span class="tmod-label">Шаутаут</span></button>
+                    <button class="tmod-feature-btn" data-feature="raid"><svg viewBox="0 0 24 24" fill="white" width="24" height="24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg><span class="tmod-label">Рейд</span></button>
                 </div>
             </div>
         `;
@@ -790,6 +792,7 @@
                 else if (feature === 'rewards') sendToChatInput('/requests');
                 else if (feature === 'stream') showStreamSection(panel);
                 else if (feature === 'shoutout') showShoutoutSection(panel);
+                else if (feature === 'raid') showRaidSection(panel);
             });
         });
 
@@ -1661,6 +1664,76 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
             manualBtn.onclick = doManualShoutout;
             manualInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doManualShoutout(); });
         });
+    }
+
+    // ============================================================================
+    // Рейд
+    // ============================================================================
+
+    function showRaidSection(panel) {
+        const channelName = window.location.pathname.slice(1);
+        const content = panel.querySelector('#tmod-panel-content');
+        if (!content) return;
+
+        const savedWidth = panel.getBoundingClientRect().width + 'px';
+        panel.style.width = savedWidth;
+        panel.style.minWidth = savedWidth;
+
+        content.innerHTML = `
+            <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;"><span>\u2190</span> <span>Назад</span></button>
+            <div style="margin-bottom: 10px;">
+                <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 4px;">Канал для рейда</label>
+                <input type="text" id="tmod-raid-input" placeholder="логин канала..." autocomplete="off" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
+            </div>
+            <button id="tmod-raid-btn" style="width: 100%; background: #9146FF; color: white; border: none; border-radius: 4px; padding: 10px; font-size: 14px; font-weight: 600; cursor: pointer;">Начать рейд</button>
+            <div id="tmod-raid-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
+        `;
+
+        content.querySelector('#tmod-back').onclick = () => { panel.remove(); panelOpen = false; setTimeout(() => createPanel(), 10); };
+
+        const rect = panel.getBoundingClientRect();
+        if (rect.top < 0) { panel.style.bottom = Math.max(10, panelPosition.bottom + rect.top) + 'px'; }
+
+        const raidInput = content.querySelector('#tmod-raid-input');
+        const raidBtn = content.querySelector('#tmod-raid-btn');
+        const statusDiv = content.querySelector('#tmod-raid-status');
+
+        async function doRaid() {
+            const target = raidInput.value.trim().replace('@', '');
+            if (!target) { statusDiv.innerHTML = '<span style="color:#ff6b6b;">Введите логин канала</span>'; return; }
+            raidBtn.disabled = true;
+            statusDiv.textContent = 'Поиск канала...';
+            statusDiv.style.color = '#adadb8';
+
+            const token = await getToken();
+            if (!token) { statusDiv.innerHTML = '<span style="color:#ff6b6b;">Нет токена</span>'; raidBtn.disabled = false; return; }
+
+            const broadcasterId = await getChannelId(channelName, token);
+            if (!broadcasterId) { statusDiv.innerHTML = '<span style="color:#ff6b6b;">Ошибка ID канала</span>'; raidBtn.disabled = false; return; }
+
+            const userResp = await apiRequest(`https://api.twitch.tv/helix/users?login=${encodeURIComponent(target)}`, {
+                headers: { 'Authorization': `Bearer ${token}`, 'Client-Id': CLIENT_ID }
+            });
+            if (userResp.error || !userResp.ok) { statusDiv.innerHTML = '<span style="color:#ff6b6b;">Канал не найден</span>'; raidBtn.disabled = false; return; }
+            let targetId;
+            try { targetId = JSON.parse(userResp.text).data[0].id; } catch { statusDiv.innerHTML = '<span style="color:#ff6b6b;">Канал не найден</span>'; raidBtn.disabled = false; return; }
+
+            statusDiv.textContent = 'Запуск рейда...';
+            const raidResp = await apiRequest(`https://api.twitch.tv/helix/raids?from_broadcaster_id=${broadcasterId}&to_broadcaster_id=${targetId}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, 'Client-Id': CLIENT_ID }
+            });
+            if (raidResp.status === 200 || (raidResp.ok && !raidResp.error)) {
+                statusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Рейд запущен!</span>';
+            } else {
+                try { const e = JSON.parse(raidResp.text); statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + (e.message || e.error || 'Ошибка') + '</span>'; }
+                catch { statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">Ошибка: HTTP ' + raidResp.status + '</span>'; }
+            }
+            raidBtn.disabled = false;
+        }
+
+        raidBtn.onclick = doRaid;
+        raidInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doRaid(); });
     }
 
     // ============================================================================
