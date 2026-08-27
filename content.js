@@ -913,7 +913,6 @@
                             renderTiles();
                             const newBtn = grid.querySelector(`[data-feature="${dragState.feature}"]`);
                             if (newBtn) { newBtn.style.opacity = '0.4'; dragState.btn = newBtn; }
-                            saveTilesConfig();
                         }
                         if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
                     } else if (dragState.fromHidden && inGrid) {
@@ -932,7 +931,6 @@
                             tileOrder.splice(toIdx, 0, dragState.feature);
                         }
                         renderTiles();
-                        saveTilesConfig();
                     } else if (dragState.fromHidden && !target && over.closest('#tmod-tiles-grid')) {
                         if (dragState.placeholder) dragState.placeholder.remove();
                         const ph = document.createElement('div');
@@ -947,7 +945,6 @@
                             tileOrder.push(dragState.feature);
                         }
                         renderTiles();
-                        saveTilesConfig();
                     } else {
                         if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
                     }
@@ -977,6 +974,7 @@
             if (wasHidden) {
                 if (!dropHidden) {
                     tileHidden = tileHidden.filter(f => f !== feature);
+                    if (!tileOrder.includes(feature)) tileOrder.push(feature);
                 } else {
                     tileOrder = tileOrder.filter(f => f !== feature);
                 }
@@ -986,7 +984,6 @@
             }
             renderTiles();
             renderHidden();
-            saveTilesConfig();
             dragState = null;
         }
 
@@ -1001,6 +998,7 @@
             panel.classList.toggle('tmod-edit-mode', tileEditing);
             hiddenZone.style.display = tileEditing ? 'block' : 'none';
             setEditBtnIcon(tileEditing);
+            if (!tileEditing) saveTilesConfig();
         });
         setEditBtnIcon(false);
 
@@ -1038,14 +1036,14 @@
                 const f = addBtn.dataset.feature;
                 tileHidden = tileHidden.filter(x => x !== f);
                 if (!tileOrder.includes(f)) tileOrder.push(f);
-                renderTiles(); renderHidden(); saveTilesConfig();
+                renderTiles(); renderHidden();
                 return;
             }
             const remBtn = e.target.closest('.tmod-tile-remove');
             if (remBtn) {
                 const f = remBtn.dataset.feature;
                 if (!tileHidden.includes(f)) tileHidden.push(f);
-                renderTiles(); renderHidden(); saveTilesConfig();
+                renderTiles(); renderHidden();
                 return;
             }
         });
