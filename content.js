@@ -737,13 +737,13 @@
                 #tmod-cat-results::-webkit-scrollbar-track { background: transparent; }
                 #tmod-cat-results::-webkit-scrollbar-thumb { background: #3a3a3d; border-radius: 2px; }
                 #tmod-cat-results::-webkit-scrollbar-thumb:hover { background: #555; }
-                .tmod-edit-mode .tmod-feature-btn {
+                .tmod-edit-mode .tmod-tile-wrapper {
                     transform: scale(0.92);
                     opacity: 0.85;
                     transition: transform 0.2s, opacity 0.2s;
                     cursor: move;
                 }
-                .tmod-edit-mode .tmod-feature-btn:hover {
+                .tmod-edit-mode .tmod-tile-wrapper:hover {
                     transform: scale(0.92);
                     opacity: 0.85;
                 }
@@ -829,18 +829,21 @@
         let tileEditing = false;
         let dragState = null;
 
-        function tileHtml(feature) {
+        function tileHtml(feature, hidden) {
             if (!TILE_ICONS[feature]) return '';
-            return `<button class="tmod-feature-btn" data-feature="${feature}">${TILE_ICONS[feature]}<span class="tmod-label">${TILE_LABELS[feature]}</span></button>`;
+            const actionBtn = hidden
+                ? `<button class="tmod-tile-action tmod-tile-add" data-feature="${feature}" title="Показать" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#9146FF;border:none;color:white;font-size:14px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;">+</button>`
+                : `<button class="tmod-tile-action tmod-tile-remove" data-feature="${feature}" title="Скрыть" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:#ff6b6b;border:none;color:white;font-size:14px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;">−</button>`;
+            return `<div class="tmod-tile-wrapper" style="position:relative;">${actionBtn}<button class="tmod-feature-btn" data-feature="${feature}">${TILE_ICONS[feature]}<span class="tmod-label">${TILE_LABELS[feature]}</span></button></div>`;
         }
 
         function renderTiles() {
             const visible = (tileOrder || []).filter(f => !tileHidden.includes(f));
-            grid.innerHTML = visible.map(tileHtml).join('');
+            grid.innerHTML = visible.map(f => tileHtml(f, false)).join('');
         }
 
         function renderHidden() {
-            hiddenGrid.innerHTML = tileHidden.map(tileHtml).join('');
+            hiddenGrid.innerHTML = tileHidden.map(f => tileHtml(f, true)).join('');
             hiddenLabel.style.display = tileHidden.length ? 'none' : 'block';
         }
 
@@ -968,6 +971,24 @@
             if (tileEditing) return;
             const btn = e.target.closest('.tmod-feature-btn');
             if (btn) activate(btn.dataset.feature);
+        });
+
+        content.addEventListener('click', (e) => {
+            const addBtn = e.target.closest('.tmod-tile-add');
+            if (addBtn) {
+                const f = addBtn.dataset.feature;
+                tileHidden = tileHidden.filter(x => x !== f);
+                if (!tileOrder.includes(f)) tileOrder.push(f);
+                renderTiles(); renderHidden(); saveTilesConfig();
+                return;
+            }
+            const remBtn = e.target.closest('.tmod-tile-remove');
+            if (remBtn) {
+                const f = remBtn.dataset.feature;
+                if (!tileHidden.includes(f)) tileHidden.push(f);
+                renderTiles(); renderHidden(); saveTilesConfig();
+                return;
+            }
         });
 
         storageGet('tmod_tiles_config').then(saved => {
