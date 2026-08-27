@@ -2205,6 +2205,24 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
     // Запуск
     // ============================================================================
 
+    function watchChannelChanges() {
+        let lastPath = window.location.pathname;
+        setInterval(() => {
+            if (window.location.pathname !== lastPath) {
+                lastPath = window.location.pathname;
+                const btnWrapper = document.getElementById('tmod-btn-wrapper');
+                if (btnWrapper) btnWrapper.remove();
+                if (panelOpen && panelElement) { panelElement.remove(); panelOpen = false; }
+                if (isStreamPage()) {
+                    setTimeout(injectButton, 500);
+                    warmAccentCache();
+                    setTimeout(getChannelAccentColor, 3000);
+                    setTimeout(getChannelAccentColor, 12000);
+                }
+            }
+        }, 1000);
+    }
+
     if (isStreamPage()) {
         console.log('[ModPanel] Starting on:', window.location.pathname);
         if (document.readyState === 'loading') {
@@ -2217,6 +2235,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         setTimeout(getChannelAccentColor, 3000);
         setTimeout(getChannelAccentColor, 12000);
     }
+    watchChannelChanges();
 
     // Меню Tampermonkey (в расширении эту роль играет popup/)
     if (!IS_EXTENSION && typeof GM_registerMenuCommand === 'function') {
