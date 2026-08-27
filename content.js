@@ -1059,6 +1059,12 @@
                 }
             } catch { tileOrder = [...DEFAULT_TILE_ORDER]; }
             if (!tileOrder || !tileOrder.length) tileOrder = [...DEFAULT_TILE_ORDER];
+            // Восстанавливаем плитки, потерянные между order и hidden (баги старых версий)
+            (Object.keys(TILE_ICONS)).forEach(f => {
+                if (tileOrder.indexOf(f) === -1 && tileHidden.indexOf(f) === -1) {
+                    tileOrder.push(f);
+                }
+            });
             renderTiles(); renderHidden();
         });
 
