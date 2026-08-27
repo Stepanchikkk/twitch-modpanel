@@ -26,6 +26,11 @@
   "content_scripts": [
     {
       "matches": ["https://*.twitch.tv/*"],
+      "js": ["preload.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://*.twitch.tv/*"],
       "js": ["content.js"],
       "run_at": "document_idle",
       "type": "module"

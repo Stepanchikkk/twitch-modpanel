@@ -22,6 +22,17 @@
     let panelOpen = false;
     let panelElement = null;
     let panelPosition = null;
+    // Меню действий модератора: можно отключить в настройках панели (шестерёнка в шапке).
+    let tmodContextMenuEnabled = true;
+
+    function getPanelSettings() {
+        return storageGet('tmod_settings').then((raw) => {
+            try { return raw ? JSON.parse(raw) : {}; } catch { return {}; }
+        });
+    }
+    function savePanelSettings(s) {
+        return storageSet('tmod_settings', JSON.stringify(s));
+    }
 
     const ICON_OK = '<svg style="vertical-align:-2px;margin-right:4px;" width="13" height="13" viewBox="0 0 24 24" fill="#00ff00"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
     const ICON_ERR = '<svg style="vertical-align:-2px;margin-right:4px;" width="13" height="13" viewBox="0 0 24 24" fill="#ff6b6b"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
@@ -66,7 +77,9 @@
     let accentProbedAt = 0;
 
     function getChannelName() {
-        return window.location.pathname.slice(1).split('/')[0] || null;
+        const parts = window.location.pathname.slice(1).split('/');
+        if (parts[0] === 'moderator' && parts[1]) return parts[1];
+        return parts[0] || null;
     }
 
     // Приоритет источников: 1) реальные primary-анонсы в чате (инлайн border-color —
@@ -481,13 +494,27 @@
 
     function sendToChatInput(message) {
         if (IS_EXTENSION) {
-            window.postMessage({ type: 'TMOD_SEND_CHAT', message: message }, '*');
-            return true;
+            return new Promise((resolve) => {
+                const done = (ok) => { cleanup(); resolve(ok); };
+                const onMsg = (ev) => {
+                    if (ev.source !== window) return;
+                    if (ev.data?.type === 'TMOD_CHAT_SUCCESS' && ev.data.message === message) done(true);
+                    else if (ev.data?.type === 'TMOD_CHAT_ERROR' && ev.data.message === message) done(false);
+                };
+                window.addEventListener('message', onMsg);
+                window.postMessage({ type: 'TMOD_SEND_CHAT', message: message }, '*');
+                setTimeout(() => done(false), 2500);
+                function cleanup() { window.removeEventListener('message', onMsg); }
+            });
         }
         const chatComponent = getChatComponent();
-        if (!chatComponent) { console.error('[ModPanel] Chat component not found'); return false; }
-        chatComponent.props.onSendMessage(message);
-        return true;
+        if (!chatComponent) { console.error('[ModPanel] Chat component not found'); return Promise.resolve(false); }
+        try {
+            chatComponent.props.onSendMessage(message);
+            return Promise.resolve(true);
+        } catch (e) {
+            return Promise.resolve(false);
+        }
     }
 
     // ============================================================================
@@ -499,6 +526,7 @@
         return new Promise((resolve) => {
             const redirectUri = 'https://stepanchikkk.github.io/twitch-modpanel/';
             const scopes = [
+                'moderation:read',
                 'moderator:manage:announcements',
                 'moderator:manage:chat_settings',
                 'moderator:manage:chat_messages',
@@ -516,7 +544,13 @@
                 'channel:manage:broadcast',
                 'moderator:manage:shoutouts',
                 'moderator:read:chatters',
-                'channel:manage:raids'
+                'channel:manage:raids',
+                'channel:manage:vips',
+                'channel:read:vips',
+                'channel:manage:moderators',
+                'moderator:manage:warnings',
+                'user:manage:blocked_users',
+                'user:read:blocked_users'
             ].join(' ');
 
             const authUrl = `https://id.twitch.tv/oauth2/authorize` +
@@ -609,7 +643,8 @@
     // ============================================================================
 
     function isStreamPage() {
-        return /^\/[a-zA-Z0-9_]+$/.test(window.location.pathname);
+        const p = window.location.pathname;
+        return /^\/[a-zA-Z0-9_]+$/.test(p) || /^\/moderator\/[a-zA-Z0-9_]+$/.test(p);
     }
 
     // ============================================================================
@@ -763,6 +798,10 @@
                 .tmod-edit-mode #tmod-tiles-grid {
                     min-height: 60px;
                 }
+                .tmod-tt-track { width: 36px; height: 20px; background: #3a3a3d; border-radius: 10px; position: relative; cursor: pointer; transition: background 0.25s; flex-shrink: 0; }
+                .tmod-tt-track.on { background: #00f593; }
+                .tmod-tt-thumb { width: 16px; height: 16px; background: #fff; border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: transform 0.25s; display: flex; align-items: center; justify-content: center; }
+                .tmod-tt-track.on .tmod-tt-thumb { transform: translateX(16px); }
             </style>
             <div class="tmod-no-select" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #18181b; border-bottom: 1px solid #3a3a3d; cursor: move; border-radius: 8px 8px 0 0;" id="tmod-panel-header">
                 <div style="display: flex; align-items: center; gap: 10px;">
@@ -771,6 +810,7 @@
                 </div>
                 <div style="display: flex; align-items: center; gap: 2px;">
                     <button id="tmod-panel-edit" title="Настроить панель" style="background: none; border: none; color: #adadb8; cursor: pointer; padding: 4px; display: flex;"><svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"/><path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5v11z"/></svg></button>
+                    <button id="tmod-panel-settings" title="Настройки" style="background: none; border: none; color: #adadb8; cursor: pointer; padding: 4px; display: flex;"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M19.43 12.98c.04-.32.07-.64.07-.98s-.03-.66-.07-.98l2.11-1.65a.5.5 0 0 0 .12-.63l-2-3.46a.5.5 0 0 0-.61-.22l-2.49 1a7.3 7.3 0 0 0-1.69-.98l-.38-2.65A.5.5 0 0 0 13.98 2h-4a.5.5 0 0 0-.49.42l-.38 2.65c-.6.25-1.17.58-1.69.98l-2.49-1a.5.5 0 0 0-.61.22l-2 3.46a.5.5 0 0 0 .12.63l2.11 1.65c-.04.32-.07.66-.07.98s.03.66.07.98l-2.11 1.65a.5.5 0 0 0-.12.63l2 3.46a.5.5 0 0 0 .61.22l2.49-1c.52.4 1.09.73 1.69.98l.38 2.65a.5.5 0 0 0 .49.42h4a.5.5 0 0 0 .49-.42l.38-2.65c.6-.25 1.17-.58 1.69-.98l2.49 1a.5.5 0 0 0 .61-.22l2-3.46a.5.5 0 0 0-.12-.63l-2.11-1.65zM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5z"/></svg></button>
                     <button id="tmod-panel-close" style="background: none; border: none; color: #adadb8; cursor: pointer; padding: 4px; font-size: 18px;">✕</button>
                 </div>
             </div>
@@ -820,6 +860,7 @@
         }
 
         panel.querySelector('#tmod-panel-close').addEventListener('click', () => { panel.remove(); panelOpen = false; panelPosition = null; });
+        panel.querySelector('#tmod-panel-settings').addEventListener('click', () => showSettingsSection(panel));
 
         const content = panel.querySelector('#tmod-panel-content');
         const grid = panel.querySelector('#tmod-tiles-grid');
@@ -1071,6 +1112,95 @@
         document.documentElement.appendChild(panel);
         panelOpen = true;
         panelElement = panel;
+    }
+
+    function showSettingsSection(panel) {
+        const content = panel.querySelector('#tmod-panel-content');
+        if (!content) return;
+        // В настройках кнопки «Настроить панель» (редактор плиток) и «Настройки» (шестерёнка) не нужны.
+        const editBtn = panel.querySelector('#tmod-panel-edit');
+        if (editBtn) editBtn.style.display = 'none';
+        const settingsBtn = panel.querySelector('#tmod-panel-settings');
+        if (settingsBtn) settingsBtn.style.display = 'none';
+        const sectionStyle = 'font-size: 11px; font-weight: 600; color: #adadb8; text-transform: uppercase; letter-spacing: 0.5px; margin: 16px 0 8px;';
+        const dangerBtnStyle = 'display: block; width: 100%; background: #0e0e10; border: 1px solid #5c2323; color: #ff6b6b; border-radius: 6px; padding: 9px 12px; font-size: 14px; font-weight: 600; cursor: pointer; text-align: left; margin-top: 6px;';
+        content.innerHTML = `
+            <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;"><span>←</span> <span>Назад</span></button>
+            <h3 style="margin: 0 0 10px; font-size: 14px; font-weight: 600; color: #efeff1;">Настройки</h3>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #18181b; border: 1px solid #3a3a3d; border-radius: 8px; padding: 12px;">
+                <div>
+                    <div style="font-size: 14px; color: #efeff1; font-weight: 600;">Меню действий модератора</div>
+                    <div style="font-size: 12px; color: #adadb8; margin-top: 3px;">Меню по правому клику на сообщение в чате</div>
+                </div>
+                <div class="tmod-tt-track" id="tmod-sett-ctxmenu"><div class="tmod-tt-thumb"></div></div>
+            </div>
+            <div style="${sectionStyle}">Аккаунт</div>
+            <button id="tmod-sett-logout" data-label="Выйти из аккаунта" style="${dangerBtnStyle}">Выйти из аккаунта</button>
+            <div style="${sectionStyle}">Сброс данных</div>
+            <button id="tmod-sett-reset-tiles" data-label="Сбросить плитки к дефолту" style="${dangerBtnStyle}">Сбросить плитки к дефолту</button>
+            <button id="tmod-sett-clear-history" data-label="Очистить историю анонсов" style="${dangerBtnStyle}">Очистить историю анонсов</button>
+            <div id="tmod-sett-status" style="margin-top: 12px; font-size: 13px; text-align: center;"></div>
+        `;
+        content.querySelector('#tmod-back').onclick = () => { panel.remove(); panelOpen = false; setTimeout(() => createPanel(), 10); };
+
+        const setStatus = (text, ok) => {
+            const el = content.querySelector('#tmod-sett-status');
+            el.textContent = text;
+            el.style.color = ok ? '#00f593' : '#ff6b6b';
+        };
+
+        // Двухшаговое подтверждение опасных действий: клик → «Точно?» на 2,5 сек → повторный клик выполняет.
+        const makeConfirm = (btn, fn) => {
+            let armed = false, timer = null;
+            btn.addEventListener('click', () => {
+                if (!armed) {
+                    armed = true;
+                    btn.textContent = 'Точно?';
+                    timer = setTimeout(() => { armed = false; btn.textContent = btn.dataset.label; }, 2500);
+                    return;
+                }
+                clearTimeout(timer);
+                armed = false;
+                btn.textContent = btn.dataset.label;
+                fn();
+            });
+        };
+
+        const track = content.querySelector('#tmod-sett-ctxmenu');
+        getPanelSettings().then((s) => {
+            const on = s.contextMenu !== false;
+            tmodContextMenuEnabled = on;
+            track.classList.toggle('on', on);
+        });
+        track.onclick = () => {
+            const next = !track.classList.contains('on');
+            track.classList.toggle('on', next);
+            tmodContextMenuEnabled = next;
+            getPanelSettings().then((s) => {
+                s.contextMenu = next;
+                savePanelSettings(s);
+            });
+        };
+
+        makeConfirm(content.querySelector('#tmod-sett-logout'), async () => {
+            await setToken(null);
+            await setUserInfo(null);
+            modTokenCache = false;
+            setStatus('Выход выполнен. Токен сброшен', true);
+        });
+
+        makeConfirm(content.querySelector('#tmod-sett-reset-tiles'), () => {
+            storageSet('tmod_tiles_config', null).then(() => {
+                setStatus('Готово: панель откроется с плитками по умолчанию', true);
+            });
+        });
+
+        makeConfirm(content.querySelector('#tmod-sett-clear-history'), () => {
+            const channel = window.location.pathname.slice(1);
+            storageSet('tmod_history_' + channel, null).then(() => {
+                setStatus('История анонсов очищена', true);
+            });
+        });
     }
 
     function showAnnounceSection(panel) {
@@ -2159,6 +2289,1291 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
     }
 
     // ============================================================================
+    // Меню модерации (ПКМ по сообщению в чате)
+    // ============================================================================
+
+    // Ищет объект юзера рекурсивно по поддереву фибера (предки + дети + сиблинги).
+    function isUserObj(o) {
+        return !!(o && typeof o === 'object' && o.id != null &&
+            (typeof o.login === 'string' || typeof o.displayName === 'string' || typeof o.userName === 'string'));
+    }
+
+    // Прямые пользовательские поля сообщения (в новых версиях Twitch fiber).
+    function userFromMessage(m) {
+        if (!m) return null;
+        const uid = m.userId ?? m.user_id ?? m.senderId ?? m.sender_id ?? null;
+        const ulogin = m.userLogin ?? m.user_login ?? m.senderLogin ?? m.sender_login ?? null;
+        const uname = m.userDisplayName ?? m.user_display_name ?? m.displayName ?? m.senderDisplayName ?? null;
+        if (uid || ulogin) {
+            return { id: uid, login: ulogin, displayName: uname };
+        }
+        return null;
+    }
+
+    function collectUserCandidate(f) {
+        const p = f.memoizedProps || f.pendingProps;
+        if (!p) return null;
+        const keys = ['user', 'userInfo', 'chatter', 'sender', 'chatUser', 'author', 'owner'];
+        for (const k of keys) {
+            const v = p[k];
+            if (isUserObj(v)) return v;
+            if (v && typeof v === 'object') {
+                const inner = v.user || v.chatter || v.sender;
+                if (isUserObj(inner)) return inner;
+            }
+        }
+        const m = p.message || p.chatMessage || p.translatedMessage || p.messageData;
+        if (m) {
+            const direct = userFromMessage(m);
+            if (direct) return direct;
+            for (const k of keys) {
+                const v = m[k];
+                if (isUserObj(v)) return v;
+                if (v && typeof v === 'object') {
+                    const inner = v.user || v.chatter || v.sender;
+                    if (isUserObj(inner)) return inner;
+                }
+            }
+        }
+        return null;
+    }
+
+    // Обходит дерево fiber вверх (через return) и вниз (children/siblings).
+    function searchFiberForUser(fiber, maxNodes = 600) {
+        const seen = new Set();
+        let count = 0;
+        const check = (f) => {
+            if (!f || count >= maxNodes || seen.has(f)) return null;
+            seen.add(f); count++;
+            return collectUserCandidate(f);
+        };
+        const scanDown = (root) => {
+            const stack = [{ f: root.child, sib: root.sibling }];
+            while (stack.length) {
+                const { f, sib } = stack.pop();
+                if (f) {
+                    const u = check(f);
+                    if (u) return u;
+                    stack.push({ f: f.child, sib: f.sibling });
+                }
+                if (sib) {
+                    const u = check(sib);
+                    if (u) return u;
+                    stack.push({ f: sib.child, sib: sib.sibling });
+                }
+            }
+            return null;
+        };
+        let cur = fiber;
+        let depth = 0;
+        while (cur && depth < 80) {
+            const u = check(cur);
+            if (u) return u;
+            const d = scanDown(cur);
+            if (d) return d;
+            cur = cur.return;
+            depth++;
+        }
+        return null;
+    }
+
+    // Данные сообщения из React Fiber.
+    // Расширение: postMessage-мост в twitch-api.js (изолированный мир).
+    // Юзерскрипт: прямой доступ к fiber (исполняется на странице).
+    function readMessageDataFromFiber(el) {
+        const fiber = getReactFiber(el);
+        if (!fiber) return null;
+        const found = findFiberParent(fiber, (f) => {
+            const p = f.memoizedProps || f.pendingProps;
+            if (!p) return false;
+            const m = p.message || p.chatMessage || p.translatedMessage || p.messageData;
+            return !!(m && typeof m.id === 'string');
+        }, 60);
+        if (!found) return null;
+        const p = found.memoizedProps || found.pendingProps;
+        const m = p.message || p.chatMessage || p.translatedMessage || p.messageData;
+
+        // Прямые поля сообщения, затем поиск по дереву (предки + дети).
+        // Авторитетный логин/имя — видимый ник сообщения в DOM (как в чате).
+        const norm = (v) => String(v || '').replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
+        let login = null;
+        let displayName = null;
+        if (el) {
+            const nick = el.querySelector('[data-a-target="chat-line-username"]')
+                || el.querySelector('.chat-line__username, [data-a-target="chat-line-username"] a');
+            if (nick) {
+                const text = (nick.textContent || '').trim().replace(/^@/, '');
+                if (text && text.length < 40) displayName = text;
+                const title = (nick.getAttribute('title') || '').replace(/^@/, '');
+                if (title && title.length < 40) displayName = displayName || title;
+                const href = nick.getAttribute('href') || '';
+                const m2 = href.match(/^\/([^/?]+)$/);
+                if (m2) login = m2[1];
+                if (!login && displayName) login = displayName.toLowerCase();
+            }
+        }
+
+        // Прямые поля сообщения, затем поиск по дереву (предки + дети).
+        // Fiber-юзеру доверяем, только если его логин совпал с видимым ником
+        // сообщения; иначе id не берём — резолвится по логину через Helix.
+        const matchesLogin = (cand) => {
+            if (!cand || !login) return true;
+            const l = norm(cand.login || cand.userLogin || cand.userName || cand.displayName || '');
+            return !l || l === norm(login);
+        };
+        let u = userFromMessage(m);
+        if (!matchesLogin(u)) u = null;
+        if (!u) u = searchFiberForUser(found);
+        if (!matchesLogin(u)) u = null;
+        if (!u) u = searchFiberForUser(fiber);
+        if (!matchesLogin(u)) u = null;
+        u = u || {};
+        const flag2 = (v) => (v === true || v === false ? !!v : null);
+        const isVip = flag2(u.isVip ?? u.isVIP ?? u.vip ?? (m && (m.isVip ?? m.vip)));
+        const isModerator = flag2(u.isModerator ?? u.isMod ?? u.moderator ?? (m && (m.isModerator ?? m.isMod ?? m.moderator)));
+        const isBroadcaster = flag2(u.isBroadcaster ?? u.isBROADCASTER ?? (u.role === 'BROADCASTER') ?? (m && m.isBroadcaster));
+
+        return {
+            messageId: m.id || null,
+            userId: (u && u.id != null ? String(u.id) : null),
+            userLogin: login || (u && (u.login || u.userLogin)) || null,
+            userName: displayName || (u && (u.displayName || u.userName)) || login || null,
+            isBroadcaster,
+            isModerator,
+            isVip
+        };
+    }
+
+    async function getMessageData(el) {
+        if (!IS_EXTENSION) return readMessageDataFromFiber(el);
+        const nonce = 'm' + Date.now() + '_' + Math.floor(Math.random() * 1e6);
+        return new Promise((resolve) => {
+            let settled = false;
+            const finish = (val) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                window.removeEventListener('message', handler);
+                el.removeAttribute('data-tmod-probe');
+                resolve(val);
+            };
+            const timer = setTimeout(() => finish(null), 1200);
+            const handler = (event) => {
+                if (event.source !== window) return;
+                if (event.data?.type === 'TMOD_GET_MSG_RESULT' && event.data.nonce === nonce) {
+                    finish(event.data.data || null);
+                }
+            };
+            window.addEventListener('message', handler);
+            el.setAttribute('data-tmod-probe', '1');
+            window.postMessage({ type: 'TMOD_GET_MSG', nonce }, '*');
+        });
+    }
+
+    // Helix-вызов с токеном: возвращает { success } или { success:false, error }.
+    async function helixCall(url, options = {}) {
+        const token = await getToken();
+        if (!token) return { success: false, error: 'Нет токена — войдите в панель' };
+        const headers = {
+            'Authorization': `Bearer ${token}`,
+            'Client-Id': CLIENT_ID
+        };
+        if (options.body) headers['Content-Type'] = 'application/json';
+        const response = await apiRequest(url, {
+            method: options.method || 'GET',
+            headers,
+            body: options.body ? JSON.stringify(options.body) : undefined
+        });
+        if (response.error) return { success: false, error: response.error };
+        if (response.ok || response.status === 200 || response.status === 204) {
+            let data = null;
+            try { if (response.text) data = JSON.parse(response.text); } catch (e) {}
+            return { success: true, status: response.status, data };
+        }
+        let msg = 'Ошибка API (' + response.status + ')';
+        try {
+            const j = JSON.parse(response.text);
+            if (j && j.message) msg = String(j.message);
+        } catch (e) {}
+        return { success: false, status: response.status, error: msg };
+    }
+
+    async function getModeratorContext() {
+        const token = await getToken();
+        if (!token) return null;
+        const channel = getChannelName();
+        if (!channel) return null;
+        const broadcasterId = await getChannelId(channel, token);
+        const moderatorId = await getCurrentUserId(token);
+        if (!broadcasterId || !moderatorId) return null;
+        return { broadcasterId, moderatorId };
+    }
+
+    function sanitizeLogin(value) {
+        return String(value || '').replace(/[^a-zA-Z0-9_]/g, '');
+    }
+
+    // Считывает бейджи прямо с DOM-элемента сообщения (img[alt]) — живой статус
+    // VIP/мод/стример без API. Alt локализован, поэтому ловим RU и EN.
+    function readBadgesFromMessage(msgEl) {
+        const out = { isVip: null, isMod: null, isBroadcaster: null, _alts: [] };
+        if (!msgEl) return out;
+        const alts = [];
+        try {
+            msgEl.querySelectorAll('img[alt]').forEach((im) => {
+                const a = String(im.getAttribute('alt') || '').trim();
+                if (a) alts.push(a);
+            });
+        } catch (e) {}
+        out._alts = alts;
+        const joined = alts.join(' ').toLowerCase();
+        if (/(\bvip\b|вип)/.test(joined)) out.isVip = true;
+        if (/(мод|moderator|\bmod\b)/.test(joined)) out.isMod = true;
+        if (/(broadcast|стример|владелец)/.test(joined)) out.isBroadcaster = true;
+        return out;
+    }
+
+    // Логин цели из текущего меню (для чат-команд).
+    function modUserLogin() {
+        const s = modMenuState;
+        return sanitizeLogin(s && s.userLogin) || sanitizeLogin((s && s.userName || '').toLowerCase());
+    }
+
+    // Helix-запрос; если Twitch отвечает отказом по правам (401/must match) —
+    // выполняем то же действие чат-командой (команды чата доступны модератору без
+    // прав стримера, в отличие от многих Helix-read/write).
+    async function runHelixWithChatFallback(helixFn, chatText) {
+        const res = await helixFn();
+        if (res.success) return res;
+        const isAuth = res.status === 401
+            || /authorization|must match|incorrect user|not allowed|forbidden|must be/i.test(res.error || '');
+        if (!isAuth || !chatText) return res;
+        try {
+            const ok = await sendToChatInput(chatText);
+            return ok
+                ? { success: true, viaChat: chatText }
+                : { success: false, status: res.status, error: res.error };
+        } catch (e) {
+            return res;
+        }
+    }
+
+    async function actionDeleteMessage(messageId) {
+        const ctx = await getModeratorContext();
+        if (!ctx) return { success: false, error: 'Не удалось определить канал' };
+        const url = `https://api.twitch.tv/helix/moderation/chat?broadcaster_id=${ctx.broadcasterId}&moderator_id=${ctx.moderatorId}&message_id=${encodeURIComponent(messageId)}`;
+        return runHelixWithChatFallback(
+            () => helixCall(url, { method: 'DELETE' }),
+            '/delete ' + messageId
+        );
+    }
+
+    async function actionTimeout(userId, seconds, reason) {
+        const ctx = await getModeratorContext();
+        if (!ctx) return { success: false, error: 'Не удалось определить канал' };
+        if (String(userId) === String(ctx.broadcasterId)) {
+            return { success: false, error: 'Нельзя выдать таймаут/бан владельцу канала' };
+        }
+        if (String(userId) === String(ctx.moderatorId)) {
+            return { success: false, error: 'Нельзя выдать таймаут/бан самому себе' };
+        }
+        const data = { user_id: userId };
+        if (seconds) data.duration = Math.round(seconds);
+        if (reason) data.reason = reason;
+        const login = modUserLogin();
+        const chatText = login
+            ? (seconds
+                ? `/timeout ${login} ${Math.round(seconds)}${reason ? ' ' + reason : ''}`
+                : `/ban ${login}${reason ? ' ' + reason : ''}`)
+            : null;
+        const res = await runHelixWithChatFallback(
+            () => helixCall(
+                `https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${ctx.broadcasterId}&moderator_id=${ctx.moderatorId}`,
+                { method: 'POST', body: { data } }
+            ),
+            chatText
+        );
+        if (res.success) {
+            if (seconds) await modLocalAdd(userId, 'timeout', Date.now() + Math.round(seconds) * 1000, Date.now(), ctx.broadcasterId);
+            else await modLocalAdd(userId, 'ban', null, Date.now(), ctx.broadcasterId);
+        }
+        return res;
+    }
+
+    async function actionUnban(userId) {
+        const ctx = await getModeratorContext();
+        if (!ctx) return { success: false, error: 'Не удалось определить канал' };
+        const login = modUserLogin();
+        const res = await runHelixWithChatFallback(
+            () => helixCall(
+                `https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${ctx.broadcasterId}&moderator_id=${ctx.moderatorId}&user_id=${userId}`,
+                { method: 'DELETE' }
+            ),
+            login ? `/unban ${login}` : null
+        );
+        if (res.success) {
+            await modLocalRemove(userId, ctx.broadcasterId, 'ban');
+            await modLocalRemove(userId, ctx.broadcasterId, 'timeout');
+        }
+        return res;
+    }
+
+    async function actionWarn(userId, reason) {
+        const ctx = await getModeratorContext();
+        if (!ctx) return { success: false, error: 'Не удалось определить канал' };
+        return helixCall(
+            `https://api.twitch.tv/helix/moderation/warnings?broadcaster_id=${ctx.broadcasterId}&moderator_id=${ctx.moderatorId}`,
+            { method: 'POST', body: { data: { user_id: userId, reason: reason || 'Warning' } } }
+        );
+    }
+
+    async function actionGiveVip(userId) {
+        const ctx = await getModeratorContext();
+        if (!ctx) return { success: false, error: 'Не удалось определить канал' };
+        const login = modUserLogin();
+        return runHelixWithChatFallback(
+            () => helixCall(`https://api.twitch.tv/helix/channels/vips?broadcaster_id=${ctx.broadcasterId}&user_id=${userId}`, { method: 'POST' }),
+            login ? `/vip ${login}` : null
+        );
+    }
+
+    async function actionRemoveVip(userId) {
+        const ctx = await getModeratorContext();
+        if (!ctx) return { success: false, error: 'Не удалось определить канал' };
+        const login = modUserLogin();
+        return runHelixWithChatFallback(
+            () => helixCall(`https://api.twitch.tv/helix/channels/vips?broadcaster_id=${ctx.broadcasterId}&user_id=${userId}`, { method: 'DELETE' }),
+            login ? `/unvip ${login}` : null
+        );
+    }
+
+    async function actionAddMod(userId) {
+        const ctx = await getModeratorContext();
+        if (!ctx) return { success: false, error: 'Не удалось определить канал' };
+        const login = modUserLogin();
+        return runHelixWithChatFallback(
+            () => helixCall(`https://api.twitch.tv/helix/moderation/moderators?broadcaster_id=${ctx.broadcasterId}&user_id=${userId}`, { method: 'POST' }),
+            login ? `/mod ${login}` : null
+        );
+    }
+
+    async function actionRemoveMod(userId) {
+        const ctx = await getModeratorContext();
+        if (!ctx) return { success: false, error: 'Не удалось определить канал' };
+        const login = modUserLogin();
+        return runHelixWithChatFallback(
+            () => helixCall(`https://api.twitch.tv/helix/moderation/moderators?broadcaster_id=${ctx.broadcasterId}&user_id=${userId}`, { method: 'DELETE' }),
+            login ? `/unmod ${login}` : null
+        );
+    }
+
+    async function actionBlock(userId, unblock) {
+        return helixCall(`https://api.twitch.tv/helix/users/blocks?target_user_id=${userId}`, { method: unblock ? 'DELETE' : 'PUT' });
+    }
+
+    // Клик по нику юзера в чате открывает карточку Mod View (то же действие,
+    // что делает пользователь вручную).
+    function openModViewCardFor(login) {
+        const lg = sanitizeLogin(login);
+        if (!lg) return false;
+        const selector = `a[href="/${CSS.escape(lg)}"]`;
+        const link = document.querySelector('.chat-line__message ' + selector) || document.querySelector(selector);
+        if (!link) return false;
+        link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window, composed: true }));
+        return true;
+    }
+
+    // Запрашивает у страницы выжимку Fiber-данных открытой карточки Mod View.
+    function requestModViewFiberProbe(timeoutMs) {
+        return new Promise((resolve) => {
+            const nonce = 'modprobe' + Date.now() + Math.random().toString(36).slice(2, 8);
+            let done = false;
+            const timer = setTimeout(() => { if (!done) { done = true; resolve(null); } }, timeoutMs || 1500);
+            const handler = (ev) => {
+                if (ev.source !== window || !ev.data || ev.data.type !== 'TMOD_GET_MODSTATUS_RESULT' || ev.data.nonce !== nonce) return;
+                if (done) return;
+                done = true;
+                clearTimeout(timer);
+                window.removeEventListener('message', handler);
+                resolve(ev.data.data);
+            };
+            window.addEventListener('message', handler);
+            window.postMessage({ type: 'TMOD_GET_MODSTATUS', nonce }, '*');
+        });
+    }
+
+    // Читает статус из mod-view карточки юзера Twitch (открывается при клике на ник
+    // в режиме модератора: data-a-target="mod-view-user-details"). Twitch сам знает,
+    // в таймауте ли юзер сейчас — по кнопке «Снять временную блокировку».
+    function readModViewStatus(userId, login) {
+        const drawer = document.querySelector('[data-a-target="mod-view-user-details"]');
+        if (!drawer) return null;
+        const lg = sanitizeLogin(login);
+        if (!lg) return null;
+        const isTarget = !!drawer.querySelector(`a[href="/${CSS.escape(lg)}"]`);
+        if (!isTarget) return null;
+        const out = {};
+        if (drawer.querySelector('button[aria-label*="Снять временную блокировку"]')) {
+            // Таймаут активен. Считаем конец: последняя запись «отстраняет пользователя
+            // <login> на N секунд» + её ISO-время старта из id.
+            let exp = null, created = null;
+            drawer.querySelectorAll('.targeted-mod-action [id]').forEach((el) => {
+                const t = el.textContent || '';
+                if (!/отстраняет пользователя/i.test(t)) return;
+                const iso = (el.id || '').match(/targeted-mod-action-line-(.+)/);
+                let start = iso ? Date.parse(iso[1].replace(/\.(\d{3})\d+Z$/, '.$1Z')) : NaN;
+                if (isNaN(start)) return;
+                const m = t.match(/на\s+([\d\s]+)\s+секунд/);
+                const durSec = m ? parseInt(String(m[1]).replace(/\s/g, ''), 10) || 0 : 0;
+                if (created === null || start > created) { created = start; exp = start + durSec * 1000; }
+            });
+            if (exp && exp > Date.now()) {
+                out.isTimedOut = true;
+                out.banCreatedAt = created ? new Date(created).toISOString() : null;
+                out.banExpiresAt = new Date(exp).toISOString();
+            }
+        }
+        if (drawer.querySelector('button[aria-label*="Разбанить"]') && drawer.querySelector(`button[aria-label*="${lg}"]`)) {
+            out.isBanned = true;
+        }
+        return out;
+    }
+
+    // Статусы юзера (ban/vip/mod берутся только стримером — у мода 401, остаются null).
+    async function fetchModStatus(userId) {
+        const channel = getChannelName();
+        const token = await getToken();
+        if (!token) return { isBanned: null, isTimedOut: null, isVip: null, isMod: null, isBlocked: null, banExpiresAt: null, banCreatedAt: null };
+        const status = { isBanned: null, isTimedOut: null, isVip: null, isMod: null, isBlocked: null, banExpiresAt: null, banCreatedAt: null };
+        let statusChannelId = null;
+        if (channel) {
+            const broadcasterId = await getChannelId(channel, token);
+            if (broadcasterId) {
+                statusChannelId = broadcasterId;
+                const me = await getCurrentUserId(token);
+                debugLog('mod-ctx', { channel, broadcasterId, me });
+                const banned = await helixCall(`https://api.twitch.tv/helix/moderation/banned?broadcaster_id=${broadcasterId}&user_id=${userId}`);
+                debugLog('mod-banned-resp', { ok: banned.success, status: banned.status, error: banned.error });
+                if (banned.success) {
+                    const b = banned.data?.data?.[0] || null;
+                    // expires_at установлен → таймаут; null → перманентный бан.
+                    status.isBanned = !!b && !b.expires_at;
+                    status.isTimedOut = !!b && !!b.expires_at;
+                    status.banExpiresAt = b ? (b.expires_at || null) : null;
+                    status.banCreatedAt = b ? (b.created_at || null) : null;
+                }
+                const isBroadcaster = me && String(me) === String(broadcasterId);
+                if (isBroadcaster) {
+                    // Стримеру Helix отдаёт VIP/модов напрямую.
+                    const vips = await helixCall(`https://api.twitch.tv/helix/channels/vips?broadcaster_id=${broadcasterId}&user_id=${userId}`);
+                    debugLog('mod-vips-resp', { ok: vips.success, status: vips.status, error: vips.error });
+                    if (vips.success) status.isVip = !!(vips.data?.data?.length);
+                    const mods = await helixCall(`https://api.twitch.tv/helix/moderation/moderators?broadcaster_id=${broadcasterId}&user_id=${userId}`);
+                    debugLog('mod-mods-resp', { ok: mods.success, status: mods.status, error: mods.error });
+                    if (mods.success) status.isMod = !!(mods.data?.data?.length);
+                } else {
+                    // Модератору vips/moderators (401). Chatters доступен моду для VIP/мод-бейджей.
+                    // Внимание: затаймаутенный юзер остаётся в списке чатеров (соединение живо),
+                    // поэтому присутствие в чате НЕ означает «не в бане/таймауте».
+                    const chatters = await helixCall(`https://api.twitch.tv/helix/chat/chatters?broadcaster_id=${broadcasterId}&moderator_id=${me}&first=1000`);
+                    debugLog('mod-chatters-resp', { ok: chatters.success, status: chatters.status, error: chatters.error, count: chatters.data?.data?.length });
+                    if (chatters.success && Array.isArray(chatters.data?.data)) {
+                        const found = chatters.data.data.find((u) => String(u.user_id) === String(userId));
+                        if (found) {
+                            status.isVip = !!found.is_vip;
+                            status.isMod = !!found.is_moderator;
+                        }
+                    }
+                }
+            }
+        }
+        // Локальный архив: таймауты/баны, выданные через саму панель. Helix-чтение
+        // модератору недоступно (401), поэтому свой недавний таймаут знаем локально.
+        const local = await getModLocalRecords().catch(() => []);
+        const localRec = local.find(
+            (r) => r.userId === String(userId)
+                && (!statusChannelId || String(r.channel) === String(statusChannelId))
+                && (r.kind === 'ban' || r.kind === 'timeout')
+        );
+        if (localRec) {
+            if (localRec.kind === 'ban') {
+                if (status.isBanned == null) { status.isBanned = true; status.banExpiresAt = null; status.banCreatedAt = localRec.createdAt; }
+            } else {
+                if (localRec.expiresAt > Date.now()) {
+                    if (status.isTimedOut == null) { status.isTimedOut = true; status.banExpiresAt = localRec.expiresAt; status.banCreatedAt = localRec.createdAt; }
+                } else {
+                    await modLocalRemove(userId, statusChannelId, 'timeout');
+                }
+            }
+        }
+        // Бейджи/флаги с самого сообщения (VIP/мод/стример) — живой статус без API.
+        const ms2 = modMenuState || {};
+        const badges = readBadgesFromMessage(ms2.msgEl);
+        debugLog('mod-badges', { alts: badges._alts, fiberVip: ms2.isVip, fiberMod: ms2.isModerator, badges });
+        if (status.isVip !== true && (ms2.isVip === true || badges.isVip === true)) status.isVip = true;
+        if (status.isMod !== true && (ms2.isModerator === true || badges.isMod === true)) status.isMod = true;
+        // Роли, назначенные/снятые через панель в текущем сеансе меню: юзер может не
+        // быть в чате (chatters не найдёт), но результат своего действия мы знаем точно.
+        if (ms2.sessionVip === true) status.isVip = true;
+        if (ms2.sessionMod === true) status.isMod = true;
+        // Карточка юзера в Mod View: Twitch сам показывает текущий таймаут/бан.
+        // Если карточка ещё не открыта — открываем её сами кликом по нику и читаем.
+        const targetLogin = modMenuState && modMenuState.userLogin;
+        let mv = readModViewStatus(userId, targetLogin);
+        if (!mv && targetLogin) {
+            const opened = openModViewCardFor(targetLogin);
+            debugLog('mod-open-card', { opened, login: targetLogin });
+            if (opened) {
+                await new Promise((r) => setTimeout(r, 900));
+                mv = readModViewStatus(userId, targetLogin);
+            }
+        }
+        debugLog('mod-modview-resp', mv);
+        if (TMOD_DEBUG) {
+            const probe = await requestModViewFiberProbe(1200);
+            debugLog('mod-fiber-probe', probe);
+        }
+        if (mv) {
+            if (mv.isTimedOut && status.isTimedOut == null) {
+                status.isTimedOut = true;
+                status.banExpiresAt = mv.banExpiresAt;
+                status.banCreatedAt = mv.banCreatedAt;
+            }
+            if (mv.isBanned && status.isBanned == null) {
+                status.isBanned = true;
+                status.banExpiresAt = null;
+                status.banCreatedAt = null;
+            }
+        }
+        const blocks = await helixCall('https://api.twitch.tv/helix/users/blocks?first=100');
+        if (blocks.success && blocks.data?.data) {
+            status.isBlocked = !!blocks.data.data.some((u) => String(u.user_id) === String(userId));
+        }
+        debugLog('mod-status', { userId, status });
+        return status;
+    }
+
+    // --- Состояние меню ---
+    let modMenuEl = null;
+    let modMenuState = null;
+    let modBusy = false;
+    // Кэш токена для синхронной проверки в contextmenu (preventDefault должен
+    // решаться синхронно, а storageGet асинхронный).
+    let modTokenCache = null;
+
+    // --- Локальный архив таймаутов/банов, выданных через панель ---
+    // Helix-чтение модератору недоступно (401), поэтому свои действия отслеживаем сами.
+    const TMOD_MOD_LOCAL_KEY = 'tmod_mod_local_v1';
+    let modLocalRecordsCache = null;
+
+    async function getModLocalRecords() {
+        if (modLocalRecordsCache) return modLocalRecordsCache;
+        const raw = await storageGet(TMOD_MOD_LOCAL_KEY);
+        modLocalRecordsCache = Array.isArray(raw) ? raw : [];
+        return modLocalRecordsCache;
+    }
+
+    async function modLocalAdd(userId, kind, expiresAt, createdAt, channel) {
+        const list = await getModLocalRecords();
+        list.push({ userId: String(userId), kind: kind, expiresAt, createdAt, channel: String(channel) });
+        modLocalRecordsCache = list;
+        await storageSet(TMOD_MOD_LOCAL_KEY, list);
+    }
+
+    async function modLocalRemove(userId, channel, kind) {
+        const list = await getModLocalRecords();
+        const next = list.filter((r) => !(
+            r.userId === String(userId)
+            && (!channel || String(r.channel) === String(channel))
+            && (!kind || r.kind === kind)
+        ));
+        if (next.length !== list.length) {
+            modLocalRecordsCache = next;
+            await storageSet(TMOD_MOD_LOCAL_KEY, next);
+        }
+    }
+
+    // Всплывающая подсказка для диагностики (в расширении GM_notification нет).
+    function modToast(text) {
+        try {
+            const old = document.getElementById('tmod-mod-toast');
+            if (old) old.remove();
+            const div = document.createElement('div');
+            div.id = 'tmod-mod-toast';
+            div.textContent = text;
+            div.style.cssText = 'position:fixed;top:16px;right:16px;z-index:1000001;background:#18181b;color:#efeff1;' +
+                'border:1px solid #9147ff;border-radius:8px;padding:10px 14px;font:12px/1.4 -apple-system,Segoe UI,Roboto,sans-serif;' +
+                'box-shadow:0 4px 20px rgba(0,0,0,.5);max-width:400px;word-break:break-word;user-select:text;' +
+                'cursor:text;white-space:pre-wrap;';
+            document.body.appendChild(div);
+            setTimeout(() => div.remove(), 8000);
+        } catch (err) {}
+    }
+
+    function closeModMenu() {
+        if (modTimeoutTimer) { clearInterval(modTimeoutTimer); modTimeoutTimer = null; }
+        if (modMenuEl) modMenuEl.remove();
+        modMenuEl = null;
+        modMenuState = null;
+        modBusy = false;
+    }
+
+    // Пережимает позицию меню в границы окна (после того, как оно дорастёт).
+    function clampModMenuPosition() {
+        if (!modMenuEl) return;
+        const r = modMenuEl.getBoundingClientRect();
+        const maxTop = window.innerHeight - r.height - 8;
+        const maxLeft = window.innerWidth - r.width - 8;
+        let top = parseFloat(modMenuEl.style.top) || 0;
+        let left = parseFloat(modMenuEl.style.left) || 0;
+        modMenuEl.style.top = Math.max(8, Math.min(top, maxTop)) + 'px';
+        modMenuEl.style.left = Math.max(8, Math.min(left, maxLeft)) + 'px';
+    }
+
+    function setMenuStatus(text, kind) {
+        const el = modMenuEl && modMenuEl.querySelector('.mm-status');
+        if (!el) return;
+        el.textContent = text || '';
+        el.className = 'mm-status' + (kind ? ' ' + kind : '');
+        clampModMenuPosition();
+    }
+
+    function setMenuBusy(busy) {
+        modBusy = busy;
+        if (!modMenuEl) return;
+        modMenuEl.querySelectorAll('.mm-btn').forEach((b) => {
+            if (b.dataset.alwaysOff) return;
+            b.disabled = busy;
+        });
+    }
+
+    async function runModAction(label, actionFn) {
+        if (modBusy || !modMenuEl) return;
+        setMenuBusy(true);
+        setMenuStatus('Выполняется…');
+        const res = await actionFn();
+        debugLog('mod-action-res', { label, userId: modMenuState && modMenuState.userId, login: modUserLogin(), res });
+        if (!modMenuEl) return;
+        setMenuBusy(false);
+        if (res.success) {
+            setMenuStatus(res.viaChat ? `✓ ${label} — команда отправлена \`${res.viaChat}\`` : '✓ ' + label + ' — готово', 'ok');
+            refreshModMenuStatus();
+        } else {
+            setMenuStatus('✗ ' + label + ': ' + res.error, 'err');
+        }
+    }
+
+    async function refreshModMenuStatus() {
+        if (!modMenuEl || !modMenuState || !modMenuState.userId) return;
+        const status = await fetchModStatus(modMenuState.userId);
+        if (!modMenuEl || !modMenuState) return;
+        modMenuState.status = status;
+        renderModMenuChips();
+        renderModMenuToggles();
+        renderModMenuTimeout();
+        renderModMenuBan();
+        clampModMenuPosition();
+    }
+
+    // Собирает картинки бейджей юзера из DOM сообщения (src с /badges/).
+    function collectUserBadges(msgEl) {
+        const out = [];
+        if (!msgEl) return out;
+        try {
+            msgEl.querySelectorAll('img[src]').forEach((im) => {
+                const src = im.currentSrc || im.getAttribute('src') || '';
+                if (src.indexOf('/badges/') === -1) return;
+                out.push({ src, alt: String(im.getAttribute('alt') || '').trim() });
+            });
+        } catch (e) {}
+        return out;
+    }
+
+    function renderModMenuUserBadges() {
+        const host = modMenuEl && modMenuEl.querySelector('.mm-badges');
+        if (!host) return;
+        const badges = (modMenuState && modMenuState.badges) || [];
+        host.innerHTML = badges
+            .map((b) => `<img src="${escapeHtml(b.src)}" alt="${escapeHtml(b.alt)}" title="${escapeHtml(b.alt)}">`)
+            .join('');
+    }
+
+    function renderModMenuChips() {
+        const host = modMenuEl && modMenuEl.querySelector('.mm-chips');
+        if (!host) return;
+        const s = modMenuState?.status || {};
+        const chips = [];
+        if (s.isTimedOut === true) chips.push(['timedout', 'Отстранён']);
+        if (s.isBanned === true) chips.push(['banned', 'Забанен']);
+        if (s.isBlocked === true) chips.push(['blocked', 'В блоке']);
+        host.innerHTML = chips.map(([cls, label]) => `<span class="mm-chip ${cls}">${label}</span>`).join('');
+    }
+
+    // Блок статуса модерации: таймаут (с отсчётом), бан, либо «нет ограничений».
+    let modTimeoutTimer = null;
+
+    function renderModMenuTimeout() {
+        if (!modMenuEl) return;
+        const s = modMenuState?.status || {};
+        const row = modMenuEl.querySelector('.mm-timeout-row');
+        const info = modMenuEl.querySelector('.mm-timeout-info');
+        const btn = modMenuEl.querySelector('[data-action="untimeout"]');
+        if (!row || !info) return;
+        if (modTimeoutTimer) { clearInterval(modTimeoutTimer); modTimeoutTimer = null; }
+        const fmt = (ms) => {
+            const total = Math.max(0, Math.round(ms / 1000));
+            const h = Math.floor(total / 3600);
+            const m = Math.floor((total % 3600) / 60);
+            const sec = total % 60;
+            let out = '';
+            if (h > 0) out += h + ' ч ';
+            if (h > 0 || m > 0) out += m + ' мин ';
+            if (out === '') out = sec + ' с'; else if (sec > 0) out += sec + ' с';
+            return out.trim();
+        };
+        const clean = () => {
+            row.hidden = false;
+            info.textContent = 'Не отстранён — без ограничений';
+            info.style.color = '#8fe3a0';
+            btn.hidden = true;
+        };
+        if (s.isTimedOut !== true || !s.banExpiresAt) {
+            if (s.isBanned === false) { clean(); return; }
+            row.hidden = true;
+            return;
+        }
+        const expires = new Date(s.banExpiresAt).getTime();
+        const created = s.banCreatedAt ? new Date(s.banCreatedAt).getTime() : null;
+        const render = () => {
+            if (!modMenuEl || !row) return;
+            const remain = expires - Date.now();
+            if (remain <= 0) {
+                row.hidden = true;
+                if (modTimeoutTimer) { clearInterval(modTimeoutTimer); modTimeoutTimer = null; }
+                refreshModMenuStatus();
+                return;
+            }
+            const given = created ? fmt(expires - created) : '?';
+            info.style.color = '#ffb3b3';
+            info.textContent = `Отстранён. Дано: ${given}. До конца: ${fmt(remain)}`;
+            row.hidden = false;
+            if (btn) btn.hidden = false;
+        };
+        render();
+        modTimeoutTimer = setInterval(render, 1000);
+    }
+
+    // Статус бана (постоянный) — в секции «Бан».
+    function renderModMenuBan() {
+        if (!modMenuEl) return;
+        const s = modMenuState?.status || {};
+        const row = modMenuEl.querySelector('.mm-ban-row');
+        const info = modMenuEl.querySelector('.mm-ban-info');
+        if (!row || !info) return;
+        if (s.isBanned !== true) {
+            row.hidden = true;
+            return;
+        }
+        row.hidden = false;
+        info.textContent = 'Забанен (постоянный бан)';
+        info.style.color = '#ff6b6b';
+    }
+
+    // Держит роль (vip/mod) в памяти открытого меню после своего успешного действия.
+    // Никакого localStorage — живёт до закрытия меню, но гарантирует, что кнопку
+    // «забрать/разжаловать» можно будет нажать сразу, даже если юзер не в чате.
+    function setSessionRole(kind, value) {
+        if (!modMenuState) return;
+        const isVipFlag = kind === 'vip';
+        modMenuState.status = modMenuState.status || {};
+        if (isVipFlag) {
+            modMenuState.status.isVip = value;
+            modMenuState.sessionVip = value;
+        } else {
+            modMenuState.status.isMod = value;
+            modMenuState.sessionMod = value;
+        }
+        renderModMenuToggles();
+    }
+
+    function renderModMenuToggles() {
+        if (!modMenuEl) return;
+        const s = modMenuState?.status || {};
+        const vipBtn = modMenuEl.querySelector('[data-action="vip"]');
+        const modBtn = modMenuEl.querySelector('[data-action="mod"]');
+        const blockBtn = modMenuEl.querySelector('[data-action="block"]');
+        const banBtn = modMenuEl.querySelector('[data-action="ban"]');
+        const unbanBtn = modMenuEl.querySelector('[data-action="unban"]');
+        if (vipBtn) {
+            const lbl = vipBtn.querySelector('.mm-lbl');
+            if (lbl) lbl.textContent = s.isVip === true ? 'Забрать VIP' : 'Дать VIP';
+            vipBtn.classList.toggle('danger', s.isVip === true);
+        }
+        if (modBtn) {
+            const lbl = modBtn.querySelector('.mm-lbl');
+            if (lbl) lbl.textContent = s.isMod === true ? 'Разжаловать модератора' : 'Сделать модератором';
+            const ic = modBtn.querySelector('.mm-ic');
+            if (ic) ic.innerHTML = s.isMod === true ? MOD_ICONS.unmod : MOD_ICONS.mod;
+            modBtn.classList.toggle('danger', s.isMod === true);
+        }
+        if (blockBtn) {
+            const lbl = blockBtn.querySelector('.mm-lbl');
+            if (lbl) lbl.textContent = s.isBlocked === true ? 'Разблокировать' : 'Заблокировать';
+        }
+        if (banBtn && unbanBtn) {
+            const lbl = unbanBtn.querySelector('.mm-lbl');
+            if (lbl) lbl.textContent = 'Разбанить';
+            if (modBusy) return;
+            banBtn.disabled = s.isBanned === true;
+            unbanBtn.disabled = s.isBanned === false;
+        }
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    const MOD_TIMEOUT_PRESETS = [
+        [60, '1м'], [300, '5м'], [600, '10м'], [1800, '30м'], [3600, '1ч'], [86400, '24ч']
+    ];
+
+    // Иконки (SVG в стиле Twitch), fill: currentColor — наследуют цвет кнопки.
+    const MOD_ICONS = {
+        delete:   '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 2h4v2h7v2H3V4h7V2ZM5 8h2v12h10V8h2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8Z"/><path d="M11 8h2v10h-2V8Z"/></svg>',
+        warn:     '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M13.226 2.72a1.404 1.404 0 0 0-2.452 0L2.192 17.84c-.545.96.136 2.16 1.226 2.16h17.164c1.09 0 1.771-1.2 1.226-2.16L13.226 2.72ZM13 7h-2v7h2V7Zm0 9h-2v2h2v-2Z" clip-rule="evenodd"/></svg>',
+        timeout:  '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 11.586V5h-2v7.414l3.293 3.293 1.414-1.414L13 11.586Z"/><path fill-rule="evenodd" d="M1 12C1 5.925 5.925 1 12 1s11 4.925 11 11-4.925 11-11 11S1 18.075 1 12Zm11 9a9 9 0 1 1 0-18 9 9 0 0 1 0 18Z" clip-rule="evenodd"/></svg>',
+        ban:      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M1 12C1 5.925 5.925 1 12 1s11 4.925 11 11-4.925 11-11 11S1 18.075 1 12Zm11 9A9 9 0 0 1 4.968 6.382l12.65 12.65A8.962 8.962 0 0 1 12 21Zm7.032-3.382a9 9 0 0 0-12.65-12.65l12.65 12.65Z" clip-rule="evenodd"/></svg>',
+        mod:      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M3 7a5 5 0 1 1 6 4.9v.1a1 1 0 0 0 1 1h1a3 3 0 0 1 3 3v6h-2v-6a1 1 0 0 0-1-1h-1a2.99 2.99 0 0 1-2-.764A2.99 2.99 0 0 1 6 15H5a1 1 0 0 0-1 1v6H2v-6a3 3 0 0 1 3-3h1a1 1 0 0 0 1-1v-.1A5.002 5.002 0 0 1 3 7Zm5 3a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z" clip-rule="evenodd"/><path d="m18 8 4 4-4 4-1.5-1.5L18 13h-4v-2h4l-1.5-1.5L18 8Z"/></svg>',
+        unmod:    '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M3 7a5 5 0 1 1 6 4.9v.1a1 1 0 0 0 1 1h1a3 3 0 0 1 3 3v6h-2v-6a1 1 0 0 0-1-1h-1a2.99 2.99 0 0 1-2-.764A2.99 2.99 0 0 1 6 15H5a1 1 0 0 0-1 1v6H2v-6a3 3 0 0 1 3-3h1a1 1 0 0 0 1-1v-.1A5.002 5.002 0 0 1 3 7Zm5 3a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z" clip-rule="evenodd"/><path d="M17.5 6.5 16 8l2 2-2 2 1.5 1.5 2-2 2 2L23 12l-2-2 2-2-1.5-1.5-2 2-2-2Z"/></svg>',
+        vip:      '<svg viewBox="8 8 48 36" fill="currentColor" aria-hidden="true"><path d="M10 18 18 10h28l8 8-22 24L10 18z"/></svg>'
+    };
+
+    function showModMenu(data, msgEl) {
+        closeModMenu();
+        modMenuState = {
+            ...data,
+            msgEl: msgEl || null,
+            status: { isBanned: null, isVip: null, isMod: null, isBlocked: null }
+        };
+
+        const menu = document.createElement('div');
+        menu.id = 'tmod-mod-menu';
+
+        const name = escapeHtml(data.userName || data.userLogin || '?');
+        const login = data.userLogin && data.userLogin !== name ? '@' + escapeHtml(data.userLogin) : '';
+        const delDisabled = !data.canDelete
+            ? ' data-always-off="1" disabled title="Нельзя удалить это сообщение"'
+            : '';
+
+        const presetsHtml = MOD_TIMEOUT_PRESETS
+            .map(([sec, label]) => `<button class="mm-btn preset" data-action="preset" data-seconds="${sec}" data-label="${label}">${label}</button>`)
+            .join('');
+
+        menu.innerHTML = `
+            <style>
+                #tmod-mod-menu {
+                    position: fixed; z-index: 1000000; background: #18181b;
+                    border: 1px solid #3a3a3d; border-radius: 10px;
+                    box-shadow: 0 8px 30px rgba(0,0,0,.6);
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    color: #efeff1; width: 320px; visibility: hidden;
+                    user-select: none; -webkit-user-select: none; overflow: hidden;
+                    max-height: calc(100vh - 16px);
+                }
+                #tmod-mod-menu .mm-header { padding: 10px 12px; border-bottom: 1px solid #2f2f33; background: #0e0e10; cursor: grab; }
+                #tmod-mod-menu .mm-header.dragging { cursor: grabbing; }
+                #tmod-mod-menu .mm-header-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+                #tmod-mod-menu .mm-close { background: none; border: none; color: #adadb8; font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: 6px; flex: 0 0 auto; }
+                #tmod-mod-menu .mm-close:hover { color: #fff; background: #2f2f33; }
+                #tmod-mod-menu .mm-name { font-weight: 700; font-size: 13px; color: #fff; display: inline-flex; align-items: center; flex-wrap: wrap; min-width: 0; }
+                #tmod-mod-menu .mm-login { font-weight: 400; font-size: 11px; color: #9147ff; margin-left: 4px; }
+                #tmod-mod-menu .mm-preview { font-size: 11.5px; line-height: 1.35; color: #adadb8; margin-top: 2px; word-break: break-word; max-height: 34px; overflow: hidden; }
+                #tmod-mod-menu .mm-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; min-height: 20px; }
+                #tmod-mod-menu .mm-chip { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: #2f2f33; color: #adadb8; }
+                #tmod-mod-menu .mm-badges { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-right: 6px; min-width: 0; }
+                #tmod-mod-menu .mm-badges:empty { display: none; }
+                #tmod-mod-menu .mm-badges img { width: 16px; height: 16px; border-radius: 2px; }
+                #tmod-mod-menu .mm-chip.vip { background: #d4af37; color: #1a1100; }
+                #tmod-mod-menu .mm-chip.mod { background: #1f69ff; color: #fff; }
+                #tmod-mod-menu .mm-chip.banned { background: #eb0400; color: #fff; }
+                #tmod-mod-menu .mm-chip.timedout { background: #e68100; color: #fff; }
+                #tmod-mod-menu .mm-chip.blocked { background: #5b21b6; color: #fff; }
+                #tmod-mod-menu .mm-body { padding: 6px 10px 10px; max-height: calc(100vh - 70px); overflow-y: auto; }
+                #tmod-mod-menu .mm-section { font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: #9147ff; margin: 8px 0 3px; font-weight: 600; }
+#tmod-mod-menu .mm-row { display: flex; gap: 5px; margin: 4px 0; flex-wrap: wrap; align-items: stretch; }
+                #tmod-mod-menu .mm-btn {
+                    flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+                    background: #26262c; border: 1px solid #3a3a3d; border-radius: 6px;
+                    color: #efeff1; padding: 5px 8px; font-size: 12px; cursor: pointer; text-align: center;
+                    min-height: 28px;
+                }
+                #tmod-mod-menu .mm-lbl { white-space: nowrap; }
+                #tmod-mod-menu .mm-ic { display: inline-flex; flex: 0 0 14px; width: 14px; height: 14px; }
+                #tmod-mod-menu .mm-ic svg { width: 14px; height: 14px; display: block; }
+                #tmod-mod-menu [data-action="vip"] .mm-ic { flex: 0 0 16px; width: 16px; height: 16px; }
+                #tmod-mod-menu [data-action="vip"] .mm-ic svg { width: 16px; height: 16px; }
+                #tmod-mod-menu .mm-btn:hover:not(:disabled) { background: #3a3a3d; }
+                #tmod-mod-menu .mm-btn.danger { color: #ff6b6b; border-color: #5c2323; }
+                #tmod-mod-menu .mm-btn.danger:hover:not(:disabled) { background: #3a1414; }
+                #tmod-mod-menu .mm-btn.wide { flex: 1 1 100%; }
+                #tmod-mod-menu .mm-btn.preset { flex: 0 0 auto; min-height: 24px; padding: 3px 10px; border-radius: 12px; font-size: 11px; color: #bf94ff; }
+                #tmod-mod-menu .mm-btn.preset:hover:not(:disabled) { background: #9147ff; color: #fff; }
+                #tmod-mod-menu .mm-input {
+                    flex: 1 1 100%; width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 6px;
+                    color: #efeff1; padding: 5px 8px; font-size: 12px; box-sizing: border-box;
+                }
+                #tmod-mod-menu .mm-input::placeholder { color: #6f6f78; }
+                #tmod-mod-menu .mm-status { font-size: 11.5px; color: #adadb8; padding: 6px 10px; border-top: 1px solid #2f2f33; min-height: 16px; user-select: text; -webkit-user-select: text; word-break: break-word; }
+                #tmod-mod-menu .mm-status.err { color: #ff6b6b; }
+                #tmod-mod-menu .mm-status.ok { color: #00d66a; }
+                #tmod-mod-menu .mm-timeout-row { margin: 6px 0 2px; padding: 6px 10px; border: 1px solid #5c2323; border-radius: 6px; background: #261414; }
+                #tmod-mod-menu .mm-timeout-info { font-size: 11.5px; color: #ffb3b3; margin-bottom: 4px; user-select: text; -webkit-user-select: text; word-break: break-word; }
+                #tmod-mod-menu .mm-ban-row { margin: 6px 0 2px; padding: 6px 10px; border: 1px solid #3a3a3d; border-radius: 6px; background: #101014; }
+                #tmod-mod-menu .mm-ban-info { font-size: 11.5px; color: #adadb8; user-select: text; -webkit-user-select: text; word-break: break-word; }
+            </style>
+            <div class="mm-header">
+                <div class="mm-header-top">
+                    <div class="mm-name"><span class="mm-badges"></span>${name}<span class="mm-login">${login}</span></div>
+                    <button class="mm-close" data-action="close" title="Закрыть">✕</button>
+                </div>
+                <div class="mm-preview"></div>
+                <div class="mm-chips"></div>
+            </div>
+            <div class="mm-body">
+                <div class="mm-section">Сообщение</div>
+                <button class="mm-btn wide" data-action="delete"${delDisabled}><span class="mm-ic">${MOD_ICONS.delete}</span><span class="mm-lbl">Удалить сообщение</span></button>
+
+                <div class="mm-section">Предупреждение</div>
+                <input class="mm-input" type="text" maxlength="500" placeholder="Причина (варн / таймаут / бан)">
+                <div class="mm-row">
+                    <button class="mm-btn" data-action="warn"><span class="mm-ic">${MOD_ICONS.warn}</span><span class="mm-lbl">Предупредить</span></button>
+                    <button class="mm-btn" data-action="purge"><span class="mm-ic">${MOD_ICONS.timeout}</span><span class="mm-lbl">Отстранить (1с)</span></button>
+                </div>
+
+                <div class="mm-section">Таймаут</div>
+                <div class="mm-row">${presetsHtml}</div>
+                <div class="mm-row">
+                    <input class="mm-input" type="number" min="1" max="20160" placeholder="Минуты" style="flex:1;">
+                    <button class="mm-btn" data-action="timeout-custom"><span class="mm-lbl">Ок</span></button>
+                </div>
+                <div class="mm-timeout-row" hidden>
+                    <div class="mm-timeout-info"></div>
+                    <button class="mm-btn wide" data-action="untimeout"><span class="mm-ic">${MOD_ICONS.timeout}</span><span class="mm-lbl">Прервать отстранение</span></button>
+                </div>
+
+                <div class="mm-section">Бан</div>
+                <div class="mm-row">
+                    <button class="mm-btn danger" data-action="ban"><span class="mm-ic">${MOD_ICONS.ban}</span><span class="mm-lbl">Бан</span></button>
+                    <button class="mm-btn" data-action="unban"><span class="mm-lbl">Разбанить</span></button>
+                </div>
+                <div class="mm-ban-row" hidden>
+                    <div class="mm-ban-info"></div>
+                </div>
+
+                <div class="mm-section">Роли</div>
+                <div class="mm-row">
+                    <button class="mm-btn" data-action="vip"><span class="mm-ic">${MOD_ICONS.vip}</span><span class="mm-lbl">Дать VIP</span></button>
+                    <button class="mm-btn" data-action="mod"><span class="mm-ic">${MOD_ICONS.mod}</span><span class="mm-lbl">Сделать модератором</span></button>
+                </div>
+
+                <div class="mm-section">Блокировка (личная)</div>
+                <div class="mm-row">
+                    <button class="mm-btn" data-action="block"><span class="mm-ic">${MOD_ICONS.ban}</span><span class="mm-lbl">Заблокировать</span></button>
+                </div>
+            </div>
+            <div class="mm-status"></div>
+        `;
+
+        menu.style.left = '0px';
+        menu.style.top = '0px';
+        document.body.appendChild(menu);
+        modMenuEl = menu;
+        modMenuState.badges = collectUserBadges(msgEl);
+        renderModMenuUserBadges();
+
+        // Резервируем место под строки таймаута/бана, которые появятся после загрузки
+        // статуса, чтобы меню не «подпрыгивало», дорастая вниз. Элементы уже в DOM,
+        // меню ещё невидимо, поэтому можно замерить без мигания.
+        const reservedHeight =
+            (() => {
+                const rows = Array.prototype.slice.call(menu.querySelectorAll('.mm-timeout-row[hidden], .mm-ban-row[hidden]'));
+                if (!rows.length) return 0;
+                const hBefore = menu.offsetHeight;
+                rows.forEach((row) => row.removeAttribute('hidden'));
+                const grown = menu.offsetHeight - hBefore;
+                rows.forEach((row) => row.setAttribute('hidden', ''));
+                return Math.max(0, grown);
+            })();
+
+        // Позиционирование: слева от кликнутого сообщения (т.е. левее колонки чата,
+        // по вертикали напротив начала сообщения). Если слева нет места — справа от сообщения.
+        const r = menu.getBoundingClientRect();
+        const msgRect = msgEl ? msgEl.getBoundingClientRect() : null;
+        const totalH = r.height + reservedHeight;
+        const gap = 12;
+        let left;
+        if (msgRect) {
+            const leftSpace = msgRect.left - gap;
+            const rightSpace = window.innerWidth - (msgRect.right + gap);
+            if (leftSpace >= r.width || leftSpace >= rightSpace) {
+                left = msgRect.left - r.width - gap;
+            } else {
+                left = msgRect.right + gap;
+            }
+        } else {
+            left = (window.innerWidth - r.width) / 2;
+        }
+        // Прижимаем к позиции сообщения по вертикали, не выходя за экран.
+        let top = msgRect
+            ? Math.max(8, Math.min(msgRect.top, window.innerHeight - totalH - 8))
+            : Math.max(8, (window.innerHeight - totalH) / 2);
+        left = Math.max(8, Math.min(left, window.innerWidth - r.width - 8));
+        menu.style.left = left + 'px';
+        menu.style.top = top + 'px';
+        menu.style.visibility = 'visible';
+
+        // Закрытие по крестику
+        const closeBtn = menu.querySelector('.mm-close');
+        if (closeBtn) closeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            closeModMenu();
+        });
+
+        // Перетаскивание за шапку
+        const header = menu.querySelector('.mm-header');
+        if (header) {
+            header.addEventListener('mousedown', (e) => {
+                if (e.button !== 0 || e.target.closest('.mm-close')) return;
+                e.preventDefault();
+                const startX = e.clientX;
+                const startY = e.clientY;
+                const startLeft = parseInt(menu.style.left, 10) || left;
+                const startTop = parseInt(menu.style.top, 10) || top;
+                header.classList.add('dragging');
+                const onMove = (ev) => {
+                    const nl = startLeft + ev.clientX - startX;
+                    const nt = startTop + ev.clientY - startY;
+                    menu.style.left = nl + 'px';
+                    menu.style.top = nt + 'px';
+                };
+                const onUp = () => {
+                    window.removeEventListener('mousemove', onMove);
+                    window.removeEventListener('mouseup', onUp);
+                    header.classList.remove('dragging');
+                };
+                window.addEventListener('mousemove', onMove);
+                window.addEventListener('mouseup', onUp);
+            });
+        }
+
+        const preview = menu.querySelector('.mm-preview');
+        if (data.preview) preview.textContent = data.preview;
+
+        const reasonInput = menu.querySelector('.mm-input[type="text"]');
+        menu.querySelectorAll('.mm-btn[data-action]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const action = btn.dataset.action;
+                const s = modMenuState;
+                if (!s || !s.userId) return;
+                const reason = reasonInput ? reasonInput.value.trim() : '';
+                switch (action) {
+                    case 'close':
+                        closeModMenu();
+                        break;
+                    case 'delete':
+                        if (s.messageId) runModAction('Удалить сообщение', () => actionDeleteMessage(s.messageId));
+                        break;
+                    case 'warn':
+                        runModAction('Предупредить', () => actionWarn(s.userId, reason));
+                        break;
+                    case 'purge':
+                        runModAction('Отстранить (1с)', () => actionTimeout(s.userId, 1, reason));
+                        break;
+                    case 'preset': {
+                        const sec = parseInt(btn.dataset.seconds, 10);
+                        runModAction(`Таймаут ${btn.dataset.label}`, () => actionTimeout(s.userId, sec, reason));
+                        break;
+                    }
+                    case 'timeout-custom': {
+                        const numInput = menu.querySelector('.mm-input[type="number"]');
+                        const val = parseFloat(numInput && numInput.value);
+                        if (!val || val < 1) { setMenuStatus('Укажите минуты (1–20160)', 'err'); return; }
+                        const sec = Math.max(60, Math.min(1209600, Math.round(val) * 60));
+                        runModAction(`Таймаут ${Math.round(val)} мин`, () => actionTimeout(s.userId, sec, reason));
+                        break;
+                    }
+                    case 'ban':
+                        runModAction('Бан', () => actionTimeout(s.userId, null, reason));
+                        break;
+                    case 'unban':
+                        runModAction('Разбан', () => actionUnban(s.userId));
+                        break;
+                    case 'untimeout':
+                        runModAction('Прервать отстранение', () => actionUnban(s.userId));
+                        break;
+                    case 'vip':
+                        if (s.status.isVip === true) {
+                            runModAction('Забрать VIP', async () => {
+                                const res = await actionRemoveVip(s.userId);
+                                if (res && res.success) setSessionRole('vip', false);
+                                return res;
+                            });
+                        } else {
+                            runModAction('Дать VIP', async () => {
+                                const res = await actionGiveVip(s.userId);
+                                if (res && res.success) setSessionRole('vip', true);
+                                return res;
+                            });
+                        }
+                        break;
+                    case 'mod':
+                        if (s.status.isMod === true) {
+                            runModAction('Разжаловать модератора', async () => {
+                                const res = await actionRemoveMod(s.userId);
+                                if (res && res.success) setSessionRole('mod', false);
+                                return res;
+                            });
+                        } else {
+                            runModAction('Сделать модератором', async () => {
+                                const res = await actionAddMod(s.userId);
+                                if (res && res.success) setSessionRole('mod', true);
+                                return res;
+                            });
+                        }
+                        break;
+                    case 'block':
+                        if (s.status.isBlocked === true) {
+                            runModAction('Разблокировать', () => actionBlock(s.userId, true));
+                        } else {
+                            runModAction('Заблокировать', () => actionBlock(s.userId, false));
+                        }
+                        break;
+                }
+            });
+        });
+
+        renderModMenuChips();
+        renderModMenuToggles();
+        renderModMenuTimeout();
+        renderModMenuBan();
+        refreshModMenuStatus();
+    }
+
+    function initModerationMenu() {
+        getPanelSettings().then((s) => { tmodContextMenuEnabled = s.contextMenu !== false; });
+        const gqlCaptureCache = new Map();
+
+        // Ответы GQL-операций, которыми сама страница тянет данные модерации.
+        window.addEventListener('message', (ev) => {
+            if (ev.source !== window || ev.data?.type !== 'TMOD_GQL_CAPTURE') return;
+            const op = ev.data.operationName || '?';
+            gqlCaptureCache.set(op, ev.data);
+            if (TMOD_DEBUG && /mod|user|ban|timeout|vip|channel/i.test(op)) {
+                console.log('[ModPanel][accent] gql-capture', op, {
+                    variables: ev.data.variables,
+                    response: (ev.data.response || '').slice(0, 1500)
+                });
+            }
+        });
+        getToken().then((t) => {
+            modTokenCache = !!t;
+            debugLog('mod-token-cache', modTokenCache);
+            if (TMOD_DEBUG && t) {
+                fetch('https://id.twitch.tv/oauth2/validate', { headers: { 'Authorization': 'Bearer ' + t } })
+                    .then((r) => r.json().catch(() => ({})))
+                    .then((j) => debugLog('token-validate', { scopes: j.scopes, error: j.message }))
+                    .catch((e) => debugLog('token-validate-error', e.message));
+            }
+        });
+
+        document.addEventListener('contextmenu', (e) => {
+            if (!tmodContextMenuEnabled) return;
+            if (modMenuEl && !e.target.closest('#tmod-mod-menu')) closeModMenu();
+            if (!isStreamPage()) { console.log('[ModPanel] contextmenu: not stream page'); return; }
+            if (e.target.closest('#tmod-mod-menu')) return;
+            if (!modTokenCache) { console.log('[ModPanel] contextmenu: no token'); modToast('Нет токена — нажмите «Панель модератора» и войдите'); return; }
+            const selectors = [
+                '[data-test-selector="chat-line-message"]',
+                '.chat-line__message',
+                '[data-test-selector="chat-message-holder"]',
+                '.chat-line__message--centered'
+            ];
+            let msgEl = null;
+            for (const sel of selectors) {
+                msgEl = e.target.closest(sel);
+                if (msgEl) break;
+            }
+            if (!msgEl) {
+                const uname = e.target.closest('[data-a-target="chat-line-username"]');
+                if (uname) {
+                    for (const sel of selectors) {
+                        msgEl = uname.closest(sel);
+                        if (msgEl) break;
+                    }
+                }
+            }
+            if (!msgEl) { console.log('[ModPanel] contextmenu: no message element', e.target); return; }
+            // preventDefault должен быть синхронным, иначе появится нативный ПКМ-меню
+            e.preventDefault();
+            e.stopPropagation();
+            (async () => {
+                if (!modTokenCache) { console.log('[ModPanel] contextmenu: token lost'); return; }
+                const data = await getMessageData(msgEl);
+                // Если fiber дал только login (id не извлёкся), резолвим id через Helix.
+                if (data && data.userLogin && !data.userId) {
+                    const r = await helixCall('https://api.twitch.tv/helix/users?login=' + encodeURIComponent(data.userLogin));
+                    if (r.success && r.data && r.data.data && r.data.data[0]) {
+                        data.userId = String(r.data.data[0].id);
+                    }
+                }
+                if (!data || !data.userId) { console.log('[ModPanel] no fiber data', data); modToast('Не удалось прочитать данные сообщения (fiber)'); return; }
+                const userInfo = await getUserInfo();
+                const myId = userInfo && (userInfo.id || userInfo.user_id) ? String(userInfo.id || userInfo.user_id) : null;
+                // Стримера или чужого модератора удалить нельзя; своё сообщение модератора — можно.
+                const isOtherMod = data.isModerator && (!myId || myId !== data.userId);
+                data.canDelete = !!data.messageId && !data.isBroadcaster && !isOtherMod;
+                // Превью: простые фрагменты текста сообщения (без ника и бейджей).
+                let preview = '';
+                const frags = msgEl.querySelectorAll('.text-fragment, .chat-line__text-fragment, [data-a-target="chat-message-text"]');
+                if (frags.length) {
+                    preview = Array.from(frags).map((f) => f.textContent).join(' ').trim();
+                }
+                if (!preview) {
+                    // Фолбэк: вырезаем элемент ника из текста сообщения.
+                    preview = (msgEl.textContent || '').trim();
+                    const nickEl = msgEl.querySelector('[data-a-target="chat-line-username"]');
+                    if (nickEl) preview = preview.replace(nickEl.textContent || '', '').replace(/^\s*[:：]\s*/, '').trim();
+                }
+                data.preview = preview.slice(0, 80);
+                debugLog('mod-context', 'data', data);
+                showModMenu(data, msgEl);
+            })();
+        }, true);
+
+        document.addEventListener('click', (e) => {
+            if (e.button === 0 && modMenuEl && !e.target.closest('#tmod-mod-menu')) closeModMenu();
+        }, true);
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modMenuEl) closeModMenu();
+        }, true);
+
+        // Закрываем только при реальном скролле самой страницы. Чат скроллится во
+        // внутреннем контейнере (в т.ч. автоскролл при новых сообщениях) — его
+        // прокрутка не должна закрывать меню.
+        let modMenuScrollBase = window.scrollY;
+        window.addEventListener('scroll', () => {
+            if (!modMenuEl) return;
+            if (Math.abs(window.scrollY - modMenuScrollBase) > 2) closeModMenu();
+            modMenuScrollBase = window.scrollY;
+        }, true);
+    }
+
+    // ============================================================================
     // Кнопка под чатом
     // ============================================================================
 
@@ -2186,6 +3601,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
             if (!token) {
                 const result = await authorize();
                 if (result.success) {
+                    modTokenCache = true;
                     notify('Вход: ' + ((result.user && result.user.login) || 'выполнен'));
                 } else {
                     notify('Ошибка: ' + (result.error || 'авторизация не удалась'));
@@ -2213,6 +3629,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 const btnWrapper = document.getElementById('tmod-btn-wrapper');
                 if (btnWrapper) btnWrapper.remove();
                 if (panelOpen && panelElement) { panelElement.remove(); panelOpen = false; }
+                closeModMenu();
                 if (isStreamPage()) {
                     setTimeout(injectButton, 500);
                     warmAccentCache();
@@ -2236,16 +3653,19 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         setTimeout(getChannelAccentColor, 12000);
     }
     watchChannelChanges();
+    initModerationMenu();
 
     // Меню Tampermonkey (в расширении эту роль играет popup/)
     if (!IS_EXTENSION && typeof GM_registerMenuCommand === 'function') {
         GM_registerMenuCommand('Войти', async () => {
             const result = await authorize();
+            if (result.success) modTokenCache = true;
             notify(result.success ? 'Вход: ' + ((result.user && result.user.login) || 'выполнен') : 'Ошибка: ' + (result.error || 'не удалось войти'));
         });
         GM_registerMenuCommand('Выйти', async () => {
             await setToken(null);
             await setUserInfo(null);
+            modTokenCache = false;
             notify('Выход выполнен');
         });
     }

@@ -15,6 +15,7 @@ function startOAuth() {
     return new Promise((resolve) => {
         const redirectUri = 'http://localhost:3000';
         const scopes = [
+            'moderation:read',
             'moderator:manage:announcements',
             'moderator:manage:chat_settings',
             'moderator:manage:chat_messages',
@@ -29,7 +30,13 @@ function startOAuth() {
             'channel:manage:broadcast',
             'moderator:manage:shoutouts',
             'moderator:read:chatters',
-            'channel:manage:raids'
+            'channel:manage:raids',
+            'channel:manage:vips',
+            'channel:read:vips',
+            'channel:manage:moderators',
+            'moderator:manage:warnings',
+            'user:manage:blocked_users',
+            'user:read:blocked_users'
         ].join(' ');
         
         const authUrl = `https://id.twitch.tv/oauth2/authorize` +
