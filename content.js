@@ -959,13 +959,14 @@
             if (!dragState) return;
             const wasHidden = dragState.fromHidden;
             const feature = dragState.feature;
+            let dropHidden = false;
             if (dragState.ghost) {
                 const g = dragState.ghost;
                 const ghostDisplay = g.style.display;
                 g.style.display = 'none';
                 const over = document.elementFromPoint(e.clientX, e.clientY);
                 g.style.display = ghostDisplay;
-                const dropHidden = over && over.closest('#tmod-tiles-hidden-zone');
+                dropHidden = !!(over && over.closest('#tmod-tiles-hidden-zone'));
                 g.remove();
                 dragState.btn.style.opacity = '';
                 if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
