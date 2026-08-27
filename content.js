@@ -19,6 +19,35 @@
     const STORAGE_KEY_USER = 'tmod_user_info';
     const GITHUB_RAW_ICONS = 'https://raw.githubusercontent.com/Stepanchikkk/twitch-modpanel/unified-core/icons/';
 
+    // Права, необходимые функциям панели. Держим в синхроне со списками scopes
+    // в authorize() (ниже) и в background.js. Если у старого токена чего-то нет —
+    // разово сбрасываем его (см. ensureScopesFresh), чтобы пользователь один раз
+    // пере-авторизовался и получил все права.
+    const REQUIRED_SCOPES = [
+        'moderation:read',
+        'moderator:manage:announcements',
+        'moderator:manage:chat_settings',
+        'moderator:manage:chat_messages',
+        'moderator:manage:banned_users',
+        'channel:manage:polls',
+        'channel:manage:predictions',
+        'channel:read:redemptions',
+        'channel:manage:redemptions',
+        'user:read:moderated_channels',
+        'chat:read',
+        'chat:edit',
+        'channel:manage:broadcast',
+        'moderator:manage:shoutouts',
+        'moderator:read:chatters',
+        'channel:manage:raids',
+        'channel:manage:vips',
+        'channel:read:vips',
+        'channel:manage:moderators',
+        'moderator:manage:warnings',
+        'user:manage:blocked_users',
+        'user:read:blocked_users'
+    ];
+
     let panelOpen = false;
     let panelElement = null;
     let panelPosition = null;
@@ -301,6 +330,41 @@
 
     async function setUserInfo(user) {
         return storageSet(STORAGE_KEY_USER, user);
+    }
+
+    // После добавления в панель новых прав (VIP/мод/варны/блокировки) старые
+    // токены их не содержат, и действия падают с 401/403. Проверяем токен один
+    // раз при загрузке страницы: не хватает scopes → чистим, пользователь один
+    // раз пере-авторизуется (клик по «Панель модератора»). Повторной очистки
+    // нет — новый токен содержит все права, дальше проверка проходит тихо.
+    async function ensureScopesFresh() {
+        const token = await getToken();
+        if (!token) return;
+        const res = await apiRequest('https://id.twitch.tv/oauth2/validate', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (res.error) return;              // сеть — не считаем поводом для выхода
+        if (res.status === 401) {
+            // Токен протух/отозван — он и так не работает, чистим, чтобы панель
+            // не спотыкалась и предложила войти заново.
+            await setToken(null);
+            await setUserInfo(null);
+            modTokenCache = false;
+            return;
+        }
+        if (!res.ok) return;
+        let scopes;
+        try { scopes = JSON.parse(res.text).scopes || []; } catch { return; }
+        const missing = REQUIRED_SCOPES.filter((s) => !scopes.includes(s));
+        if (missing.length) {
+            debugLog('scopes-fresh', { missing });
+            await setToken(null);
+            await setUserInfo(null);
+            modTokenCache = false;
+            try {
+                modToast('Панель обновилась: войдите ещё раз, чтобы получить новые права');
+            } catch (e) {}
+        }
     }
 
     // ============================================================================
@@ -3669,6 +3733,9 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
     }
     watchChannelChanges();
     initModerationMenu();
+    // Разовый дожимающий вход для пользователей со старыми правами. Отложен,
+    // чтобы не спорить с остальным стартом и не мешать первому рендеру.
+    setTimeout(ensureScopesFresh, 1500);
 
     // Меню Tampermonkey (в расширении эту роль играет popup/)
     if (!IS_EXTENSION && typeof GM_registerMenuCommand === 'function') {
