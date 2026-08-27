@@ -874,15 +874,10 @@
             const rect = btn.getBoundingClientRect();
             const ghost = btn.cloneNode(true);
             ghost.classList.add('tmod-drag-ghost');
-            ghost.style.width = rect.width + 'px';
-            ghost.style.height = rect.height + 'px';
-            const offsetX = rect.width / 2;
-            const offsetY = rect.height / 2;
-            ghost.style.left = (e.clientX - offsetX) + 'px';
-            ghost.style.top = (e.clientY - offsetY) + 'px';
+            ghost.style.cssText = `width:${rect.width}px;height:${rect.height}px;left:${e.clientX - rect.width/2}px;top:${e.clientY - rect.height/2}px;position:fixed;z-index:1000000;pointer-events:none;transform:scale(1.06);box-shadow:0 8px 24px rgba(0,0,0,0.6);margin:0;opacity:1;`;
             document.body.appendChild(ghost);
             btn.style.opacity = '0.4';
-            dragState = { feature, ghost, fromHidden, offsetX, offsetY, btn, placeholder: null };
+            dragState = { feature, ghost, fromHidden, offsetX: rect.width/2, offsetY: rect.height/2, btn, placeholder: null };
         }
 
         function moveTileDrag(e) {
@@ -890,6 +885,7 @@
             const g = dragState.ghost;
             g.style.left = (e.clientX - dragState.offsetX) + 'px';
             g.style.top = (e.clientY - dragState.offsetY) + 'px';
+            g.style.transform = 'scale(1.06)';
             const over = document.elementFromPoint(e.clientX, e.clientY);
             if (over) {
                 const inHidden = over.closest('#tmod-tiles-hidden-zone');
