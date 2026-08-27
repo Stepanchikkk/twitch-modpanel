@@ -1684,16 +1684,13 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
             <div style="position: relative; margin-bottom: 10px;">
                 <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 4px;">Канал для рейда</label>
                 <input type="text" id="tmod-raid-input" placeholder="логин или ссылка..." autocomplete="off" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
-                <div id="tmod-raid-results" style="position: absolute; top: 100%; left: 0; right: 0; background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 0 0 4px 4px; display: none; z-index: 10; max-height: 250px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #3a3a3d transparent;"></div>
+                <div id="tmod-raid-results" style="background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 0 0 4px 4px; display: none; max-height: 250px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #3a3a3d transparent;"></div>
             </div>
             <button id="tmod-raid-btn" style="width: 100%; background: #9146FF; color: white; border: none; border-radius: 4px; padding: 10px; font-size: 14px; font-weight: 600; cursor: pointer;">Начать рейд</button>
             <div id="tmod-raid-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
         `;
 
         content.querySelector('#tmod-back').onclick = () => { panel.remove(); panelOpen = false; setTimeout(() => createPanel(), 10); };
-
-        const rect = panel.getBoundingClientRect();
-        if (rect.top < 260) { panel.style.bottom = Math.max(10, window.innerHeight - rect.top - 260) + 'px'; }
 
         const raidInput = content.querySelector('#tmod-raid-input');
         const raidBtn = content.querySelector('#tmod-raid-btn');
