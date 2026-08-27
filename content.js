@@ -1536,17 +1536,14 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         if (rect.top < 0) { panel.style.bottom = Math.max(10, panelPosition.bottom + rect.top) + 'px'; }
 
         async function loadChatters() {
-            const token = await getToken();
-            if (!token) return [];
-            const broadcasterId = await getChannelId(channelName, token);
-            if (!broadcasterId) return [];
-            const userId = await getCurrentUserId(token);
-            if (!userId) return [];
-            const resp = await apiRequest(`https://api.twitch.tv/helix/chat/chatters?broadcaster_id=${broadcasterId}&moderator_id=${userId}&first=1000`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'Client-Id': CLIENT_ID }
-            });
-            if (resp.error || !resp.ok) return [];
-            try { return JSON.parse(resp.text).data || []; } catch { return []; }
+            try {
+                const resp = await apiRequest(`https://tmi.twitch.tv/group/user/${channelName}/chatters`, {});
+                if (resp.error || !resp.ok) return [];
+                const data = JSON.parse(resp.text);
+                const ch = data.chatters || {};
+                const all = [].concat(ch.broadcaster || [], ch.moderators || [], ch.vips || [], ch.viewers || []);
+                return all.map(login => ({ user_login: login, user_name: login }));
+            } catch { return []; }
         }
 
         async function sendShoutout(recipientLogin) {
