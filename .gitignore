@@ -1,6 +1,9 @@
 # Agent instructions
 AGENTS.md
 
+# Local dev config
+opencode.json
+
 # Icon generators
 icons/generate-empty-icons.html
 icons/generate-icons.html
