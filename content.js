@@ -983,6 +983,8 @@
                 tileHidden.push(feature);
                 tileOrder = tileOrder.filter(f => f !== feature);
             }
+            renderTiles();
+            renderHidden();
             saveTilesConfig();
             dragState = null;
         }
