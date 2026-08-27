@@ -1720,7 +1720,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 try {
                     const data = JSON.parse(resp.text);
                     if (!data.data || !data.data.length) { raidResults.style.display = 'none'; return; }
-                    raidResults.innerHTML = data.data.map(c => {
+                    raidResults.innerHTML = data.data.reverse().map(c => {
                         const live = c.is_live ? '<span style="color:#ff4444; font-size: 11px; margin-left: 4px;">LIVE</span>' : '';
                         return `<div class="tmod-raid-item" data-login="${c.broadcaster_login}" style="padding: 6px 10px; font-size: 13px; color: #efeff1; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.1s;">
                             <img src="${c.thumbnail_url || ''}" style="width: 28px; height: 28px; border-radius: 50%; background: #26262c; flex-shrink: 0;" onerror="this.style.display='none'">
