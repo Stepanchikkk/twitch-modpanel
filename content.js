@@ -791,7 +791,7 @@
 
         panel.innerHTML = `
             <style>
-                @keyframes tmod-slide-in { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+                @keyframes tmod-slide-in { from { opacity: 0; } to { opacity: 1; } }
                 .tmod-no-select { user-select: none !important; -webkit-user-select: none !important; }
                 .tmod-feature-btn {
                     background: #18181b !important; border: 1px solid #3a3a3d !important; border-radius: 8px !important;
