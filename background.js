@@ -170,6 +170,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             sendResponse({ success: !!(cookie && cookie.value), value: cookie ? cookie.value : null });
         });
         return true;
+    } else if (message.type === 'FETCH_URL') {
+        fetch(message.url)
+            .then(async (r) => sendResponse({ success: true, status: r.status, text: await r.text() }))
+            .catch((e) => sendResponse({ success: false, error: e.message }));
+        return true;
     }
 
     sendResponse({ success: false, error: 'Unknown type' });

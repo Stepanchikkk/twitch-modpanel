@@ -1537,9 +1537,18 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
 
         async function loadChatters() {
             try {
-                const resp = await apiRequest(`https://tmi.twitch.tv/group/user/${channelName}/chatters`, {});
-                if (resp.error || !resp.ok) return [];
-                const data = JSON.parse(resp.text);
+                const url = `https://tmi.twitch.tv/group/user/${channelName}/chatters`;
+                let text;
+                if (IS_EXTENSION && typeof chrome !== 'undefined' && chrome.runtime) {
+                    const resp = await chrome.runtime.sendMessage({ type: 'FETCH_URL', url });
+                    if (!resp.success) return [];
+                    text = resp.text;
+                } else {
+                    const resp = await apiRequest(url, {});
+                    if (resp.error || !resp.ok) return [];
+                    text = resp.text;
+                }
+                const data = JSON.parse(text);
                 const ch = data.chatters || {};
                 const all = [].concat(ch.broadcaster || [], ch.moderators || [], ch.vips || [], ch.viewers || []);
                 return all.map(login => ({ user_login: login, user_name: login }));
