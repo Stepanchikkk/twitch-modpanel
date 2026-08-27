@@ -886,7 +886,11 @@
             g.style.left = (e.clientX - dragState.offsetX) + 'px';
             g.style.top = (e.clientY - dragState.offsetY) + 'px';
             g.style.transform = 'scale(1.06)';
+            // временно скрываем призрак для корректного elementFromPoint
+            const ghostDisplay = g.style.display;
+            g.style.display = 'none';
             const over = document.elementFromPoint(e.clientX, e.clientY);
+            g.style.display = ghostDisplay;
             if (over) {
                 const inHidden = over.closest('#tmod-tiles-hidden-zone');
                 if (inHidden) {
@@ -955,13 +959,19 @@
             if (!dragState) return;
             const wasHidden = dragState.fromHidden;
             const feature = dragState.feature;
-            if (dragState.ghost) dragState.ghost.remove();
-            dragState.btn.style.opacity = '';
-            if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
-            const over = document.elementFromPoint(e.clientX, e.clientY);
-            const dropHidden = over && over.closest('#tmod-tiles-hidden-zone');
-            hiddenZone.style.background = '';
-            hiddenZone.style.borderColor = '';
+            if (dragState.ghost) {
+                const g = dragState.ghost;
+                const ghostDisplay = g.style.display;
+                g.style.display = 'none';
+                const over = document.elementFromPoint(e.clientX, e.clientY);
+                g.style.display = ghostDisplay;
+                const dropHidden = over && over.closest('#tmod-tiles-hidden-zone');
+                g.remove();
+                dragState.btn.style.opacity = '';
+                if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
+                hiddenZone.style.background = '';
+                hiddenZone.style.borderColor = '';
+            }
 
             if (wasHidden) {
                 if (!dropHidden) {
