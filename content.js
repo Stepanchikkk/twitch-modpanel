@@ -1692,7 +1692,8 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
 
         content.querySelector('#tmod-back').onclick = () => { panel.remove(); panelOpen = false; setTimeout(() => createPanel(), 10); };
 
-        panel.style.bottom = Math.max(220, window.innerHeight - 50) + 'px';
+        const rect = panel.getBoundingClientRect();
+        if (rect.top < 260) { panel.style.bottom = Math.max(10, window.innerHeight - rect.top - 260) + 'px'; }
 
         const raidInput = content.querySelector('#tmod-raid-input');
         const raidBtn = content.querySelector('#tmod-raid-btn');
