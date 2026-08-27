@@ -1681,9 +1681,10 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
 
         content.innerHTML = `
             <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;"><span>\u2190</span> <span>Назад</span></button>
-            <div style="margin-bottom: 10px;">
+            <div style="position: relative; margin-bottom: 10px;">
                 <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 4px;">Канал для рейда</label>
-                <input type="text" id="tmod-raid-input" placeholder="логин канала..." autocomplete="off" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
+                <input type="text" id="tmod-raid-input" placeholder="логин или ссылка..." autocomplete="off" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
+                <div id="tmod-raid-results" style="position: absolute; top: 100%; left: 0; right: 0; background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 0 0 4px 4px; display: none; z-index: 10; max-height: 250px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #3a3a3d transparent;"></div>
             </div>
             <button id="tmod-raid-btn" style="width: 100%; background: #9146FF; color: white; border: none; border-radius: 4px; padding: 10px; font-size: 14px; font-weight: 600; cursor: pointer;">Начать рейд</button>
             <div id="tmod-raid-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
@@ -1697,9 +1698,58 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         const raidInput = content.querySelector('#tmod-raid-input');
         const raidBtn = content.querySelector('#tmod-raid-btn');
         const statusDiv = content.querySelector('#tmod-raid-status');
+        const raidResults = content.querySelector('#tmod-raid-results');
+
+        function parseTwitchLogin(value) {
+            const v = value.trim();
+            if (!v) return '';
+            const urlMatch = v.match(/twitch\.tv\/([a-zA-Z0-9_]+)/i);
+            if (urlMatch) return urlMatch[1].toLowerCase();
+            return v.replace(/^@/, '').toLowerCase();
+        }
+
+        let raidSearchTimeout = null;
+        raidInput.addEventListener('input', () => {
+            clearTimeout(raidSearchTimeout);
+            const q = parseTwitchLogin(raidInput.value);
+            if (q.length < 2) { raidResults.style.display = 'none'; raidResults.innerHTML = ''; return; }
+            raidSearchTimeout = setTimeout(async () => {
+                const token = await getToken();
+                if (!token) return;
+                const resp = await apiRequest(`https://api.twitch.tv/helix/search/channels?query=${encodeURIComponent(q)}&first=5`, {
+                    headers: { 'Authorization': `Bearer ${token}`, 'Client-Id': CLIENT_ID }
+                });
+                if (resp.error || !resp.ok) return;
+                try {
+                    const data = JSON.parse(resp.text);
+                    if (!data.data || !data.data.length) { raidResults.style.display = 'none'; return; }
+                    raidResults.innerHTML = data.data.map(c => {
+                        const live = c.is_live ? '<span style="color:#ff4444; font-size: 11px; margin-left: 4px;">LIVE</span>' : '';
+                        return `<div class="tmod-raid-item" data-login="${c.broadcaster_login}" style="padding: 6px 10px; font-size: 13px; color: #efeff1; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.1s;">
+                            <img src="${c.thumbnail_url || ''}" style="width: 28px; height: 28px; border-radius: 50%; background: #26262c; flex-shrink: 0;" onerror="this.style.display='none'">
+                            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${c.display_name}${live}</span>
+                        </div>`;
+                    }).join('');
+                    raidResults.style.display = 'block';
+                    raidResults.querySelectorAll('.tmod-raid-item').forEach(item => {
+                        item.onmouseenter = () => item.style.background = '#26262c';
+                        item.onmouseleave = () => item.style.background = '';
+                        item.onclick = () => {
+                            raidInput.value = item.dataset.login;
+                            raidResults.style.display = 'none';
+                        };
+                    });
+                } catch { raidResults.style.display = 'none'; }
+            }, 300);
+        });
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#tmod-raid-input') && !e.target.closest('#tmod-raid-results')) {
+                raidResults.style.display = 'none';
+            }
+        });
 
         async function doRaid() {
-            const target = raidInput.value.trim().replace('@', '');
+            const target = parseTwitchLogin(raidInput.value);
             if (!target) { statusDiv.innerHTML = '<span style="color:#ff6b6b;">Введите логин канала</span>'; return; }
             raidBtn.disabled = true;
             statusDiv.textContent = 'Поиск канала...';
