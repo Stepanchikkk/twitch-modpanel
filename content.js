@@ -678,7 +678,7 @@
             chat: `<img src="${chatIconUrl}" alt="">`,
             poll: `<img src="${pollIconUrl}" alt="">`,
             prediction: `<img src="${predictionIconUrl}" alt="">`,
-            clip: `<img src="${clipIconUrl}" alt="">`,
+            clip: `<svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="m19.613 2-1.912.585.584 1.912 1.913-.584L19.613 2Zm-5.737 1.754 1.912-.585.585 1.913-1.913.585-.584-1.913Zm-1.913.585-1.913.585.585 1.912 1.913-.584-.585-1.913ZM8.138 5.508l-1.913.585.585 1.913 1.912-.585-.584-1.913Zm-3.825 1.17L2.4 7.263l.585 1.912 1.912-.584-.584-1.913ZM5 11H3v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-9h-2v9H5v-9Z"></path><path d="M9 11H7v2h2v-2Zm2 0h2v2h-2v-2Zm6 0h-2v2h2v-2Z"></path></svg>`,
             rewards: `<img src="${rewardsIconUrl}" alt="">`,
             stream: `<svg width="24" height="24" viewBox="0 0 24 24"><path fill="white" fill-rule="evenodd" d="M13.207 7.621 4 16.828V20h3.172l9.207-9.207-3.172-3.172Zm4.586 1.758L14.62 6.207l1.88-1.879L19.672 7.5l-1.88 1.879ZM8 21.999H2v-6L15.086 2.915a2 2 0 0 1 2.828 0l3.172 3.172a2 2 0 0 1 0 2.828L8 22Z" clip-rule="evenodd"></path></svg>`,
             shoutout: `<svg viewBox="0 0 24 24" fill="white" width="24" height="24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 12h-2v-2h2v2zm0-4h-2V6h2v4z"/></svg>`,
