@@ -1594,7 +1594,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
                 listDiv.innerHTML = filtered.map(c => `
                     <div class="tmod-so-item" data-login="${c.user_login}" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid #26262c; cursor: pointer; transition: background 0.1s;">
                         <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
-                            <img src="https://static-cdn.jtvnw.net/jtv_user_pictures/${c.user_login}-image-70x70.png" style="width: 28px; height: 28px; border-radius: 50%; background: #26262c; flex-shrink: 0;" onerror="this.style.display='none'">
+                            <div style="width: 28px; height: 28px; border-radius: 50%; background: #9146FF; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 13px; font-weight: 600; color: white;">${c.user_name.charAt(0).toUpperCase()}</div>
                             <span style="font-size: 13px; color: #efeff1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${c.user_name}</span>
                         </div>
                         <span style="font-size: 12px; color: #9146FF; white-space: nowrap; flex-shrink: 0;">Шаутаут</span>
