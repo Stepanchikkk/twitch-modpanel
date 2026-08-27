@@ -756,7 +756,7 @@
                     opacity: 1 !important;
                     box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
                     position: fixed !important;
-                    z-index: 999999;
+                    z-index: 1000000;
                     pointer-events: none !important;
                     margin: 0 !important;
                 }
@@ -876,11 +876,13 @@
             ghost.classList.add('tmod-drag-ghost');
             ghost.style.width = rect.width + 'px';
             ghost.style.height = rect.height + 'px';
-            ghost.style.left = (e.clientX - rect.width / 2) + 'px';
-            ghost.style.top = (e.clientY - rect.height / 2) + 'px';
+            const offsetX = rect.width / 2;
+            const offsetY = rect.height / 2;
+            ghost.style.left = (e.clientX - offsetX) + 'px';
+            ghost.style.top = (e.clientY - offsetY) + 'px';
             document.body.appendChild(ghost);
             btn.style.opacity = '0.4';
-            dragState = { feature, ghost, fromHidden, offsetX: e.clientX - rect.left, offsetY: e.clientY - rect.top, btn };
+            dragState = { feature, ghost, fromHidden, offsetX, offsetY, btn, placeholder: null };
         }
 
         function moveTileDrag(e) {
@@ -899,7 +901,7 @@
                     hiddenZone.style.borderColor = '';
                 }
                 const target = over.closest('.tmod-feature-btn');
-                if (target && target !== dragState.btn && dragState.fromHidden === false && target.parentNode === grid) {
+                if (dragState.fromHidden === false && target && target !== dragState.btn && target.parentNode === grid) {
                     const fromIdx = tileOrder.indexOf(dragState.feature);
                     const toIdx = tileOrder.indexOf(target.dataset.feature);
                     if (fromIdx !== -1 && toIdx !== -1) {
@@ -909,6 +911,23 @@
                         const newBtn = grid.querySelector(`[data-feature="${dragState.feature}"]`);
                         if (newBtn) { newBtn.style.opacity = '0.4'; dragState.btn = newBtn; }
                     }
+                    if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
+                } else if (dragState.fromHidden && target && target.parentNode === grid) {
+                    if (dragState.placeholder) dragState.placeholder.remove();
+                    const ph = document.createElement('div');
+                    ph.className = 'tmod-drag-placeholder';
+                    ph.style.cssText = 'width:100%;height:100%;border:2px dashed #9146FF;border-radius:8px;background:rgba(145,70,255,0.1);pointer-events:none;box-sizing:border-box;';
+                    target.parentNode.insertBefore(ph, target);
+                    dragState.placeholder = ph;
+                } else if (dragState.fromHidden && !target && over.closest('#tmod-tiles-grid')) {
+                    if (dragState.placeholder) dragState.placeholder.remove();
+                    const ph = document.createElement('div');
+                    ph.className = 'tmod-drag-placeholder';
+                    ph.style.cssText = 'width:100%;height:100%;border:2px dashed #9146FF;border-radius:8px;background:rgba(145,70,255,0.1);pointer-events:none;box-sizing:border-box;';
+                    grid.appendChild(ph);
+                    dragState.placeholder = ph;
+                } else {
+                    if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
                 }
             }
         }
@@ -919,6 +938,7 @@
             const feature = dragState.feature;
             if (dragState.ghost) dragState.ghost.remove();
             dragState.btn.style.opacity = '';
+            if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
             const over = document.elementFromPoint(e.clientX, e.clientY);
             const dropHidden = over && over.closest('#tmod-tiles-hidden-zone');
             hiddenZone.style.background = '';
@@ -942,12 +962,19 @@
             dragState = null;
         }
 
+        function setEditBtnIcon(editing) {
+            editBtn.innerHTML = editing
+                ? '<svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>'
+                : '<svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path fill-rule="evenodd" d="M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z"/><path fill-rule="evenodd" d="M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5v11z"/></svg>';
+            editBtn.style.color = editing ? '#9146FF' : '#adadb8';
+        }
         editBtn.addEventListener('click', () => {
             tileEditing = !tileEditing;
             panel.classList.toggle('tmod-edit-mode', tileEditing);
-            editBtn.style.color = tileEditing ? '#9146FF' : '#adadb8';
             hiddenZone.style.display = tileEditing ? 'block' : 'none';
+            setEditBtnIcon(tileEditing);
         });
+        setEditBtnIcon(false);
 
         grid.addEventListener('mousedown', (e) => {
             if (!tileEditing) return;
