@@ -3,9 +3,10 @@
 Панель модератора для Twitch — быстрый доступ к инструментам управления стримом без переключения на Mod View.
 
 <p align="center">
-  <img src="screenshots/08-panel.png" alt="Панель модератора" width="100%">
+  <img src="screenshots/08-panel.png" alt="Панель модератора" width="80%">
   
-  <img src="screenshots/09-menu.png" alt="Меню действий модератора" width="100%">
+  <img src="screenshots/09-menu.png" alt="Меню действий модератора" width="80%">
+</p>
 </p>
 
 ---
