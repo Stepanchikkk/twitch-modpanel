@@ -7,7 +7,6 @@
   
   <img src="screenshots/09-menu.png" alt="Меню действий модератора" width="80%">
 </p>
-</p>
 
 ---
 
