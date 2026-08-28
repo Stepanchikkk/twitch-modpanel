@@ -53,6 +53,8 @@
     let panelPosition = null;
     // Меню действий модератора: можно отключить в настройках панели (шестерёнка в шапке).
     let tmodContextMenuEnabled = true;
+    // Автофокус чата: печать в любом месте страницы переводит фокус в чат (как в мессенджерах).
+    let tmodChatAutofocus = true;
 
     function getPanelSettings() {
         return storageGet('tmod_settings').then((raw) => {
@@ -1198,6 +1200,13 @@
                 </div>
                 <div class="tmod-tt-track" id="tmod-sett-ctxmenu"><div class="tmod-tt-thumb"></div></div>
             </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #18181b; border: 1px solid #3a3a3d; border-radius: 8px; padding: 12px; margin-top: 8px;">
+                <div>
+                    <div style="font-size: 14px; color: #efeff1; font-weight: 600;">Автофокус чата</div>
+                    <div style="font-size: 12px; color: #adadb8; margin-top: 3px;">Начни печатать в любом месте страницы — фокус сразу перейдёт в чат</div>
+                </div>
+                <div class="tmod-tt-track" id="tmod-sett-autofocus"><div class="tmod-tt-thumb"></div></div>
+            </div>
             <div style="${sectionStyle}">Аккаунт</div>
             <button id="tmod-sett-logout" data-label="Выйти из аккаунта" style="${dangerBtnStyle}">Выйти из аккаунта</button>
             <div style="${sectionStyle}">Сброс данных</div>
@@ -1242,6 +1251,22 @@
             tmodContextMenuEnabled = next;
             getPanelSettings().then((s) => {
                 s.contextMenu = next;
+                savePanelSettings(s);
+            });
+        };
+
+        const autoTrack = content.querySelector('#tmod-sett-autofocus');
+        getPanelSettings().then((s) => {
+            const on = s.chatAutofocus !== false;
+            tmodChatAutofocus = on;
+            autoTrack.classList.toggle('on', on);
+        });
+        autoTrack.onclick = () => {
+            const next = !autoTrack.classList.contains('on');
+            autoTrack.classList.toggle('on', next);
+            tmodChatAutofocus = next;
+            getPanelSettings().then((s) => {
+                s.chatAutofocus = next;
                 savePanelSettings(s);
             });
         };
@@ -3542,6 +3567,49 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
         refreshModMenuStatus();
     }
 
+    function initChatAutofocus() {
+        getPanelSettings().then((s) => { tmodChatAutofocus = s.chatAutofocus !== false; });
+
+        const FOCUSABLE_SELECTOR = 'input, textarea, [contenteditable], [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"]';
+
+        function isFocusableElement(el) {
+            if (!el || el === document.body || el === document.documentElement) return false;
+            if (el.closest(FOCUSABLE_SELECTOR)) return true;
+            return false;
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (!tmodChatAutofocus) return;
+            // Только печатные одинарные символы, без модификаторов.
+            if (e.key.length !== 1) return;
+            if (e.ctrlKey || e.altKey || e.metaKey) return;
+            // Не мешаем, когда фокус уже в каком-то поле ввода.
+            if (isFocusableElement(document.activeElement)) return;
+            // Twitch — SPA: ищем поле на каждый keydown, не кэшируем.
+            const chatInput = document.querySelector('[data-a-target="chat-input"]');
+            if (!chatInput) return;
+            // Блокируем одиночные хоткеи Twitch.
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            chatInput.focus();
+            // Чат Twitch — Slate.js: execCommand пишет «сырой» DOM, которого нет в
+            // состоянии редактора. Пусть сам Slate обработает символ через beforeinput.
+            setTimeout(() => {
+                if (document.activeElement !== chatInput) return;
+                const evt = new InputEvent('beforeinput', {
+                    bubbles: true,
+                    cancelable: true,
+                    inputType: 'insertText',
+                    data: e.key,
+                });
+                const handled = !chatInput.dispatchEvent(evt) || evt.defaultPrevented;
+                if (!handled) {
+                    document.execCommand('insertText', false, e.key);
+                }
+            }, 0);
+        }, true);
+    }
+
     function initModerationMenu() {
         getPanelSettings().then((s) => { tmodContextMenuEnabled = s.contextMenu !== false; });
         const gqlCaptureCache = new Map();
@@ -3733,6 +3801,7 @@ content.querySelector('#tmod-send-announce').addEventListener('click', async () 
     }
     watchChannelChanges();
     initModerationMenu();
+    initChatAutofocus();
     // Разовый дожимающий вход для пользователей со старыми правами. Отложен,
     // чтобы не спорить с остальным стартом и не мешать первому рендеру.
     setTimeout(ensureScopesFresh, 1500);
