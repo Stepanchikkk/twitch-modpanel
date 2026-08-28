@@ -131,7 +131,7 @@ async function saveTokenAndUser(token, resolve) {
             });
 
             console.log('[OAuth] User saved:', user.login);
-            try { chrome.runtime.sendMessage({ type: 'OAUTH_SUCCESS' }); } catch(e) {}
+            chrome.runtime.sendMessage({ type: 'OAUTH_SUCCESS' }).catch(() => {});
             resolve({ success: true, user });
         } else {
             resolve({ success: false, error: 'No user data' });
