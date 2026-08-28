@@ -4,7 +4,7 @@
 
 <p align="center">
   <img src="screenshots/08-panel.png" alt="Панель модератора" width="100%">
-  
+  /b
   <img src="screenshots/09-menu.png" alt="Меню действий модератора" width="100%">
 </p>
 
