@@ -61,12 +61,11 @@
 
 ### Способ 2: Chrome Extension (режим разработчика)
 
-1. Скачай репозиторий как ZIP: **[Скачать ZIP](https://github.com/Stepanchikkk/twitch-modpanel/archive/refs/heads/main.zip)**
+1. Скачай архив расширения: **[📦 Скачать архив](https://github.com/Stepanchikkk/twitch-modpanel/releases/latest/download/twitch-modpanel.zip)**
 2. Распакуй архив в любую папку
 3. Открой:
    - **Chrome:** `chrome://extensions/`
    - **Яндекс Браузер:** `browser://extensions/`
-   - **Edge:** `edge://extensions/`
    - **Edge:** `edge://extensions/`
 4. Включи **Режим разработчика**
 5. Нажми **Загрузить распакованное** (Load unpacked)
