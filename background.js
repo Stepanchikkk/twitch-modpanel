@@ -30,6 +30,7 @@ function startOAuth() {
             'channel:manage:broadcast',
             'moderator:manage:shoutouts',
             'moderator:read:chatters',
+            'moderator:read:shield_mode',
             'channel:manage:raids',
             'channel:manage:vips',
             'channel:read:vips',

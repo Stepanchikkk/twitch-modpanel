@@ -39,6 +39,7 @@
         'channel:manage:broadcast',
         'moderator:manage:shoutouts',
         'moderator:read:chatters',
+        'moderator:read:shield_mode',
         'channel:manage:raids',
         'channel:manage:vips',
         'channel:read:vips',
@@ -463,13 +464,33 @@
         try {
             const data = JSON.parse(response.text);
             const settings = data.data[0];
+
+            // Статус shield-режима читается отдельным эндпоинтом (в /chat/settings его нет).
+            let shieldMode = false;
+            const sr = await apiRequest(
+                `https://api.twitch.tv/helix/moderation/shield_mode?broadcaster_id=${broadcasterId}&moderator_id=${userId}`,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Client-Id': CLIENT_ID
+                    }
+                }
+            );
+            if (!sr.error && sr.ok) {
+                try {
+                    const sd = JSON.parse(sr.text);
+                    shieldMode = !!(sd.data && sd.data[0] && sd.data[0].is_active);
+                } catch (e) { shieldMode = false; }
+            }
+
             return {
                 slowMode: settings.slow_mode,
                 slowModeWaitTime: settings.slow_mode_wait_time,
                 followerMode: settings.follower_mode,
                 followerModeWaitTime: settings.follower_mode_wait_time,
                 subscriberMode: settings.subscriber_mode,
-                emoteMode: settings.emote_mode
+                emoteMode: settings.emote_mode,
+                shieldMode
             };
         } catch (e) {
             return null;
@@ -610,6 +631,7 @@
                 'channel:manage:broadcast',
                 'moderator:manage:shoutouts',
                 'moderator:read:chatters',
+                'moderator:read:shield_mode',
                 'channel:manage:raids',
                 'channel:manage:vips',
                 'channel:read:vips',
@@ -1758,6 +1780,8 @@ const announceText = content.querySelector('#tmod-announce-text');
             };
 
             const shieldTrack = content.querySelector('#tmod-tt-shield');
+            ttSet(shieldTrack, settings.shieldMode);
+            if (settings.shieldMode) ttConfirmed(shieldTrack);
             shieldTrack.onclick = async () => {
                 if (shieldTrack.querySelector('.tmod-tile-spinner')) return;
                 const turningOn = !shieldTrack.classList.contains('on');
