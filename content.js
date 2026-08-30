@@ -1529,21 +1529,31 @@ return `
 
         content.querySelector('#tmod-back').addEventListener('click', () => { panel.remove(); panelOpen = false; setTimeout(() => createPanel(), 10); });
 
-content.querySelector('#tmod-send-announce').addEventListener('click', async () => {
-            const text = content.querySelector('#tmod-announce-text').value.trim();
+const announceText = content.querySelector('#tmod-announce-text');
+        const announceStatusDiv = content.querySelector('#tmod-announce-status');
+
+        async function doSendAnnounce() {
+            const text = announceText.value.trim();
             const color = selected.value;
-            const statusDiv = content.querySelector('#tmod-announce-status');
-            if (!text) { statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">Введите текст</span>'; return; }
-            if (text.length > 500) { statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">Текст слишком длинный</span>'; return; }
-            statusDiv.innerHTML = ICON_OK + '<span style="color:#adadb8;">Отправка...</span>';
+            if (!text) { announceStatusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">Введите текст</span>'; return; }
+            if (text.length > 500) { announceStatusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">Текст слишком длинный</span>'; return; }
+            announceStatusDiv.innerHTML = ICON_OK + '<span style="color:#adadb8;">Отправка...</span>';
             const result = await sendAnnouncement(channelName, text, color);
             if (result.success) {
-                statusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Анонс отправлен!</span>';
+                announceStatusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Анонс отправлен!</span>';
                 addToHistory(text, color);
                 if (color === 'primary') learnAccentFromChat();
                 setTimeout(() => { panel.remove(); createPanel(); }, 1500);
             }
-            else { statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + result.error + '</span>'; }
+            else { announceStatusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + result.error + '</span>'; }
+        }
+
+        content.querySelector('#tmod-send-announce').addEventListener('click', doSendAnnounce);
+        announceText.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                doSendAnnounce();
+            }
         });
     }
 
