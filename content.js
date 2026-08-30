@@ -1766,7 +1766,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                 if (turningOn) {
                     sendToChatInput('/shield');
                     window.open(
-                        'https://www.twitch.tv/popout/moderator/' + channelName + '/_/shield-mode/settings',
+                        'https://www.twitch.tv/popout/moderator/' + channelName + '/shield-mode/settings',
                         'tmod-shield',
                         'width=500,height=600,scrollbars=yes,resizable=yes'
                     );
