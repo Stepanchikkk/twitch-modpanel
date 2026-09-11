@@ -3111,6 +3111,12 @@ const announceText = content.querySelector('#tmod-announce-text');
                 if (r.kind === 'vip' && status.isVip == null) status.isVip = r.value === true;
                 if (r.kind === 'mod' && status.isMod == null) status.isMod = r.value === true;
             }
+            // Взаимоисключение сразу после сильных источников (карточка + свои записи):
+            // слабый stale-бейдж сообщения не должен «возвращать» снятую роль.
+            if (status.isBroadcaster !== true) {
+                if (status.isMod === true) status.isVip = false;
+                else if (status.isVip === true) status.isMod = false;
+            }
             // Свежайшее сообщение в чате — живого источника нет, а сообщение свежее
             // кликнутого (после смены роли). Всё ещё может врать (stale-бейджи), поэтому
             // только при отсутствии других подтверждений.
@@ -3228,12 +3234,20 @@ const announceText = content.querySelector('#tmod-announce-text');
 
     function persistRoleAction(userId, kind, value) {
         const recKind = kind === 'mod' ? 'mod' : 'vip';
+        const oppKind = recKind === 'mod' ? 'vip' : 'mod';
         getModeratorContext()
             .then((ctx) => {
                 if (!ctx) return;
                 const now = Date.now();
                 return modLocalRemove(String(userId), ctx.broadcasterId, recKind)
-                    .then(() => modLocalAdd(String(userId), recKind, now + ROLE_RECORD_TTL_MS, now, ctx.broadcasterId, value === true));
+                    .then(() => modLocalAdd(String(userId), recKind, now + ROLE_RECORD_TTL_MS, now, ctx.broadcasterId, value === true))
+                    .then(() => {
+                        // Взаимоисключение ролей: выдача одной снимает другую.
+                        if (value === true) {
+                            return modLocalAdd(String(userId), oppKind, now + ROLE_RECORD_TTL_MS, now, ctx.broadcasterId, false);
+                        }
+                        return null;
+                    });
             })
             .catch(() => {});
     }
@@ -3457,10 +3471,23 @@ const announceText = content.querySelector('#tmod-announce-text');
             modMenuState.status.isVip = value;
             modMenuState.sessionVip = value;
             modMenuState.sessionVipAt = Date.now();
+            // Мод и VIP взаимоисключающие: выдача VIP снимает мода — фиксируем сразу,
+            // чтобы stale-бейдж старого сообщения не «вернул» снятую роль.
+            if (value === true) {
+                modMenuState.sessionMod = false;
+                modMenuState.sessionModAt = modMenuState.sessionVipAt;
+                modMenuState.status.isMod = false;
+            }
         } else {
             modMenuState.status.isMod = value;
             modMenuState.sessionMod = value;
             modMenuState.sessionModAt = Date.now();
+            // Выдача мода снимает VIP.
+            if (value === true) {
+                modMenuState.sessionVip = false;
+                modMenuState.sessionVipAt = modMenuState.sessionModAt;
+                modMenuState.status.isVip = false;
+            }
         }
         persistRoleAction(modMenuState.userId, kind, value);
         renderModMenuToggles();
