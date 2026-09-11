@@ -2652,24 +2652,6 @@ const announceText = content.querySelector('#tmod-announce-text');
 
     // Считывает бейджи прямо с DOM-элемента сообщения (img[alt]) — живой статус
     // VIP/мод/стример без API. Alt локализован, поэтому ловим RU и EN.
-    function readBadgesFromMessage(msgEl) {
-        const out = { isVip: null, isMod: null, isBroadcaster: null, _alts: [] };
-        if (!msgEl) return out;
-        const alts = [];
-        try {
-            msgEl.querySelectorAll('img[alt]').forEach((im) => {
-                const a = String(im.getAttribute('alt') || '').trim();
-                if (a) alts.push(a);
-            });
-        } catch (e) {}
-        out._alts = alts;
-        const joined = alts.join(' ').toLowerCase();
-        if (/(\bvip\b|вип)/.test(joined)) out.isVip = true;
-        if (/(мод|moderator|\bmod\b)/.test(joined)) out.isMod = true;
-        if (/(broadcast|стример|владелец)/.test(joined)) out.isBroadcaster = true;
-        return out;
-    }
-
     // Логин цели из текущего меню (для чат-команд).
     function modUserLogin() {
         const s = modMenuState;
@@ -2884,11 +2866,14 @@ const announceText = content.querySelector('#tmod-announce-text');
         return out;
     }
 
-    // --- Роли юзера (VIP/мод/владелец): надёжный источник вместо цепочки догадок ---
+    // --- Роли юзера (VIP/мод/владелец): официально — только открытая карточка юзера ---
     // Модератору Helix роли других юзеров не отдаёт (vips/moderators — только стримеру,
-    // chatters ролей не содержит). Собираем из открытых источников: карточка юзера
-    // (первый бейдж), живой GQL-запрос страницы, недавний GQL-кэш, свежайшее сообщение.
+    // chatters ролей не содержит). Бейджи сообщений «запечены» при отправке и врут после
+    // смены ролей — их как источник ролей не используем.
     const ROLE_SESSION_TTL_MS = 60000;
+    // TTL сессии роли, назначенной/снятой через саму панель. Учитывается только
+    // когда роль не подтверждена карточкой: свежий результат своего действия точен,
+    // но «навсегда» он не живёт.
 
     const CHAT_MESSAGE_SELECTORS = [
         '[data-test-selector="chat-line-message"]',
@@ -2896,64 +2881,6 @@ const announceText = content.querySelector('#tmod-announce-text');
         '[data-test-selector="chat-message-holder"]',
         '.chat-line__message--centered'
     ];
-
-    // TTL сессии роли, назначенной/снятой через саму панель. Учитывается только
-    // когда роль не подтверждена иным источником: свежий результат своего действия
-    // точен, но «навсегда» он не живёт — иначе разжалованный другим модом юзер
-    // остался бы модом до закрытия меню.
-
-    // Все сообщения юзера в чате (по нику или ссылке на канал).
-    function findAllMessagesByLogin(login) {
-        const lg = sanitizeLogin(login);
-        if (!lg) return [];
-        const out = [];
-        const seen = new Set();
-        for (const sel of CHAT_MESSAGE_SELECTORS) {
-            let els = [];
-            try { els = Array.from(document.querySelectorAll(sel)); } catch (e) {}
-            for (const el of els) {
-                if (seen.has(el)) continue;
-                seen.add(el);
-                let nick = null;
-                let hit = false;
-                try {
-                    if (el.querySelector('a[href="/' + lg + '"]')) hit = true;
-                    nick = el.querySelector('[data-a-target="chat-line-username"]');
-                } catch (e) {}
-                if (!hit && nick) {
-                    hit = sanitizeLogin(nick.getAttribute('title') || nick.textContent).toLowerCase() === lg;
-                }
-                if (hit) out.push(el);
-            }
-        }
-        return out;
-    }
-
-    // Самое свежее сообщение юзера (чат растёт вниз — последнее в DOM).
-    function findNewestMessageByLogin(login) {
-        const list = findAllMessagesByLogin(login);
-        return list.length ? list[list.length - 1] : null;
-    }
-
-    // Роли по самому свежему сообщению: fiber-флаги на момент рендера + бейджи DOM.
-    async function fetchNewestMessageRoles(login) {
-        const out = { isVip: null, isMod: null, isBroadcaster: null };
-        try {
-            const msgEl = findNewestMessageByLogin(login);
-            if (!msgEl) return out;
-            const data = await getMessageData(msgEl);
-            if (data) {
-                out.isVip = data.isVip === true || data.isVip === false ? data.isVip : null;
-                out.isMod = data.isModerator === true || data.isModerator === false ? data.isModerator : null;
-                out.isBroadcaster = data.isBroadcaster === true || data.isBroadcaster === false ? data.isBroadcaster : null;
-            }
-            const badges = readBadgesFromMessage(msgEl);
-            if (badges.isVip === true) out.isVip = true;
-            if (badges.isMod === true) out.isMod = true;
-            if (badges.isBroadcaster === true) out.isBroadcaster = true;
-        } catch (e) {}
-        return out;
-    }
 
     // Роль по alt первого значка бейджей. Alt локализован — ловим RU и EN.
     function roleKindFromAlt(alt) {
@@ -3086,12 +3013,12 @@ const announceText = content.querySelector('#tmod-announce-text');
             }
         }
         // Роли: для стримера Helix уже дал точные значения (isBroadcasterViewer=true);
-        // модератору — цепочка: живая карточка/GQL → свои сохранённые действия →
-        // свежайшее сообщение → session-флаг.
+        // модератору — только открытая карточка юзера (+ свои сохранённые действия).
+        // Источники из бейджей сообщений убраны: они «запечены» при отправке и врут
+        // после смены ролей.
         const targetLogin = modMenuState && modMenuState.userLogin;
         if (!isBroadcasterViewer && status.isBroadcaster !== true && targetLogin) {
-            // Живой источник ролей — открытая карточка юзера (приоритет у неё). GQL-роли
-            // ненадёжны и убраны; статус бан/таймаут сюда не привязан.
+            // Живой источник ролей — открытая карточка юзера. Всё прочее уступает ей.
             const live = readRolesFromUserCardDom(targetLogin, modMenuState && modMenuState.userName);
             if (live) {
                 debugLog('mod-roles-live', live);
@@ -3100,8 +3027,8 @@ const announceText = content.querySelector('#tmod-announce-text');
                 if (live.isBroadcaster === true) status.isBroadcaster = true;
             }
             // Свои действия через панель, сохранённые в localStorage (переживают
-            // перезагрузку): разжалованный не «возвращается» stale-бейджем сообщения,
-            // выданный VIP не «пропадает». Применяются ниже «живых» источников.
+            // перезагрузку). Конфликтуют только с карточкой — поэтому применяются
+            // только если карточка роли не дала.
             const recNow = Date.now();
             for (const r of local) {
                 if (String(r.userId) !== String(userId)) continue;
@@ -3111,34 +3038,15 @@ const announceText = content.querySelector('#tmod-announce-text');
                 if (r.kind === 'vip' && status.isVip == null) status.isVip = r.value === true;
                 if (r.kind === 'mod' && status.isMod == null) status.isMod = r.value === true;
             }
-            // Взаимоисключение сразу после сильных источников (карточка + свои записи):
-            // слабый stale-бейдж сообщения не должен «возвращать» снятую роль.
+            // Взаимоисключение мода и VIP (само снятие выполняет Twitch).
             if (status.isBroadcaster !== true) {
                 if (status.isMod === true) status.isVip = false;
                 else if (status.isVip === true) status.isMod = false;
             }
-            // Свежайшее сообщение в чате — живого источника нет, а сообщение свежее
-            // кликнутого (после смены роли). Всё ещё может врать (stale-бейджи), поэтому
-            // только при отсутствии других подтверждений.
-            if (status.isVip == null || status.isMod == null) {
-                const fresh = await fetchNewestMessageRoles(targetLogin);
-                if (fresh.isVip != null && status.isVip == null) status.isVip = fresh.isVip;
-                if (fresh.isMod != null && status.isMod == null) status.isMod = fresh.isMod;
-                if (fresh.isBroadcaster === true) status.isBroadcaster = true;
-            }
         }
-        // Бейджи/флаги с самого сообщения (VIP/мод/стример) — живой статус без API.
         const ms2 = modMenuState || {};
-        const badges = readBadgesFromMessage(ms2.msgEl);
-        debugLog('mod-badges', { alts: badges._alts, fiberVip: ms2.isVip, fiberMod: ms2.isModerator, badges });
-        // Слабые источники применяются, только если роль ещё не определена (== null):
-        // авторитетный false (юзер разжалован) не перетирается stale-бейджами сообщения.
-        if (status.isVip == null && (ms2.isVip === true || badges.isVip === true)) status.isVip = true;
-        if (status.isMod == null && (ms2.isModerator === true || badges.isMod === true)) status.isMod = true;
         // Роли, назначенные/снятые через панель: результат своего действия точен, пока
-        // свеж (TTL). Снимает и stale-бейджи сообщения (разжалованный не «возвращается»
-        // в моды), и устаревшую карточку — иначе кнопка «Разжаловать» висела бы вечно.
-        // Само снятие другой роли не выполняем и не записываем — Twitch делает это сам.
+        // свеж (TTL). Само снятие другой роли не выполняем и не записываем — Twitch сам.
         const now = Date.now();
         const sessVip = ms2.sessionVip === true || ms2.sessionVip === false ? ms2.sessionVip : null;
         const sessMod = ms2.sessionMod === true || ms2.sessionMod === false ? ms2.sessionMod : null;
@@ -3336,9 +3244,8 @@ const announceText = content.querySelector('#tmod-announce-text');
         if (!modMenuEl || !modMenuState) return;
         const s = modMenuState.status = modMenuState.status || {};
         const st = modMenuState;
-        const badges = readBadgesFromMessage(st.msgEl);
-        // Session-флаг («дал»/«снял» через панель) авторитетен в пределах TTL:
-        // снимаются и stale-бейджи сообщения — разжалованный не «возвращается» в моды.
+        // Session-флаг («дал»/«снял» через панель) — мгновенный результат своего
+        // действия; роли из бейджей сообщений не используем (они устаревают).
         const now = Date.now();
         const sessVip = st.sessionVip === true || st.sessionVip === false ? st.sessionVip : null;
         const sessMod = st.sessionMod === true || st.sessionMod === false ? st.sessionMod : null;
@@ -3361,9 +3268,6 @@ const announceText = content.querySelector('#tmod-announce-text');
         // Взаимоисключение мода и VIP (снятие другой роли не выполняем — Twitch сам).
         if (s.isMod === true) s.isVip = false;
         else if (s.isVip === true) s.isMod = false;
-        // Бейджи/флаги сообщения применяются, только если роль так и не определена.
-        if (s.isVip == null && (st.isVip === true || badges.isVip === true)) s.isVip = true;
-        if (s.isMod == null && (st.isModerator === true || badges.isMod === true)) s.isMod = true;
         renderModMenuToggles();
     }
 
