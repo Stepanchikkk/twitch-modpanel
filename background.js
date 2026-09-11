@@ -184,6 +184,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             .then(async (r) => sendResponse({ success: true, status: r.status, text: await r.text() }))
             .catch((e) => sendResponse({ success: false, error: e.message }));
         return true;
+    } else if (message.type === 'TMOD_DEBUG_LOG') {
+        // Отладка панели: логи из content.js видны здесь, в консоли service worker
+        // (chrome://extensions → «Отладка страниц» → service worker → Console).
+        if (message.label) console.log('[ModPanel]', message.label, message.value);
+        sendResponse({ success: true });
+        return false;
     }
 
     sendResponse({ success: false, error: 'Unknown type' });

@@ -101,7 +101,15 @@
             || PAGE_WINDOW.TMOD_DEBUG === true;
     } catch (e) {}
     function debugLog(label, value) {
-        if (TMOD_DEBUG) console.log('[ModPanel][accent]', label, value);
+        if (!TMOD_DEBUG) return;
+        console.log('[ModPanel][accent]', label, value);
+        // Дублируем логи в консоль service worker (Отладка страниц), чтобы всё было
+        // в одном окне, а не в консоли страницы.
+        if (IS_EXTENSION && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id) {
+            let v = value;
+            try { v = value === undefined ? null : JSON.parse(JSON.stringify(value)); } catch (e) { v = String(value); }
+            try { chrome.runtime.sendMessage({ type: 'TMOD_DEBUG_LOG', label, value: v }).catch(() => {}); } catch (e) {}
+        }
     }
 
     let cachedAccentColor = null;
