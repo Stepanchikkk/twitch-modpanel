@@ -110,7 +110,7 @@
 
     function getChannelName() {
         const parts = window.location.pathname.slice(1).split('/');
-        if (parts[0] === 'moderator' && parts[1]) return parts[1];
+        if ((parts[0] === 'moderator' || parts[0] === 'popout' || parts[0] === 'embed') && parts[1]) return parts[1];
         return parts[0] || null;
     }
 
@@ -733,6 +733,20 @@
     function isStreamPage() {
         const p = window.location.pathname;
         return /^\/[a-zA-Z0-9_]+$/.test(p) || /^\/moderator\/[a-zA-Z0-9_]+$/.test(p);
+    }
+
+    // Где есть чат с сообщениями: страница канала, полностраничный чат,
+    // popout-чат, embed-чат, страница модератора. Нужно для перехвата ПКМ — на
+    // «чат-страницах» (не /канал) нативное меню Twitch уже не гасится, и клик по
+    // своему сообщению (ссылка на свой канал) уводит на главную канала.
+    function isChatContext() {
+        const p = window.location.pathname;
+        if (/^\/[a-zA-Z0-9_]+$/.test(p)) return true;
+        if (/^\/moderator\/[a-zA-Z0-9_]+$/.test(p)) return true;
+        if (/^\/[a-zA-Z0-9_]+\/chat\/?$/i.test(p)) return true;
+        if (/^\/popout\/[a-zA-Z0-9_]+\/chat\/?$/i.test(p)) return true;
+        if (/^\/embed\/[a-zA-Z0-9_]+\/chat\/?$/i.test(p)) return true;
+        return false;
     }
 
     // ============================================================================
@@ -3674,7 +3688,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         document.addEventListener('contextmenu', (e) => {
             if (!tmodContextMenuEnabled) return;
             if (modMenuEl && !e.target.closest('#tmod-mod-menu')) closeModMenu();
-            if (!isStreamPage()) { console.log('[ModPanel] contextmenu: not stream page'); return; }
+            if (!isChatContext()) { console.log('[ModPanel] contextmenu: not a chat context'); return; }
             if (e.target.closest('#tmod-mod-menu')) return;
             if (!modTokenCache) { console.log('[ModPanel] contextmenu: no token'); modToast('Нет токена — нажмите «Панель модератора» и войдите'); return; }
             const selectors = [
@@ -3736,7 +3750,20 @@ const announceText = content.querySelector('#tmod-announce-text');
         }, true);
 
         document.addEventListener('click', (e) => {
-            if (e.button === 0 && modMenuEl && !e.target.closest('#tmod-mod-menu')) closeModMenu();
+            if (e.button !== 0) return;
+            if (modMenuEl && !e.target.closest('#tmod-mod-menu')) {
+                // Пока открыто меню, глушим клик по сообщению: ник/сообщение — ссылка
+                // на канал (своё сообщение ведёт на «главную» своего канала и «закрывает
+                // чат»). Без preventDefault клик по ссылке увёл бы навигацией.
+                if (e.target.closest('[data-test-selector="chat-line-message"], .chat-line__message, [data-test-selector="chat-message-holder"]')) {
+                    const link = e.target.closest('a[href]');
+                    if (link) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }
+                }
+                closeModMenu();
+            }
         }, true);
 
         document.addEventListener('keydown', (e) => {
