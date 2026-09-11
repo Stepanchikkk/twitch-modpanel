@@ -17,7 +17,7 @@
     const CLIENT_ID = 'qz89rtnd3uz3v7k3rnh5hffx3b97mu';
     const STORAGE_KEY_TOKEN = 'tmod_access_token';
     const STORAGE_KEY_USER = 'tmod_user_info';
-    const GITHUB_RAW_ICONS = 'https://raw.githubusercontent.com/Stepanchikkk/twitch-modpanel/unified-core/icons/';
+    const GITHUB_RAW_ICONS = 'https://raw.githubusercontent.com/Stepanchikkk/twitch-modpanel/main/icons/';
 
     // Права, необходимые функциям панели. Держим в синхроне со списками scopes
     // в authorize() (ниже) и в background.js. Если у старого токена чего-то нет —
