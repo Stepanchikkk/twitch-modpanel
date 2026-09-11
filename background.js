@@ -13,7 +13,7 @@ let authWindowId = null;
 
 function startOAuth() {
     return new Promise((resolve) => {
-        const redirectUri = 'http://localhost:3000';
+        const redirectUri = 'https://stepanchikkk.github.io/twitch-modpanel/';
         const scopes = [
             'moderation:read',
             'moderator:manage:announcements',
@@ -69,7 +69,7 @@ function startOAuth() {
             
             console.log('[OAuth] Tab updated:', url.substring(0, 100));
             
-            if (url.startsWith('http://localhost:3000') && url.includes('access_token')) {
+            if (url.startsWith('https://stepanchikkk.github.io/twitch-modpanel/') && url.includes('access_token')) {
                 console.log('[OAuth] Redirect detected!');
                 
                 chrome.tabs.onUpdated.removeListener(onTabUpdated);
