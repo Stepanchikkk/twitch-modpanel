@@ -2890,8 +2890,13 @@ const announceText = content.querySelector('#tmod-announce-text');
             return false;
         };
         let root = null;
-        // (1) Классическая карточка Mod View.
-        try { root = document.querySelector('[data-a-target="mod-view-user-details"], [data-test-selector="mod-view-user-details"]'); } catch (e) {}
+        // (1) Классическая карточка Mod View (в ней бан/таймаут видны точно — и
+        // подтверждение, и отсутствие). Обычная viewer-карточка чата для этого не
+        // годится: она может не показывать статус, а «нет пилюли» из неё ошибочно
+        // сняло бы бан. Наличие «Забанен»-пилюли вне Mod View ловится сканом (2).
+        try {
+            root = document.querySelector('[data-a-target="mod-view-user-details"], [data-test-selector="mod-view-user-details"]');
+        } catch (e) {}
         if (root && !isMyCard(root)) root = null;
         // (2) Новая разметка: карточка с «пилюлей» статуса (без data-a-target).
         if (!root) {
@@ -2989,16 +2994,19 @@ const announceText = content.querySelector('#tmod-announce-text');
         const nm = String(userName || '').replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
         const cardSels = [
             '[data-a-target="user-card"]',
+            '[data-a-target="chat-user-card"]',
             '[data-test-selector="user-card"]',
             '.user-card',
+            '.chat-room__viewer-card',
             '[class*="viewer-card"]'
         ];
         for (const sel of cardSels) {
             let els = [];
             try { els = Array.from(document.querySelectorAll(sel)); } catch (e) {}
             for (const el of els) {
-                // Карточка без значков — не наша цель (или ещё не загрузилась).
-                if (!el.querySelector('img[alt]')) continue;
+                // Карточка без картинок — пустая болванка (ещё не загрузилась или
+                // закрыта). Аватар у Twitch бывает с пустым alt, поэтому ищем любой img.
+                if (!el.querySelector('img')) continue;
                 let ok = false;
                 // Личность: ссылка на канал либо видимый ник внутри карточки. Ссылка
                 // у Twitch бывает нестабильна — проверяем и текст, иначе «Модератор»
