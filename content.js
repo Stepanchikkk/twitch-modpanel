@@ -2969,9 +2969,9 @@ const announceText = content.querySelector('#tmod-announce-text');
     // Канальные роли в списке идут первыми, поэтому первый же ролевой alt точен.
     // Если карточка открыта и значки отрисованы, а ролевого нет — это авторитетный
     // «не VIP / не мод» (иначе stale-бейдж сообщения возвращал бы «Разжаловать»).
-    function readRolesFromUserCardDom(login) {
+    function findOpenUserCard(login, userName) {
         const lg = sanitizeLogin(login);
-        if (!lg) return null;
+        const nm = String(userName || '').replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
         const cardSels = [
             '[data-a-target="user-card"]',
             '[data-test-selector="user-card"]',
@@ -2979,46 +2979,38 @@ const announceText = content.querySelector('#tmod-announce-text');
             '[class*="viewer-card"]',
             '[data-a-target="mod-view-user-details"]'
         ];
-        let card = null;
         for (const sel of cardSels) {
-            let el = null;
-            try { el = document.querySelector(sel); } catch (e) {}
-            if (!el) continue;
-            if (!el.querySelector('a[href="/' + lg + '"]')) continue;
-            card = el;
-            break;
-        }
-        const cardImgs = (root) => {
-            let imgs = [];
-            try { imgs = Array.from(root.querySelectorAll('img[alt]')); } catch (e) {}
-            return imgs;
-        };
-        if (card) {
-            const imgs = cardImgs(card);
-            for (const im of imgs) {
-                const kind = roleKindFromAlt(im.getAttribute('alt'));
-                if (kind) return { isVip: kind === 'vip', isMod: kind === 'mod', isBroadcaster: kind === 'broadcaster' };
-            }
-            if (imgs.length) return { isVip: false, isMod: false, isBroadcaster: false };
-            return null;
-        }
-        // Fallback (карточка с нестандартными классами): возвращаем только
-        // подтверждённую роль. Сообщения чата исключаем — их stale-бейджи не
-        // должны считаться карточкой.
-        let links = [];
-        try { links = Array.from(document.querySelectorAll('a[href="/' + lg + '"]')); } catch (e) {}
-        for (const a of links) {
-            let node = a.parentElement;
-            for (let d = 0; node && d < 4; node = node.parentElement, d++) {
-                if (node.querySelector('.chat-line__message')) continue;
-                const imgs = cardImgs(node);
-                for (const im of imgs) {
-                    const kind = roleKindFromAlt(im.getAttribute('alt'));
-                    if (kind) return { isVip: kind === 'vip', isMod: kind === 'mod', isBroadcaster: kind === 'broadcaster' };
+            let els = [];
+            try { els = Array.from(document.querySelectorAll(sel)); } catch (e) {}
+            for (const el of els) {
+                // Карточка без значков — не наша цель (или ещё не загрузилась).
+                if (!el.querySelector('img[alt]')) continue;
+                let ok = false;
+                // Личность: ссылка на канал либо видимый ник внутри карточки. Ссылка
+                // у Twitch бывает нестабильна — проверяем и текст, иначе «Модератор»
+                // из карточки не разглядим.
+                if (lg && el.querySelector('a[href="/' + lg + '"]')) ok = true;
+                if (!ok && nm) {
+                    const txt = (el.textContent || '').replace(/[^a-zA-Z0-9_]/g, '').toLowerCase();
+                    if (txt.indexOf(nm) !== -1) ok = true;
                 }
+                if (!ok) continue;
+                return el;
             }
         }
         return null;
+    }
+
+    function readRolesFromUserCardDom(login, userName) {
+        const card = findOpenUserCard(login, userName);
+        if (!card) return null;
+        let imgs = [];
+        try { imgs = Array.from(card.querySelectorAll('img[alt]')); } catch (e) {}
+        for (const im of imgs) {
+            const kind = roleKindFromAlt(im.getAttribute('alt'));
+            if (kind) return { isVip: kind === 'vip', isMod: kind === 'mod', isBroadcaster: kind === 'broadcaster' };
+        }
+        return imgs.length ? { isVip: false, isMod: false, isBroadcaster: false } : null;
     }
 
     // --- GQL страницы: роли без Helix (только режим расширения) ---
@@ -3156,9 +3148,9 @@ const announceText = content.querySelector('#tmod-announce-text');
 
     // Собирает роли цели из источников; null, если ни один не дал ответа.
     // Приоритет: карточка юзера → живой GQL → GQL-кэш → свежайшее сообщение.
-    async function resolveModRoles(login) {
+    async function resolveModRoles(login, userName) {
         if (!login) return null;
-        const card = readRolesFromUserCardDom(login);
+        const card = readRolesFromUserCardDom(login, userName);
         if (card) return card;
         const probe = await probeRolesViaGql(login);
         if (probe) return probe;
@@ -3245,7 +3237,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         // модератору нужны открытые источники — карточка юзера, GQL, свежайшее сообщение.
         const targetLogin = modMenuState && modMenuState.userLogin;
         if (!isBroadcasterViewer && status.isBroadcaster !== true && targetLogin) {
-            const roles = await resolveModRoles(targetLogin);
+            const roles = await resolveModRoles(targetLogin, modMenuState && modMenuState.userName);
             if (roles) {
                 debugLog('mod-roles-resolved', roles);
                 if (roles.isVip != null) status.isVip = roles.isVip;
