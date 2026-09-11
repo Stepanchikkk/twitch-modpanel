@@ -2856,16 +2856,17 @@ const announceText = content.querySelector('#tmod-announce-text');
         if (!mine && userName && sanitizeLogin(userName) && sanitizeLogin(userName) !== lg) mine = nameOk(userName);
         if (!mine) return null;
 
-        const out = {};
+        const out = { isTimedOut: null, isBanned: null };
         const txt = normT(root.textContent || '');
-        // Таймаут: кнопка снятия либо «пилюля» отстранения.
+        // Карточка открыта и это наш юзер → ответ авторитетен в обе стороны:
+        // пилюля/кнопка есть → роль активна, нет → подтверждённо не активна.
         const hasTimeout = !!root.querySelector('button[aria-label*="Снять временную блокировку"], button[aria-label*="Lift timeout"], button[aria-label*="Remove timeout"]')
             || /отстран[её]н/.test(txt);
-        if (hasTimeout) out.isTimedOut = true;
+        out.isTimedOut = hasTimeout ? true : false;
         // Бан: кнопка «Разбанить» либо «пилюля» Забанен.
         const hasBan = !!root.querySelector('button[aria-label*="Разбанить"], button[aria-label*="Unban"]')
             || /забанен/.test(txt);
-        if (hasBan) out.isBanned = true;
+        out.isBanned = hasBan ? true : false;
         // Время окончания таймаута: по строкам действий карточки («отстраняет
         // пользователя <login> на N секунд» + ISO-время старта из id).
         let exp = null, created = null;
@@ -3109,15 +3110,29 @@ const announceText = content.querySelector('#tmod-announce-text');
             debugLog('mod-fiber-probe', probe);
         }
         if (mv) {
-            if (mv.isTimedOut && status.isTimedOut == null) {
-                status.isTimedOut = true;
-                status.banExpiresAt = mv.banExpiresAt;
-                status.banCreatedAt = mv.banCreatedAt;
+            // ModView-карточка открыта и читается — Twitch сам знает актуальный статус:
+            // применяем и «да», и «нет», а устаревшую запись своего действия чистим.
+            if (mv.isTimedOut === true || mv.isTimedOut === false) {
+                if (mv.isTimedOut) {
+                    status.isTimedOut = true;
+                    status.banExpiresAt = mv.banExpiresAt;
+                    status.banCreatedAt = mv.banCreatedAt;
+                } else {
+                    status.isTimedOut = false;
+                    status.banExpiresAt = null;
+                }
+                await modLocalRemove(userId, statusChannelId, 'timeout').catch(() => {});
             }
-            if (mv.isBanned && status.isBanned == null) {
-                status.isBanned = true;
-                status.banExpiresAt = null;
-                status.banCreatedAt = null;
+            if (mv.isBanned === true || mv.isBanned === false) {
+                if (mv.isBanned) {
+                    status.isBanned = true;
+                    status.banExpiresAt = null;
+                    status.banCreatedAt = null;
+                } else {
+                    status.isBanned = false;
+                    status.banExpiresAt = null;
+                }
+                await modLocalRemove(userId, statusChannelId, 'ban').catch(() => {});
             }
         }
         const blocks = await helixCall('https://api.twitch.tv/helix/users/blocks?first=100');
@@ -3181,8 +3196,13 @@ const announceText = content.querySelector('#tmod-announce-text');
             .then((ctx) => {
                 if (!ctx) return;
                 const now = Date.now();
-                return modLocalRemove(String(userId), ctx.broadcasterId, recKind)
-                    .then(() => modLocalAdd(String(userId), recKind, now + ROLE_RECORD_TTL_MS, now, ctx.broadcasterId, value === true));
+                // Ролей две, но обе сразу у юзера не бывает — храним только последнее
+                // действие (другие роли Twitch снимает сам). Одна запись на юзера+канал,
+                // противоречивых пар записей больше не возникает.
+                return Promise.all([
+                    modLocalRemove(String(userId), ctx.broadcasterId, 'mod'),
+                    modLocalRemove(String(userId), ctx.broadcasterId, 'vip')
+                ]).then(() => modLocalAdd(String(userId), recKind, now + ROLE_RECORD_TTL_MS, now, ctx.broadcasterId, value === true));
             })
             .catch(() => {});
     }
