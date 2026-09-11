@@ -27,7 +27,7 @@
 (function() {
     'use strict';
 
-    const SCRIPT_URL = 'https://raw.githubusercontent.com/Stepanchikkk/twitch-modpanel/main/content.js';
+    const SCRIPT_URL = 'https://raw.githubusercontent.com/Stepanchikkk/twitch-modpanel/unified-core/content.js';
     const CACHE_KEY = 'tmp_last_update';
     const CACHE_DURATION = 3600000;
 
