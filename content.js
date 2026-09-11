@@ -2965,7 +2965,10 @@ const announceText = content.querySelector('#tmod-announce-text');
         return null;
     }
 
-    // Открытая карточка юзера (режим зрителя и Mod View): первый ролевой значок.
+    // Открытая карточка юзера (режим зрителя и Mod View): роли по списку значков.
+    // Канальные роли в списке идут первыми, поэтому первый же ролевой alt точен.
+    // Если карточка открыта и значки отрисованы, а ролевого нет — это авторитетный
+    // «не VIP / не мод» (иначе stale-бейдж сообщения возвращал бы «Разжаловать»).
     function readRolesFromUserCardDom(login) {
         const lg = sanitizeLogin(login);
         if (!lg) return null;
@@ -2973,6 +2976,7 @@ const announceText = content.querySelector('#tmod-announce-text');
             '[data-a-target="user-card"]',
             '[data-test-selector="user-card"]',
             '.user-card',
+            '[class*="viewer-card"]',
             '[data-a-target="mod-view-user-details"]'
         ];
         let card = null;
@@ -2984,25 +2988,31 @@ const announceText = content.querySelector('#tmod-announce-text');
             card = el;
             break;
         }
-        if (card) {
+        const cardImgs = (root) => {
             let imgs = [];
-            try { imgs = Array.from(card.querySelectorAll('img[alt]')); } catch (e) {}
+            try { imgs = Array.from(root.querySelectorAll('img[alt]')); } catch (e) {}
+            return imgs;
+        };
+        if (card) {
+            const imgs = cardImgs(card);
             for (const im of imgs) {
                 const kind = roleKindFromAlt(im.getAttribute('alt'));
                 if (kind) return { isVip: kind === 'vip', isMod: kind === 'mod', isBroadcaster: kind === 'broadcaster' };
             }
+            if (imgs.length) return { isVip: false, isMod: false, isBroadcaster: false };
             return null;
         }
-        // Fallback: ближайший предок ссылки с ником, в котором есть ролевые значки
-        // (карточка открыта). Глубина ограничена, чтобы не зацепить весь чат.
+        // Fallback (карточка с нестандартными классами): возвращаем только
+        // подтверждённую роль. Сообщения чата исключаем — их stale-бейджи не
+        // должны считаться карточкой.
         let links = [];
         try { links = Array.from(document.querySelectorAll('a[href="/' + lg + '"]')); } catch (e) {}
         for (const a of links) {
             let node = a.parentElement;
             for (let d = 0; node && d < 4; node = node.parentElement, d++) {
-                let bads = [];
-                try { bads = Array.from(node.querySelectorAll('img[alt]')); } catch (e) {}
-                for (const im of bads) {
+                if (node.querySelector('.chat-line__message')) continue;
+                const imgs = cardImgs(node);
+                for (const im of imgs) {
                     const kind = roleKindFromAlt(im.getAttribute('alt'));
                     if (kind) return { isVip: kind === 'vip', isMod: kind === 'mod', isBroadcaster: kind === 'broadcaster' };
                 }
@@ -3251,11 +3261,14 @@ const announceText = content.querySelector('#tmod-announce-text');
         // авторитетный false (юзер разжалован) не перетирается stale-бейджами сообщения.
         if (status.isVip == null && (ms2.isVip === true || badges.isVip === true)) status.isVip = true;
         if (status.isMod == null && (ms2.isModerator === true || badges.isMod === true)) status.isMod = true;
-        // Роли, назначенные/снятые через панель: юзер может не быть в чате, но результат
-        // своего действия точен. Живёт недолго (TTL) и только пока роль не подтверждена.
+        // Роли, назначенные/снятые через панель: результат своего действия точен, пока
+        // свеж (TTL). Снимает и stale-бейджи сообщения (разжалованный не «возвращается»
+        // в моды), и устаревшую карточку — иначе кнопка «Разжаловать» висела бы вечно.
         const now = Date.now();
-        if (status.isBroadcaster !== true && status.isVip == null && ms2.sessionVip === true && (ms2.sessionVipAt || 0) > now - ROLE_SESSION_TTL_MS) status.isVip = true;
-        if (status.isBroadcaster !== true && status.isMod == null && ms2.sessionMod === true && (ms2.sessionModAt || 0) > now - ROLE_SESSION_TTL_MS) status.isMod = true;
+        const sessVip = ms2.sessionVip === true || ms2.sessionVip === false ? ms2.sessionVip : null;
+        const sessMod = ms2.sessionMod === true || ms2.sessionMod === false ? ms2.sessionMod : null;
+        if (status.isBroadcaster !== true && sessVip != null && (ms2.sessionVipAt || 0) > now - ROLE_SESSION_TTL_MS) status.isVip = sessVip;
+        if (status.isBroadcaster !== true && sessMod != null && (ms2.sessionModAt || 0) > now - ROLE_SESSION_TTL_MS) status.isMod = sessMod;
         // Карточка юзера в Mod View: Twitch сам показывает текущий таймаут/бан.
         // Если карточка ещё не открыта — открываем её сами кликом по нику и читаем.
         let mv = readModViewStatus(userId, targetLogin);
@@ -3414,13 +3427,16 @@ const announceText = content.querySelector('#tmod-announce-text');
         const s = modMenuState.status = modMenuState.status || {};
         const st = modMenuState;
         const badges = readBadgesFromMessage(st.msgEl);
-        // Только когда роль ещё не определена (== null): иначе разжалованный юзер
-        // мгновенно «возвращается» в моды stale-бейджем сообщения.
+        // Session-флаг («дал»/«снял» через панель) авторитетен в пределах TTL:
+        // снимаются и stale-бейджи сообщения — разжалованный не «возвращается» в моды.
+        const now = Date.now();
+        const sessVip = st.sessionVip === true || st.sessionVip === false ? st.sessionVip : null;
+        const sessMod = st.sessionMod === true || st.sessionMod === false ? st.sessionMod : null;
+        if (sessVip != null && (st.sessionVipAt || 0) > now - ROLE_SESSION_TTL_MS) s.isVip = sessVip;
+        if (sessMod != null && (st.sessionModAt || 0) > now - ROLE_SESSION_TTL_MS) s.isMod = sessMod;
+        // Бейджи/флаги сообщения применяются, только если роль так и не определена.
         if (s.isVip == null && (st.isVip === true || badges.isVip === true)) s.isVip = true;
         if (s.isMod == null && (st.isModerator === true || badges.isMod === true)) s.isMod = true;
-        const now = Date.now();
-        if (s.isVip == null && st.sessionVip === true && (st.sessionVipAt || 0) > now - ROLE_SESSION_TTL_MS) s.isVip = true;
-        if (s.isMod == null && st.sessionMod === true && (st.sessionModAt || 0) > now - ROLE_SESSION_TTL_MS) s.isMod = true;
         renderModMenuToggles();
     }
 
