@@ -3013,151 +3013,9 @@ const announceText = content.querySelector('#tmod-announce-text');
         return imgs.length ? { isVip: false, isMod: false, isBroadcaster: false } : null;
     }
 
-    // --- GQL страницы: роли без Helix (только режим расширения) ---
-    // twitch-api.js перехватывает GQL-запросы самой страницы (TMOD_GQL_CAPTURE) и умеет
-    // перезапрашивать найденную role-операцию с другим логином (TMOD_GQL_PROBE).
-    let tmodGqlRoleOpBody = null; // тело операции, которая возвращает роли юзера
-    let tmodGqlRoleOpAt = 0;
-    let gqlCaptureCache = new Map(); // последние ответы операций (пассивное чтение)
-
-    function tokenIsLoginLike(value) {
-        return typeof value === 'string' && /^[a-z0-9_]{2,30}$/i.test(value) && /[a-z]/i.test(value);
-    }
-
-    // Обход GQL-ответа: cb(объектЮзера, логин) для каждого юзера с ролями.
-    function walkGqlRoles(node, cb) {
-        const seen = new Set();
-        let budget = 0;
-        (function visit(o) {
-            if (!o || typeof o !== 'object' || budget > 8000 || seen.has(o)) return;
-            seen.add(o); budget++;
-            if (Array.isArray(o)) { for (const it of o) visit(it); return; }
-            const hasRoles = typeof o.isVip === 'boolean'
-                || typeof o.isModerator === 'boolean'
-                || typeof o.isLeadModerator === 'boolean'
-                || typeof o.isBroadcaster === 'boolean';
-            const l = o.login || o.userLogin || o.user_login || o.displayName || o.user_name;
-            if (hasRoles && typeof l === 'string' && l) cb(o, l);
-            for (const k of Object.keys(o)) {
-                const v = o[k];
-                if (v && typeof v === 'object') visit(v);
-            }
-        })(node);
-    }
-
-    // Роли конкретного юзера из текста GQL-ответа (или null, если их там нет).
-    function parseRolesFromGqlText(text, login) {
-        const lg = sanitizeLogin(login);
-        if (!lg || typeof text !== 'string') return null;
-        if (text.indexOf('isVip') === -1 && text.indexOf('isModerator') === -1 && text.indexOf('isBroadcaster') === -1) return null;
-        let obj = null;
-        try { obj = JSON.parse(text); } catch (e) { return null; }
-        if (!obj) return null;
-        const out = { isVip: null, isMod: null, isBroadcaster: null };
-        walkGqlRoles(obj, (o, l) => {
-            if (sanitizeLogin(l) !== lg) return;
-            if (typeof o.isVip === 'boolean') out.isVip = o.isVip;
-            if (typeof o.isModerator === 'boolean') out.isMod = o.isModerator;
-            if (o.isLeadModerator === true) out.isMod = true;
-            if (typeof o.isBroadcaster === 'boolean') out.isBroadcaster = o.isBroadcaster;
-        });
-        if (out.isVip == null && out.isMod == null && out.isBroadcaster == null) return null;
-        return out;
-    }
-
-    // Есть ли в ответе роли хотя бы какого-то юзера (для discovery role-операции).
-    function gqlResponseHasRoles(text) {
-        if (typeof text !== 'string') return false;
-        if (text.indexOf('isVip') === -1 && text.indexOf('isModerator') === -1) return false;
-        let obj = null;
-        try { obj = JSON.parse(text); } catch (e) { return false; }
-        if (!obj) return false;
-        let found = false;
-        walkGqlRoles(obj, () => { found = true; });
-        return found;
-    }
-
-    // Подмена логина в теле role-операции на цель (для перезапроса).
-    function replaceLoginInGqlBody(body, login) {
-        try {
-            const j = JSON.parse(body);
-            const vars = j && j.variables;
-            if (!vars) return body;
-            let replaced = false;
-            for (const k of Object.keys(vars)) {
-                if (/login|userLogin|targetLogin|channelName|user/i.test(k) && tokenIsLoginLike(vars[k])) {
-                    vars[k] = login; replaced = true; break;
-                }
-            }
-            if (!replaced) {
-                for (const k of Object.keys(vars)) {
-                    if (tokenIsLoginLike(vars[k]) && !/id$/i.test(k)) {
-                        vars[k] = login; replaced = true; break;
-                    }
-                }
-            }
-            return replaced ? JSON.stringify(j) : body;
-        } catch (e) {
-            return null;
-        }
-    }
-
-    // Живой перезапрос role-операции — актуальные роли даже у молчащего юзера.
-    async function probeRolesViaGql(login) {
-        const lg = sanitizeLogin(login);
-        if (!IS_EXTENSION || !lg || !tmodGqlRoleOpBody) return null;
-        const body = replaceLoginInGqlBody(tmodGqlRoleOpBody, lg);
-        if (!body) return null;
-        const nonce = 'gq' + Date.now() + '_' + Math.floor(Math.random() * 1e6);
-        return new Promise((resolve) => {
-            let done = false;
-            const finish = (val) => {
-                if (done) return;
-                done = true;
-                clearTimeout(timer);
-                window.removeEventListener('message', handler);
-                resolve(val);
-            };
-            const timer = setTimeout(() => finish(null), 1800);
-            const handler = (event) => {
-                if (event.source !== window || !event.data) return;
-                if (event.data.type === 'TMOD_GQL_PROBE_RESULT' && event.data.nonce === nonce) {
-                    const r = parseRolesFromGqlText(event.data.text, lg);
-                    finish(r);
-                }
-            };
-            window.addEventListener('message', handler);
-            window.postMessage({ type: 'TMOD_GQL_PROBE', nonce, body }, '*');
-        });
-    }
-
-    // Пассивное чтение из недавних GQL-ответов страницы (карточку уже открывали).
-    function readRolesFromGqlCache(login) {
-        const lg = sanitizeLogin(login);
-        if (!lg || !gqlCaptureCache.size) return null;
-        let best = null;
-        gqlCaptureCache.forEach((cap) => {
-            if (!cap || !cap.response || typeof cap.response !== 'string') return;
-            const r = parseRolesFromGqlText(cap.response, lg);
-            if (!r) return;
-            const ts = cap.ts || 0;
-            if (!best || ts > best.ts) best = { r, ts };
-        });
-        return best ? best.r : null;
-    }
-
-    // Собирает роли цели из источников; null, если ни один не дал ответа.
-    // Приоритет: карточка юзера → живой GQL → GQL-кэш → свежайшее сообщение.
-    async function resolveLiveModRoles(login, userName) {
-        if (!login) return null;
-        const card = readRolesFromUserCardDom(login, userName);
-        if (card) return card;
-        const probe = await probeRolesViaGql(login);
-        if (probe) return probe;
-        return readRolesFromGqlCache(login);
-    }
-
-    // Статусы юзера (ban/vip/mod берутся только стримером — у мода 401, остаются null).
+    // Роли цели: авторитетен только открытый карточка юзера. GQL-роли Twitch
+    // ненадёжны (не различают мод/не-мод, вип/не-вип) и убраны; для статуса
+    // бан/таймаут они не использовались.
     async function fetchModStatus(userId) {
         const channel = getChannelName();
         const token = await getToken();
@@ -3232,8 +3090,9 @@ const announceText = content.querySelector('#tmod-announce-text');
         // свежайшее сообщение → session-флаг.
         const targetLogin = modMenuState && modMenuState.userLogin;
         if (!isBroadcasterViewer && status.isBroadcaster !== true && targetLogin) {
-            // Живые источники: открытая карточка юзера, живой GQL-проб, GQL-кэш.
-            const live = await resolveLiveModRoles(targetLogin, modMenuState && modMenuState.userName);
+            // Живой источник ролей — открытая карточка юзера (приоритет у неё). GQL-роли
+            // ненадёжны и убраны; статус бан/таймаут сюда не привязан.
+            const live = readRolesFromUserCardDom(targetLogin, modMenuState && modMenuState.userName);
             if (live) {
                 debugLog('mod-roles-live', live);
                 if (live.isVip != null) status.isVip = live.isVip;
@@ -3278,6 +3137,12 @@ const announceText = content.querySelector('#tmod-announce-text');
         const sessMod = ms2.sessionMod === true || ms2.sessionMod === false ? ms2.sessionMod : null;
         if (status.isBroadcaster !== true && sessVip != null && (ms2.sessionVipAt || 0) > now - ROLE_SESSION_TTL_MS) status.isVip = sessVip;
         if (status.isBroadcaster !== true && sessMod != null && (ms2.sessionModAt || 0) > now - ROLE_SESSION_TTL_MS) status.isMod = sessMod;
+        // Мод и VIP — взаимоисключающие роли (Twitch снимает одну при выдаче другой).
+        // Решающим остаётся карточка юзера — она уже применилась выше.
+        if (status.isBroadcaster !== true) {
+            if (status.isMod === true) status.isVip = false;
+            else if (status.isVip === true) status.isMod = false;
+        }
         // Карточка юзера в Mod View: Twitch сам показывает текущий таймаут/бан.
         // Если карточка ещё не открыта — открываем её сами кликом по нику и читаем.
         let mv = readModViewStatus(userId, targetLogin);
@@ -4013,27 +3878,6 @@ const announceText = content.querySelector('#tmod-announce-text');
 
     function initModerationMenu() {
         getPanelSettings().then((s) => { tmodContextMenuEnabled = s.contextMenu !== false; });
-        gqlCaptureCache = new Map();
-
-        // Ответы GQL-операций, которыми сама страница тянет данные модерации.
-        window.addEventListener('message', (ev) => {
-            if (ev.source !== window || ev.data?.type !== 'TMOD_GQL_CAPTURE') return;
-            const op = ev.data.operationName || '?';
-            const cap = Object.assign({}, ev.data, { ts: Date.now() });
-            gqlCaptureCache.set(op, cap);
-            // Discovery role-операции: ответ несёт роли какого-то юзера — тело пригодится
-            // для перезапроса с другим логином (TMOD_GQL_PROBE).
-            if (ev.data && ev.data.body && typeof ev.data.response === 'string' && gqlResponseHasRoles(ev.data.response)) {
-                tmodGqlRoleOpBody = ev.data.body;
-                tmodGqlRoleOpAt = Date.now();
-            }
-            if (TMOD_DEBUG && /mod|user|ban|timeout|vip|channel/i.test(op)) {
-                console.log('[ModPanel][accent] gql-capture', op, {
-                    variables: ev.data.variables,
-                    response: (ev.data.response || '').slice(0, 1500)
-                });
-            }
-        });
         getToken().then((t) => {
             modTokenCache = !!t;
             debugLog('mod-token-cache', modTokenCache);

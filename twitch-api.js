@@ -208,95 +208,6 @@
     }
 
     // Слушаем команды от content.js
-    // --- Перехват GQL-трафика страницы (discovery операций + чтение статуса) ---
-    function gqlUrlOf(input) {
-        if (typeof input === 'string') return input;
-        if (input && input.url) return input.url;
-        return '';
-    }
-    function gqlBodyOf(input, init) {
-        if (init && typeof init.body === 'string') return init.body;
-        if (input && typeof input.body === 'string') return input.body;
-        return null;
-    }
-    function postGqlCapture(body, txt) {
-        try {
-            const j = JSON.parse(body);
-            window.postMessage({
-                type: 'TMOD_GQL_CAPTURE',
-                operationName: (j && j.operationName) || '?',
-                variables: j && j.variables,
-                body: body,
-                response: String(txt || '')
-            }, '*');
-        } catch (e) {}
-    }
-    // Запоминает заголовки последнего GQL-запроса страницы: перезапрос (TMOD_GQL_PROBE)
-    // должен выглядеть неотличимо от собственного запроса страницы (client-id,
-    // авторизация сессии). Токены при этом не логируются и остаются в пределах Twitch.
-    function recordGqlHeaders(h) {
-        if (!h) return;
-        try {
-            const out = window.__tmodGqlHeaders = window.__tmodGqlHeaders || {};
-            if (typeof h.forEach === 'function') {
-                h.forEach((v, k) => { out[String(k).toLowerCase()] = String(v); });
-            } else if (Array.isArray(h)) {
-                h.forEach((pair) => { if (pair && pair[0] != null) out[String(pair[0]).toLowerCase()] = String(pair[1]); });
-            } else if (typeof h === 'object') {
-                Object.keys(h).forEach((k) => { out[k.toLowerCase()] = String(h[k]); });
-            }
-        } catch (e) {}
-    }
-    try {
-        const origFetch = window.fetch ? window.fetch.bind(window) : null;
-        if (origFetch && !window.__tmodGqlHooked) {
-            window.__tmodGqlHooked = true;
-            window.fetch = function (input, init) {
-                return origFetch(input, init).then((res) => {
-                    try {
-                        const url = gqlUrlOf(input);
-                        const body = gqlBodyOf(input, init);
-                        if (url.indexOf('gql.twitch.tv') !== -1 && body) {
-                            recordGqlHeaders(init && init.headers);
-                            res.clone().text().then((txt) => postGqlCapture(body, txt)).catch(() => {});
-                        }
-                    } catch (e) {}
-                    return res;
-                });
-            };
-        }
-    } catch (e) {}
-    try {
-        if (window.XMLHttpRequest && !window.__tmodXhrHooked) {
-            window.__tmodXhrHooked = true;
-            const origOpen = XMLHttpRequest.prototype.open;
-            const origSend = XMLHttpRequest.prototype.send;
-            const origSetHeader = XMLHttpRequest.prototype.setRequestHeader;
-            XMLHttpRequest.prototype.open = function (method, url) {
-                this.__tmodGqlUrl = String(url || '');
-                return origOpen.apply(this, arguments);
-            };
-            XMLHttpRequest.prototype.setRequestHeader = function (k, v) {
-                if (String(this.__tmodGqlUrl || '').indexOf('gql.twitch.tv') !== -1) {
-                    try {
-                        window.__tmodGqlHeaders = window.__tmodGqlHeaders || {};
-                        window.__tmodGqlHeaders[String(k).toLowerCase()] = String(v);
-                    } catch (e) {}
-                }
-                return origSetHeader.apply(this, arguments);
-            };
-            XMLHttpRequest.prototype.send = function (body) {
-                if (String(this.__tmodGqlUrl || '').indexOf('gql.twitch.tv') !== -1 && typeof body === 'string') {
-                    const xhr = this;
-                    this.addEventListener('loadend', function () {
-                        try { postGqlCapture(body, xhr.responseText); } catch (e) {}
-                    });
-                }
-                return origSend.apply(this, arguments);
-            };
-        }
-    } catch (e) {}
-
     // Пытается вытащить данные юзера из открытой карточки модерации через Fiber.
     // Возвращает список «подозрительных» объектов юзера и подрезку props по пути к карточке.
     function getModViewUserDetails() {
@@ -342,35 +253,6 @@
                 el.removeAttribute('data-tmod-probe');
             }
             window.postMessage({ type: 'TMOD_GET_MSG_RESULT', nonce: event.data.nonce, data }, '*');
-        } else if (event.data?.type === 'TMOD_GQL_PROBE') {
-            const body = event.data && event.data.body;
-            if (typeof body !== 'string' || !body) {
-                window.postMessage({ type: 'TMOD_GQL_PROBE_RESULT', nonce: event.data && event.data.nonce, text: null, error: 'no-body' }, '*');
-                return;
-            }
-            // Перезапрос операций: те же заголовки, что у страницы, + cookies сессии.
-            const saved = window.__tmodGqlHeaders || {};
-            const headers = {};
-            for (const h of ['client-id', 'authorization', 'x-device-id', 'origin']) {
-                if (saved[h]) headers[h] = saved[h];
-            }
-            headers['content-type'] = 'text/plain;charset=UTF-8';
-            headers['accept'] = 'application/json';
-            if (!headers['client-id']) headers['client-id'] = 'kd1unb4b3s4x58hei9wxp9mh6hk';
-            fetch('https://gql.twitch.tv/gql', {
-                method: 'POST',
-                credentials: 'include',
-                headers,
-                body
-            }).then((r) => r.text()).then(
-                (text) => window.postMessage({ type: 'TMOD_GQL_PROBE_RESULT', nonce: event.data.nonce, text: String(text || ''), error: null }, '*')
-            ).catch((e) => window.postMessage({
-                type: 'TMOD_GQL_PROBE_RESULT',
-                nonce: event.data.nonce,
-                text: null,
-                error: String((e && e.message) || e)
-            }, '*'));
-            return;
         } else if (event.data?.type === 'TMOD_GET_MODSTATUS') {
             window.postMessage({ type: 'TMOD_GET_MODSTATUS_RESULT', nonce: event.data.nonce, data: getModViewUserDetails() }, '*');
         }
