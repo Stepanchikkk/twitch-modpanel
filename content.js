@@ -3208,9 +3208,9 @@ const announceText = content.querySelector('#tmod-announce-text');
                 let bBroad = null;
                 for (const b of modMenuState.badges) {
                     const t = (b.alt || '').toLowerCase();
-                    if (t.indexOf('vip') !== -1) bVip = true;
-                    else if (t === 'mod' || t.indexOf('moderator') !== -1) bMod = true;
-                    else if (t.indexOf('broadcaster') !== -1) bBroad = true;
+                    if (t.indexOf('vip') !== -1 || t.indexOf('вип') !== -1) bVip = true;
+                    else if (t === 'mod' || t.indexOf('moderator') !== -1 || t === 'мод' || t.indexOf('модератор') !== -1) bMod = true;
+                    else if (t.indexOf('broadcaster') !== -1 || t.indexOf('стример') !== -1) bBroad = true;
                 }
                 if (bVip === true && status.isVip == null) status.isVip = true;
                 if (bMod === true && status.isMod == null) status.isMod = true;
