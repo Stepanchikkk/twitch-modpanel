@@ -2830,38 +2830,59 @@ const announceText = content.querySelector('#tmod-announce-text');
     }
 
     // Читает статус из mod-view карточки юзера Twitch (открывается при клике на ник
-    // в режиме модератора: data-a-target="mod-view-user-details"). Twitch сам знает,
-    // в таймауте ли юзер сейчас — по кнопке «Снять временную блокировку».
-    function readModViewStatus(userId, login) {
-        const drawer = document.querySelector('[data-a-target="mod-view-user-details"]');
-        if (!drawer) return null;
+    // в режиме модератора). Twitch сам знает, в бане/таймауте ли юзер сейчас — по его
+    // же виджету «Забанен»/«Отстранён» и/или кнопкам «Разбанить»/«Снять временную
+    // блокировку». Имя юзера рендерится текстом без ссылки — ищем его по тексту.
+    function readModViewStatus(userId, login, userName) {
         const lg = sanitizeLogin(login);
         if (!lg) return null;
-        const isTarget = !!drawer.querySelector(`a[href="/${CSS.escape(lg)}"]`);
-        if (!isTarget) return null;
-        const out = {};
-        if (drawer.querySelector('button[aria-label*="Снять временную блокировку"]')) {
-            // Таймаут активен. Считаем конец: последняя запись «отстраняет пользователя
-            // <login> на N секунд» + её ISO-время старта из id.
-            let exp = null, created = null;
-            drawer.querySelectorAll('.targeted-mod-action [id]').forEach((el) => {
-                const t = el.textContent || '';
-                if (!/отстраняет пользователя/i.test(t)) return;
-                const iso = (el.id || '').match(/targeted-mod-action-line-(.+)/);
-                let start = iso ? Date.parse(iso[1].replace(/\.(\d{3})\d+Z$/, '.$1Z')) : NaN;
-                if (isNaN(start)) return;
-                const m = t.match(/на\s+([\d\s]+)\s+секунд/);
-                const durSec = m ? parseInt(String(m[1]).replace(/\s/g, ''), 10) || 0 : 0;
-                if (created === null || start > created) { created = start; exp = start + durSec * 1000; }
-            });
-            if (exp && exp > Date.now()) {
-                out.isTimedOut = true;
-                out.banCreatedAt = created ? new Date(created).toISOString() : null;
-                out.banExpiresAt = new Date(exp).toISOString();
+        let root = null;
+        try { root = document.querySelector('[data-a-target="mod-view-user-details"]'); } catch (e) {}
+        // Подстраховка на случай новой разметки без data-a-target.
+        if (!root) {
+            const sels = ['[data-a-target="mod-user-actions"]', '.user-actions-menu', '[class*="mod-view"][class*="user"]'];
+            for (const sel of sels) {
+                try { root = document.querySelector(sel); } catch (e) {}
+                if (root) break;
             }
         }
-        if (drawer.querySelector('button[aria-label*="Разбанить"]') && drawer.querySelector(`button[aria-label*="${lg}"]`)) {
-            out.isBanned = true;
+        if (!root) return null;
+        // Карточка — за тем ли юзером, что в меню? Проверяем по видимому нику (логин
+        // или displayName), нижний колонтитул может быть с подчёркиванием/пробелом.
+        const normT = (s) => String(s || '').replace(/\s+/g, ' ').toLowerCase();
+        const escPat = (n) => String(n).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/_/g, '[\\s_-]*');
+        const nameOk = (n) => new RegExp('(?:[^a-z0-9_]|^)' + escPat(n) + '(?![a-z0-9_])', 'i').test(normT(root.textContent || ''));
+        let mine = !!lg && nameOk(lg);
+        if (!mine && userName && sanitizeLogin(userName) && sanitizeLogin(userName) !== lg) mine = nameOk(userName);
+        if (!mine) return null;
+
+        const out = {};
+        const txt = normT(root.textContent || '');
+        // Таймаут: кнопка снятия либо «пилюля» отстранения.
+        const hasTimeout = !!root.querySelector('button[aria-label*="Снять временную блокировку"], button[aria-label*="Lift timeout"], button[aria-label*="Remove timeout"]')
+            || /отстран[её]н/.test(txt);
+        if (hasTimeout) out.isTimedOut = true;
+        // Бан: кнопка «Разбанить» либо «пилюля» Забанен.
+        const hasBan = !!root.querySelector('button[aria-label*="Разбанить"], button[aria-label*="Unban"]')
+            || /забанен/.test(txt);
+        if (hasBan) out.isBanned = true;
+        // Время окончания таймаута: по строкам действий карточки («отстраняет
+        // пользователя <login> на N секунд» + ISO-время старта из id).
+        let exp = null, created = null;
+        root.querySelectorAll('.targeted-mod-action [id]').forEach((el) => {
+            const t = el.textContent || '';
+            if (!/отстраняет пользователя/i.test(t)) return;
+            const iso = (el.id || '').match(/targeted-mod-action-line-(.+)/);
+            let start = iso ? Date.parse(iso[1].replace(/\.(\d{3})\d+Z$/, '.$1Z')) : NaN;
+            if (isNaN(start)) return;
+            const m = t.match(/на\s+([\d\s]+)\s+секунд/);
+            const durSec = m ? parseInt(String(m[1]).replace(/\s/g, ''), 10) || 0 : 0;
+            if (created === null || start > created) { created = start; exp = start + durSec * 1000; }
+        });
+        if (exp && exp > Date.now()) {
+            out.isTimedOut = true;
+            out.banCreatedAt = created ? new Date(created).toISOString() : null;
+            out.banExpiresAt = new Date(exp).toISOString();
         }
         return out;
     }
@@ -2903,8 +2924,7 @@ const announceText = content.querySelector('#tmod-announce-text');
             '[data-a-target="user-card"]',
             '[data-test-selector="user-card"]',
             '.user-card',
-            '[class*="viewer-card"]',
-            '[data-a-target="mod-view-user-details"]'
+            '[class*="viewer-card"]'
         ];
         for (const sel of cardSels) {
             let els = [];
@@ -3074,13 +3094,13 @@ const announceText = content.querySelector('#tmod-announce-text');
         }
         // Карточка юзера в Mod View: Twitch сам показывает текущий таймаут/бан.
         // Если карточка ещё не открыта — открываем её сами кликом по нику и читаем.
-        let mv = readModViewStatus(userId, targetLogin);
+        let mv = readModViewStatus(userId, targetLogin, modMenuState && modMenuState.userName);
         if (!mv && targetLogin) {
             const opened = openModViewCardFor(targetLogin);
             debugLog('mod-open-card', { opened, login: targetLogin });
             if (opened) {
                 await new Promise((r) => setTimeout(r, 900));
-                mv = readModViewStatus(userId, targetLogin);
+                mv = readModViewStatus(userId, targetLogin, modMenuState && modMenuState.userName);
             }
         }
         debugLog('mod-modview-resp', mv);
