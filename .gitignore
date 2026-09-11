@@ -8,3 +8,6 @@ opencode.json
 icons/generate-empty-icons.html
 icons/generate-icons.html
 icons/empty.svg
+
+# Chrome Web Store archive (built locally, not committed)
+twitch-modpanel-*.zip
