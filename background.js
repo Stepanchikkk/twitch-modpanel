@@ -189,5 +189,3 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ success: false, error: 'Unknown type' });
     return false;
 });
-
-console.log('[ModPanel] Background initialized');

@@ -2809,14 +2809,22 @@ const announceText = content.querySelector('#tmod-announce-text');
     }
 
     // Клик по нику юзера в чате открывает карточку Mod View (то же действие,
-    // что делает пользователь вручную).
+    // что делает пользователь вручную). Кликаем только внутри сообщения, из
+    // которого открыто меню: глобальный поиск a[href="/login"] цеплял карточку
+    // канала в сайдбаре и уводил со страницы («канал сам открывался»).
     function openModViewCardFor(login) {
         const lg = sanitizeLogin(login);
         if (!lg) return false;
-        const selector = `a[href="/${CSS.escape(lg)}"]`;
-        const link = document.querySelector('.chat-line__message ' + selector) || document.querySelector(selector);
+        const msgEl = (modMenuState && modMenuState.msgEl) || null;
+        const scope = msgEl || document;
+        const link = scope.querySelector('[data-a-target="chat-line-username"], a[href="/' + CSS.escape(lg) + '"]');
         if (!link) return false;
-        link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window, composed: true }));
+        tmodSyntheticClick = true;
+        try {
+            link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window, composed: true }));
+        } finally {
+            tmodSyntheticClick = false;
+        }
         return true;
     }
 
@@ -2876,6 +2884,283 @@ const announceText = content.querySelector('#tmod-announce-text');
         return out;
     }
 
+    // --- Роли юзера (VIP/мод/владелец): надёжный источник вместо цепочки догадок ---
+    // Модератору Helix роли других юзеров не отдаёт (vips/moderators — только стримеру,
+    // chatters ролей не содержит). Собираем из открытых источников: карточка юзера
+    // (первый бейдж), живой GQL-запрос страницы, недавний GQL-кэш, свежайшее сообщение.
+    const ROLE_SESSION_TTL_MS = 60000;
+
+    const CHAT_MESSAGE_SELECTORS = [
+        '[data-test-selector="chat-line-message"]',
+        '.chat-line__message',
+        '[data-test-selector="chat-message-holder"]',
+        '.chat-line__message--centered'
+    ];
+
+    // TTL сессии роли, назначенной/снятой через саму панель. Учитывается только
+    // когда роль не подтверждена иным источником: свежий результат своего действия
+    // точен, но «навсегда» он не живёт — иначе разжалованный другим модом юзер
+    // остался бы модом до закрытия меню.
+
+    // Все сообщения юзера в чате (по нику или ссылке на канал).
+    function findAllMessagesByLogin(login) {
+        const lg = sanitizeLogin(login);
+        if (!lg) return [];
+        const out = [];
+        const seen = new Set();
+        for (const sel of CHAT_MESSAGE_SELECTORS) {
+            let els = [];
+            try { els = Array.from(document.querySelectorAll(sel)); } catch (e) {}
+            for (const el of els) {
+                if (seen.has(el)) continue;
+                seen.add(el);
+                let nick = null;
+                let hit = false;
+                try {
+                    if (el.querySelector('a[href="/' + lg + '"]')) hit = true;
+                    nick = el.querySelector('[data-a-target="chat-line-username"]');
+                } catch (e) {}
+                if (!hit && nick) {
+                    hit = sanitizeLogin(nick.getAttribute('title') || nick.textContent).toLowerCase() === lg;
+                }
+                if (hit) out.push(el);
+            }
+        }
+        return out;
+    }
+
+    // Самое свежее сообщение юзера (чат растёт вниз — последнее в DOM).
+    function findNewestMessageByLogin(login) {
+        const list = findAllMessagesByLogin(login);
+        return list.length ? list[list.length - 1] : null;
+    }
+
+    // Роли по самому свежему сообщению: fiber-флаги на момент рендера + бейджи DOM.
+    async function fetchNewestMessageRoles(login) {
+        const out = { isVip: null, isMod: null, isBroadcaster: null };
+        try {
+            const msgEl = findNewestMessageByLogin(login);
+            if (!msgEl) return out;
+            const data = await getMessageData(msgEl);
+            if (data) {
+                out.isVip = data.isVip === true || data.isVip === false ? data.isVip : null;
+                out.isMod = data.isModerator === true || data.isModerator === false ? data.isModerator : null;
+                out.isBroadcaster = data.isBroadcaster === true || data.isBroadcaster === false ? data.isBroadcaster : null;
+            }
+            const badges = readBadgesFromMessage(msgEl);
+            if (badges.isVip === true) out.isVip = true;
+            if (badges.isMod === true) out.isMod = true;
+            if (badges.isBroadcaster === true) out.isBroadcaster = true;
+        } catch (e) {}
+        return out;
+    }
+
+    // Роль по alt первого значка бейджей. Alt локализован — ловим RU и EN.
+    function roleKindFromAlt(alt) {
+        const t = String(alt || '').toLowerCase();
+        if (/(\bvip\b|вип)/.test(t)) return 'vip';
+        if (/(ведущий модератор|lead moderator|\blead\b)/.test(t)) return 'mod';
+        if (/(модератор|moderator|\bmod\b)/.test(t)) return 'mod';
+        if (/(владелец канала|broadcaster|стример)/.test(t)) return 'broadcaster';
+        return null;
+    }
+
+    // Открытая карточка юзера (режим зрителя и Mod View): первый ролевой значок.
+    function readRolesFromUserCardDom(login) {
+        const lg = sanitizeLogin(login);
+        if (!lg) return null;
+        const cardSels = [
+            '[data-a-target="user-card"]',
+            '[data-test-selector="user-card"]',
+            '.user-card',
+            '[data-a-target="mod-view-user-details"]'
+        ];
+        let card = null;
+        for (const sel of cardSels) {
+            let el = null;
+            try { el = document.querySelector(sel); } catch (e) {}
+            if (!el) continue;
+            if (!el.querySelector('a[href="/' + lg + '"]')) continue;
+            card = el;
+            break;
+        }
+        if (card) {
+            let imgs = [];
+            try { imgs = Array.from(card.querySelectorAll('img[alt]')); } catch (e) {}
+            for (const im of imgs) {
+                const kind = roleKindFromAlt(im.getAttribute('alt'));
+                if (kind) return { isVip: kind === 'vip', isMod: kind === 'mod', isBroadcaster: kind === 'broadcaster' };
+            }
+            return null;
+        }
+        // Fallback: ближайший предок ссылки с ником, в котором есть ролевые значки
+        // (карточка открыта). Глубина ограничена, чтобы не зацепить весь чат.
+        let links = [];
+        try { links = Array.from(document.querySelectorAll('a[href="/' + lg + '"]')); } catch (e) {}
+        for (const a of links) {
+            let node = a.parentElement;
+            for (let d = 0; node && d < 4; node = node.parentElement, d++) {
+                let bads = [];
+                try { bads = Array.from(node.querySelectorAll('img[alt]')); } catch (e) {}
+                for (const im of bads) {
+                    const kind = roleKindFromAlt(im.getAttribute('alt'));
+                    if (kind) return { isVip: kind === 'vip', isMod: kind === 'mod', isBroadcaster: kind === 'broadcaster' };
+                }
+            }
+        }
+        return null;
+    }
+
+    // --- GQL страницы: роли без Helix (только режим расширения) ---
+    // twitch-api.js перехватывает GQL-запросы самой страницы (TMOD_GQL_CAPTURE) и умеет
+    // перезапрашивать найденную role-операцию с другим логином (TMOD_GQL_PROBE).
+    let tmodGqlRoleOpBody = null; // тело операции, которая возвращает роли юзера
+    let tmodGqlRoleOpAt = 0;
+    let gqlCaptureCache = new Map(); // последние ответы операций (пассивное чтение)
+
+    function tokenIsLoginLike(value) {
+        return typeof value === 'string' && /^[a-z0-9_]{2,30}$/i.test(value) && /[a-z]/i.test(value);
+    }
+
+    // Обход GQL-ответа: cb(объектЮзера, логин) для каждого юзера с ролями.
+    function walkGqlRoles(node, cb) {
+        const seen = new Set();
+        let budget = 0;
+        (function visit(o) {
+            if (!o || typeof o !== 'object' || budget > 8000 || seen.has(o)) return;
+            seen.add(o); budget++;
+            if (Array.isArray(o)) { for (const it of o) visit(it); return; }
+            const hasRoles = typeof o.isVip === 'boolean'
+                || typeof o.isModerator === 'boolean'
+                || typeof o.isLeadModerator === 'boolean'
+                || typeof o.isBroadcaster === 'boolean';
+            const l = o.login || o.userLogin || o.user_login || o.displayName || o.user_name;
+            if (hasRoles && typeof l === 'string' && l) cb(o, l);
+            for (const k of Object.keys(o)) {
+                const v = o[k];
+                if (v && typeof v === 'object') visit(v);
+            }
+        })(node);
+    }
+
+    // Роли конкретного юзера из текста GQL-ответа (или null, если их там нет).
+    function parseRolesFromGqlText(text, login) {
+        const lg = sanitizeLogin(login);
+        if (!lg || typeof text !== 'string') return null;
+        if (text.indexOf('isVip') === -1 && text.indexOf('isModerator') === -1 && text.indexOf('isBroadcaster') === -1) return null;
+        let obj = null;
+        try { obj = JSON.parse(text); } catch (e) { return null; }
+        if (!obj) return null;
+        const out = { isVip: null, isMod: null, isBroadcaster: null };
+        walkGqlRoles(obj, (o, l) => {
+            if (sanitizeLogin(l) !== lg) return;
+            if (typeof o.isVip === 'boolean') out.isVip = o.isVip;
+            if (typeof o.isModerator === 'boolean') out.isMod = o.isModerator;
+            if (o.isLeadModerator === true) out.isMod = true;
+            if (typeof o.isBroadcaster === 'boolean') out.isBroadcaster = o.isBroadcaster;
+        });
+        if (out.isVip == null && out.isMod == null && out.isBroadcaster == null) return null;
+        return out;
+    }
+
+    // Есть ли в ответе роли хотя бы какого-то юзера (для discovery role-операции).
+    function gqlResponseHasRoles(text) {
+        if (typeof text !== 'string') return false;
+        if (text.indexOf('isVip') === -1 && text.indexOf('isModerator') === -1) return false;
+        let obj = null;
+        try { obj = JSON.parse(text); } catch (e) { return false; }
+        if (!obj) return false;
+        let found = false;
+        walkGqlRoles(obj, () => { found = true; });
+        return found;
+    }
+
+    // Подмена логина в теле role-операции на цель (для перезапроса).
+    function replaceLoginInGqlBody(body, login) {
+        try {
+            const j = JSON.parse(body);
+            const vars = j && j.variables;
+            if (!vars) return body;
+            let replaced = false;
+            for (const k of Object.keys(vars)) {
+                if (/login|userLogin|targetLogin|channelName|user/i.test(k) && tokenIsLoginLike(vars[k])) {
+                    vars[k] = login; replaced = true; break;
+                }
+            }
+            if (!replaced) {
+                for (const k of Object.keys(vars)) {
+                    if (tokenIsLoginLike(vars[k]) && !/id$/i.test(k)) {
+                        vars[k] = login; replaced = true; break;
+                    }
+                }
+            }
+            return replaced ? JSON.stringify(j) : body;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    // Живой перезапрос role-операции — актуальные роли даже у молчащего юзера.
+    async function probeRolesViaGql(login) {
+        const lg = sanitizeLogin(login);
+        if (!IS_EXTENSION || !lg || !tmodGqlRoleOpBody) return null;
+        const body = replaceLoginInGqlBody(tmodGqlRoleOpBody, lg);
+        if (!body) return null;
+        const nonce = 'gq' + Date.now() + '_' + Math.floor(Math.random() * 1e6);
+        return new Promise((resolve) => {
+            let done = false;
+            const finish = (val) => {
+                if (done) return;
+                done = true;
+                clearTimeout(timer);
+                window.removeEventListener('message', handler);
+                resolve(val);
+            };
+            const timer = setTimeout(() => finish(null), 1800);
+            const handler = (event) => {
+                if (event.source !== window || !event.data) return;
+                if (event.data.type === 'TMOD_GQL_PROBE_RESULT' && event.data.nonce === nonce) {
+                    const r = parseRolesFromGqlText(event.data.text, lg);
+                    finish(r);
+                }
+            };
+            window.addEventListener('message', handler);
+            window.postMessage({ type: 'TMOD_GQL_PROBE', nonce, body }, '*');
+        });
+    }
+
+    // Пассивное чтение из недавних GQL-ответов страницы (карточку уже открывали).
+    function readRolesFromGqlCache(login) {
+        const lg = sanitizeLogin(login);
+        if (!lg || !gqlCaptureCache.size) return null;
+        let best = null;
+        gqlCaptureCache.forEach((cap) => {
+            if (!cap || !cap.response || typeof cap.response !== 'string') return;
+            const r = parseRolesFromGqlText(cap.response, lg);
+            if (!r) return;
+            const ts = cap.ts || 0;
+            if (!best || ts > best.ts) best = { r, ts };
+        });
+        return best ? best.r : null;
+    }
+
+    // Собирает роли цели из источников; null, если ни один не дал ответа.
+    // Приоритет: карточка юзера → живой GQL → GQL-кэш → свежайшее сообщение.
+    async function resolveModRoles(login) {
+        if (!login) return null;
+        const card = readRolesFromUserCardDom(login);
+        if (card) return card;
+        const probe = await probeRolesViaGql(login);
+        if (probe) return probe;
+        const cached = readRolesFromGqlCache(login);
+        if (cached) return cached;
+        const msg = await fetchNewestMessageRoles(login);
+        if (msg.isVip != null || msg.isMod != null || msg.isBroadcaster != null) {
+            return { isVip: msg.isVip, isMod: msg.isMod, isBroadcaster: msg.isBroadcaster };
+        }
+        return null;
+    }
+
     // Статусы юзера (ban/vip/mod берутся только стримером — у мода 401, остаются null).
     async function fetchModStatus(userId) {
         const channel = getChannelName();
@@ -2883,6 +3168,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         if (!token) return { isBanned: null, isTimedOut: null, isVip: null, isMod: null, isBlocked: null, banExpiresAt: null, banCreatedAt: null };
         const status = { isBanned: null, isTimedOut: null, isVip: null, isMod: null, isBlocked: null, banExpiresAt: null, banCreatedAt: null };
         let statusChannelId = null;
+        let isBroadcasterViewer = false;
         if (channel) {
             const [broadcasterId, me] = await Promise.all([getChannelId(channel, token), getCurrentUserId(token)]);
             if (broadcasterId) {
@@ -2899,6 +3185,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                     status.banCreatedAt = b ? (b.created_at || null) : null;
                 }
                 const isBroadcaster = me && String(me) === String(broadcasterId);
+                isBroadcasterViewer = isBroadcaster;
                 if (isBroadcaster) {
                     // Стримеру Helix отдаёт VIP/модов напрямую.
                     const vips = await helixCall(`https://api.twitch.tv/helix/channels/vips?broadcaster_id=${broadcasterId}&user_id=${userId}`);
@@ -2942,19 +3229,33 @@ const announceText = content.querySelector('#tmod-announce-text');
                 }
             }
         }
+        // Роли: для стримера Helix уже дал точные значения (isBroadcasterViewer=true);
+        // модератору нужны открытые источники — карточка юзера, GQL, свежайшее сообщение.
+        const targetLogin = modMenuState && modMenuState.userLogin;
+        if (!isBroadcasterViewer && status.isBroadcaster !== true && targetLogin) {
+            const roles = await resolveModRoles(targetLogin);
+            if (roles) {
+                debugLog('mod-roles-resolved', roles);
+                if (roles.isVip != null) status.isVip = roles.isVip;
+                if (roles.isMod != null) status.isMod = roles.isMod;
+                if (roles.isBroadcaster === true) status.isBroadcaster = true;
+            }
+        }
         // Бейджи/флаги с самого сообщения (VIP/мод/стример) — живой статус без API.
         const ms2 = modMenuState || {};
         const badges = readBadgesFromMessage(ms2.msgEl);
         debugLog('mod-badges', { alts: badges._alts, fiberVip: ms2.isVip, fiberMod: ms2.isModerator, badges });
-        if (status.isVip !== true && (ms2.isVip === true || badges.isVip === true)) status.isVip = true;
-        if (status.isMod !== true && (ms2.isModerator === true || badges.isMod === true)) status.isMod = true;
-        // Роли, назначенные/снятые через панель в текущем сеансе меню: юзер может не
-        // быть в чате (chatters не найдёт), но результат своего действия мы знаем точно.
-        if (ms2.sessionVip === true) status.isVip = true;
-        if (ms2.sessionMod === true) status.isMod = true;
+        // Слабые источники применяются, только если роль ещё не определена (== null):
+        // авторитетный false (юзер разжалован) не перетирается stale-бейджами сообщения.
+        if (status.isVip == null && (ms2.isVip === true || badges.isVip === true)) status.isVip = true;
+        if (status.isMod == null && (ms2.isModerator === true || badges.isMod === true)) status.isMod = true;
+        // Роли, назначенные/снятые через панель: юзер может не быть в чате, но результат
+        // своего действия точен. Живёт недолго (TTL) и только пока роль не подтверждена.
+        const now = Date.now();
+        if (status.isBroadcaster !== true && status.isVip == null && ms2.sessionVip === true && (ms2.sessionVipAt || 0) > now - ROLE_SESSION_TTL_MS) status.isVip = true;
+        if (status.isBroadcaster !== true && status.isMod == null && ms2.sessionMod === true && (ms2.sessionModAt || 0) > now - ROLE_SESSION_TTL_MS) status.isMod = true;
         // Карточка юзера в Mod View: Twitch сам показывает текущий таймаут/бан.
         // Если карточка ещё не открыта — открываем её сами кликом по нику и читаем.
-        const targetLogin = modMenuState && modMenuState.userLogin;
         let mv = readModViewStatus(userId, targetLogin);
         if (!mv && targetLogin) {
             const opened = openModViewCardFor(targetLogin);
@@ -2992,6 +3293,10 @@ const announceText = content.querySelector('#tmod-announce-text');
     // --- Состояние меню ---
     let modMenuEl = null;
     let modMenuState = null;
+    // Наш собственный синтетический клик (открытие карточки Mod View). Такой клик
+    // не должен восприниматься как клик пользователя — иначе он закрывает меню и
+    // (до гарда) уводил навигацией на карточку канала в сайдбаре.
+    let tmodSyntheticClick = false;
     let modBusy = false;
     // Кэш токена для синхронной проверки в contextmenu (preventDefault должен
     // решаться синхронно, а storageGet асинхронный).
@@ -3107,10 +3412,13 @@ const announceText = content.querySelector('#tmod-announce-text');
         const s = modMenuState.status = modMenuState.status || {};
         const st = modMenuState;
         const badges = readBadgesFromMessage(st.msgEl);
-        if (s.isVip !== true && (st.isVip === true || badges.isVip === true)) s.isVip = true;
-        if (s.isMod !== true && (st.isModerator === true || badges.isMod === true)) s.isMod = true;
-        if (st.sessionVip === true) s.isVip = true;
-        if (st.sessionMod === true) s.isMod = true;
+        // Только когда роль ещё не определена (== null): иначе разжалованный юзер
+        // мгновенно «возвращается» в моды stale-бейджем сообщения.
+        if (s.isVip == null && (st.isVip === true || badges.isVip === true)) s.isVip = true;
+        if (s.isMod == null && (st.isModerator === true || badges.isMod === true)) s.isMod = true;
+        const now = Date.now();
+        if (s.isVip == null && st.sessionVip === true && (st.sessionVipAt || 0) > now - ROLE_SESSION_TTL_MS) s.isVip = true;
+        if (s.isMod == null && st.sessionMod === true && (st.sessionModAt || 0) > now - ROLE_SESSION_TTL_MS) s.isMod = true;
         renderModMenuToggles();
     }
 
@@ -3241,9 +3549,11 @@ const announceText = content.querySelector('#tmod-announce-text');
         if (isVipFlag) {
             modMenuState.status.isVip = value;
             modMenuState.sessionVip = value;
+            modMenuState.sessionVipAt = Date.now();
         } else {
             modMenuState.status.isMod = value;
             modMenuState.sessionMod = value;
+            modMenuState.sessionModAt = Date.now();
         }
         renderModMenuToggles();
     }
@@ -3660,13 +3970,20 @@ const announceText = content.querySelector('#tmod-announce-text');
 
     function initModerationMenu() {
         getPanelSettings().then((s) => { tmodContextMenuEnabled = s.contextMenu !== false; });
-        const gqlCaptureCache = new Map();
+        gqlCaptureCache = new Map();
 
         // Ответы GQL-операций, которыми сама страница тянет данные модерации.
         window.addEventListener('message', (ev) => {
             if (ev.source !== window || ev.data?.type !== 'TMOD_GQL_CAPTURE') return;
             const op = ev.data.operationName || '?';
-            gqlCaptureCache.set(op, ev.data);
+            const cap = Object.assign({}, ev.data, { ts: Date.now() });
+            gqlCaptureCache.set(op, cap);
+            // Discovery role-операции: ответ несёт роли какого-то юзера — тело пригодится
+            // для перезапроса с другим логином (TMOD_GQL_PROBE).
+            if (ev.data && ev.data.body && typeof ev.data.response === 'string' && gqlResponseHasRoles(ev.data.response)) {
+                tmodGqlRoleOpBody = ev.data.body;
+                tmodGqlRoleOpAt = Date.now();
+            }
             if (TMOD_DEBUG && /mod|user|ban|timeout|vip|channel/i.test(op)) {
                 console.log('[ModPanel][accent] gql-capture', op, {
                     variables: ev.data.variables,
@@ -3691,12 +4008,7 @@ const announceText = content.querySelector('#tmod-announce-text');
             if (!isChatContext()) { console.log('[ModPanel] contextmenu: not a chat context'); return; }
             if (e.target.closest('#tmod-mod-menu')) return;
             if (!modTokenCache) { console.log('[ModPanel] contextmenu: no token'); modToast('Нет токена — нажмите «Панель модератора» и войдите'); return; }
-            const selectors = [
-                '[data-test-selector="chat-line-message"]',
-                '.chat-line__message',
-                '[data-test-selector="chat-message-holder"]',
-                '.chat-line__message--centered'
-            ];
+            const selectors = CHAT_MESSAGE_SELECTORS;
             let msgEl = null;
             for (const sel of selectors) {
                 msgEl = e.target.closest(sel);
@@ -3751,13 +4063,20 @@ const announceText = content.querySelector('#tmod-announce-text');
 
         document.addEventListener('click', (e) => {
             if (e.button !== 0) return;
-            if (modMenuEl && !e.target.closest('#tmod-mod-menu')) {
-                // Пока открыто меню, глушим клик по сообщению: ник/сообщение — ссылка
-                // на канал (своё сообщение ведёт на «главную» своего канала и «закрывает
-                // чат»). Без preventDefault клик по ссылке увёл бы навигацией.
-                if (e.target.closest('[data-test-selector="chat-line-message"], .chat-line__message, [data-test-selector="chat-message-holder"]')) {
-                    const link = e.target.closest('a[href]');
-                    if (link) {
+            // Свой синтетический клик (открытие карточки Mod View) пропускаем
+            // целиком — он не должен закрывать меню или считаться кликом юзера.
+            if (tmodSyntheticClick) return;
+            const isInMenu = !!(modMenuEl && e.target.closest('#tmod-mod-menu'));
+            if (modMenuEl && !isInMenu) {
+                // Пока открыто меню, клик по сообщению: ник/сообщение — ссылка на канал
+                // (своё сообщение ведёт на «главную» своего канала и «закрывает чат»).
+                // Без preventDefault клик по ссылке увёл бы навигацией.
+                const link = e.target.closest('a[href]');
+                if (link) {
+                    const href = link.getAttribute('href') || '';
+                    // Глушим только SPA-ссылки того же сайта (навигация "/..."), которые
+                    // уводят страницу. Внешние (http/target=_blank) не трогаем.
+                    if (href.startsWith('/')) {
                         e.preventDefault();
                         e.stopPropagation();
                     }
