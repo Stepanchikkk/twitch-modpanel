@@ -3195,18 +3195,20 @@ const announceText = content.querySelector('#tmod-announce-text');
                     debugLog('mod-mods-resp', { ok: mods.success, status: mods.status, error: mods.error });
                     if (mods.success) status.isMod = !!(mods.data?.data?.length);
                 } else {
-                    // Модератору vips/moderators (401). Chatters доступен моду для VIP/мод-бейджей.
-                    // Внимание: затаймаутенный юзер остаётся в списке чатеров (соединение живо),
-                    // поэтому присутствие в чате НЕ означает «не в бане/таймауте».
+                    // Модератору vips/moderators (401). Chatters ролей НЕ содержит (документировано:
+                    // поля is_vip/is_moderator в ответе отсутствуют, всегда undefined) —
+                    // присваивать статусы из него нельзя: !!undefined = false испортил бы
+                    // определение роли молчащему, но присутствующему в чате юзеру.
+                    // Внимание: затаймаутенный юзер остаётся в списке чатеров (соединение
+                    // живо), поэтому присутствие в чате НЕ означает «не в бане/таймауте».
                     const chatters = await helixCall(`https://api.twitch.tv/helix/chat/chatters?broadcaster_id=${broadcasterId}&moderator_id=${me}&first=1000`);
-                    debugLog('mod-chatters-resp', { ok: chatters.success, status: chatters.status, error: chatters.error, count: chatters.data?.data?.length });
-                    if (chatters.success && Array.isArray(chatters.data?.data)) {
-                        const found = chatters.data.data.find((u) => String(u.user_id) === String(userId));
-                        if (found) {
-                            status.isVip = !!found.is_vip;
-                            status.isMod = !!found.is_moderator;
-                        }
-                    }
+                    debugLog('mod-chatters-resp', {
+                        ok: chatters.success,
+                        status: chatters.status,
+                        error: chatters.error,
+                        count: chatters.data?.data?.length,
+                        present: Array.isArray(chatters.data?.data) ? !!chatters.data.data.find((u) => String(u.user_id) === String(userId)) : null
+                    });
                 }
             }
         }
