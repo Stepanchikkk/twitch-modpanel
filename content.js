@@ -2798,24 +2798,50 @@ const announceText = content.querySelector('#tmod-announce-text');
         return helixCall(`https://api.twitch.tv/helix/users/blocks?target_user_id=${userId}`, { method: unblock ? 'DELETE' : 'PUT' });
     }
 
-    // Клик по нику юзера в чате открывает карточку Mod View (то же действие,
-    // что делает пользователь вручную). Кликаем только внутри сообщения, из
-    // которого открыто меню: глобальный поиск a[href="/login"] цеплял карточку
-    // канала в сайдбаре и уводил со страницы («канал сам открывался»).
+    // Клик по нику юзера в чате открывает карточку (viewer-карточку с бейджами ролей в
+    // обычном чате, либо панель Mod View со статусом бана/таймаута). Сообщение, из
+    // которого открыто меню, виртуализация чата могла уже пересоздать — поэтому ищем
+    // свежую копию сообщения юзера в живом DOM, но ТОЛЬКО среди сообщений чата
+    // (карточки канала в сайдбаре не задеваем).
     function openModViewCardFor(login) {
         const lg = sanitizeLogin(login);
         if (!lg) return false;
+        const clickEl = (el) => {
+            if (!el) return false;
+            tmodSyntheticClick = true;
+            try {
+                el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window, composed: true }));
+            } catch (e) {} finally {
+                tmodSyntheticClick = false;
+            }
+            return true;
+        };
+        // (1) Свежее сообщение из меню.
         const msgEl = (modMenuState && modMenuState.msgEl) || null;
-        const scope = msgEl || document;
-        const link = scope.querySelector('[data-a-target="chat-line-username"], a[href="/' + CSS.escape(lg) + '"]');
-        if (!link) return false;
-        tmodSyntheticClick = true;
-        try {
-            link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window, composed: true }));
-        } finally {
-            tmodSyntheticClick = false;
+        if (msgEl) {
+            const quick = msgEl.querySelector('[data-a-target="chat-line-username"], [class*="chat-line__username"], a[href="/' + CSS.escape(lg) + '"]');
+            if (quick) return clickEl(quick);
         }
-        return true;
+        // (2) Живой чат заново: последнее подходящее сообщение юзера.
+        const strip = (s) => String(s || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+        for (const sel of CHAT_MESSAGE_SELECTORS) {
+            let nodes = [];
+            try { nodes = Array.from(document.querySelectorAll(sel)); } catch (e) {}
+            for (let i = nodes.length - 1; i >= 0; i--) {
+                const n = nodes[i];
+                const target = n.querySelector('[data-a-target="chat-line-username"], [class*="chat-line__username"], a[href="/' + CSS.escape(lg) + '"]');
+                if (target) return clickEl(target);
+                // Ник без ссылки и атрибутов — сверяем видимый текст с логином/именем.
+                const nick = n.querySelector('[class*="chat-author__display-name"], [class*="chat-line__username"]');
+                if (!nick) continue;
+                const text = strip(nick.textContent);
+                const cands = [strip(lg)];
+                const un = modMenuState && modMenuState.userName;
+                if (un && strip(un)) cands.push(strip(un));
+                if (text && cands.indexOf(text) !== -1) return clickEl(nick);
+            }
+        }
+        return false;
     }
 
     // Запрашивает у страницы выжимку Fiber-данных открытой карточки Mod View.
