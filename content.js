@@ -2802,7 +2802,8 @@ const announceText = content.querySelector('#tmod-announce-text');
     // обычном чате, либо панель Mod View со статусом бана/таймаута). Сообщение, из
     // которого открыто меню, виртуализация чата могла уже пересоздать — поэтому ищем
     // свежую копию сообщения юзера в живом DOM, но ТОЛЬКО среди сообщений чата
-    // (карточки канала в сайдбаре не задеваем).
+    // (карточки канала в сайдбаре не задеваем). Кликать через интерфейс канал/ссылка,
+    // а не по DIV-контейнеру: синтетический клик по контейнеру карточку не открывает.
     function openModViewCardFor(login) {
         const lg = sanitizeLogin(login);
         if (!lg) return false;
@@ -2817,30 +2818,37 @@ const announceText = content.querySelector('#tmod-announce-text');
             }
             return true;
         };
-        // (1) Свежее сообщение из меню.
+        const anchorSel = 'a[href="/' + CSS.escape(lg) + '"]';
+        const pick = (node) => {
+            for (const sel of [anchorSel, '[data-a-target="chat-line-avatar"]', '[data-a-target="chat-line-username"]']) {
+                let el = null;
+                try { el = node.querySelector(sel); } catch (e) {}
+                if (el) return el;
+            }
+            return null;
+        };
+        // Свежее сообщение из меню плюс последние сообщения юзера в живом чате.
+        const scopes = [];
         const msgEl = (modMenuState && modMenuState.msgEl) || null;
-        if (msgEl) {
-            const quick = msgEl.querySelector('[data-a-target="chat-line-username"], [class*="chat-line__username"], a[href="/' + CSS.escape(lg) + '"]');
-            if (quick) return clickEl(quick);
-        }
-        // (2) Живой чат заново: последнее подходящее сообщение юзера.
-        const strip = (s) => String(s || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+        if (msgEl) scopes.push(msgEl);
         for (const sel of CHAT_MESSAGE_SELECTORS) {
             let nodes = [];
             try { nodes = Array.from(document.querySelectorAll(sel)); } catch (e) {}
-            for (let i = nodes.length - 1; i >= 0; i--) {
-                const n = nodes[i];
-                const target = n.querySelector('[data-a-target="chat-line-username"], [class*="chat-line__username"], a[href="/' + CSS.escape(lg) + '"]');
-                if (target) return clickEl(target);
-                // Ник без ссылки и атрибутов — сверяем видимый текст с логином/именем.
-                const nick = n.querySelector('[class*="chat-author__display-name"], [class*="chat-line__username"]');
-                if (!nick) continue;
-                const text = strip(nick.textContent);
-                const cands = [strip(lg)];
-                const un = modMenuState && modMenuState.userName;
-                if (un && strip(un)) cands.push(strip(un));
-                if (text && cands.indexOf(text) !== -1) return clickEl(nick);
-            }
+            for (let i = nodes.length - 1; i >= 0; i--) scopes.push(nodes[i]);
+        }
+        const strip = (s) => String(s || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+        for (const scope of scopes) {
+            const hl = pick(scope);
+            if (hl) return clickEl(hl);
+            // Ник без ссылки/атрибутов — сверяем видимый текст с логином/именем.
+            let nick = null;
+            try { nick = scope.querySelector('[class*="chat-author__display-name"], [class*="chat-line__username"]'); } catch (e) {}
+            if (!nick) continue;
+            const text = strip(nick.textContent);
+            const cands = [strip(lg)];
+            const un = modMenuState && modMenuState.userName;
+            if (un && strip(un)) cands.push(strip(un));
+            if (text && cands.indexOf(text) !== -1) return clickEl(nick);
         }
         return false;
     }
@@ -3217,28 +3225,45 @@ const announceText = content.querySelector('#tmod-announce-text');
             if (viewerCard.isMod != null) status.isMod = viewerCard.isMod;
             if (viewerCard.isBroadcaster === true) status.isBroadcaster = true;
         }
-        // Диагностика: карточка так и не нашлась — дамп «похожих» элементов, чтобы
-        // подобрать правильные селекторы под текущую разметку Twitch.
+        // Диагностика: карточка так и не нашлась — дамп «похожих» элементов и структуры,
+        // чтобы подобрать правильные селекторы под текущую разметку Twitch.
         if (TMOD_DEBUG && !viewerCard && targetLogin) {
-            const dump = [];
+            const lines = ['--- card dump ---'];
             try {
-                const sels = '[data-a-target*="card"], [data-test-selector*="card"], [class*="card"], [class*="Card"]';
-                const cands = Array.from(document.querySelectorAll(sels));
-                const lg2 = sanitizeLogin(targetLogin);
-                for (let i = cands.length - 1; i >= 0 && dump.length < 10; i--) {
+                const lg3 = sanitizeLogin(targetLogin);
+                const cands = Array.from(document.querySelectorAll('[data-a-target*="card"], [data-test-selector*="card"], [class*="card"], [class*="Card"]'));
+                for (let i = cands.length - 1; i >= 0 && lines.length < 26; i--) {
                     const c = cands[i];
-                    const txt = (c.textContent || '').replace(/\s+/g, ' ').slice(0, 140);
-                    dump.push({
-                        data: c.getAttribute('data-a-target') || null,
-                        test: c.getAttribute('data-test-selector') || null,
-                        cls: String(c.className || '').slice(0, 90),
-                        imgAlt: !!c.querySelector('img[alt]'),
-                        hasLogin: !!lg2 && !!c.querySelector('a[href="/' + lg2 + '"]'),
-                        txt
-                    });
+                    const txt = (c.textContent || '').replace(/\s+/g, ' ').slice(0, 110);
+                    lines.push('[' + i + '] data=' + (c.getAttribute('data-a-target') || '-')
+                        + ' test=' + (c.getAttribute('data-test-selector') || '-')
+                        + ' cls=' + String(c.className || '').slice(0, 70)
+                        + ' imgAlt=' + !!c.querySelector('img[alt]')
+                        + ' href=' + (!!lg3 && !!c.querySelector('a[href="/' + lg3 + '"]'))
+                        + ' txt=' + txt);
                 }
-            } catch (e) {}
-            debugLog('mod-card-dump', dump);
+                // Самая мелкая структура, содержащая логин И значок.
+                let best = null;
+                const all = Array.from(document.querySelectorAll('div,section,article'));
+                for (const el of all) {
+                    const t = (el.textContent || '').replace(/\s+/g, ' ');
+                    if (t.length > 1500 || !t.includes(lg3) || !el.querySelector('img[alt]')) continue;
+                    if (!best || t.length < best.len) best = { el, len: t.length };
+                }
+                if (best) {
+                    const chain = [];
+                    let node = best.el;
+                    for (let d = 0; node && chain.length < 10; node = node.parentElement, d++) {
+                        const cls = String(node.className || '').split(' ').slice(0, 3).map((x) => x.slice(0, 40)).join('.');
+                        chain.push(node.tagName.toLowerCase() + (cls ? '.' + cls : ''));
+                    }
+                    lines.push('SMALLEST-CARD len=' + best.len + ' CHAIN=' + chain.join(' < '));
+                    lines.push('SMALLEST-CARD txt=' + (best.el.textContent || '').replace(/\s+/g, ' ').slice(0, 400));
+                } else {
+                    lines.push('no element with login+img found');
+                }
+            } catch (e) { lines.push('ERROR ' + e); }
+            debugLog('mod-card-dump', '\n' + lines.join('\n'));
         }
         debugLog('mod-modview-resp', mv);
         if (TMOD_DEBUG) {
