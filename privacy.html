@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Политика конфиденциальности — Twitch ModPanel</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0e0e10;
+            color: #efeff1;
+            margin: 0;
+            padding: 40px 16px;
+        }
+        .container {
+            max-width: 760px;
+            margin: 0 auto;
+            background: #18181b;
+            border-radius: 12px;
+            padding: 32px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        }
+        h1 { color: #9146FF; margin-top: 0; }
+        h2 { color: #9146FF; margin-top: 28px; font-size: 20px; }
+        p, li { line-height: 1.6; }
+        ul { padding-left: 22px; }
+        a { color: #a970ff; }
+        .muted { color: #adadb8; font-size: 14px; }
+        code {
+            background: #26262c;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🛡️ Политика конфиденциальности</h1>
+        <p><strong>Twitch ModPanel</strong> — панель модератора для Twitch, доступная как расширение для Chrome и как пользовательский скрипт (Tampermonkey). Настоящая политика действует для обеих версий.</p>
+
+        <h2>Какие данные мы собираем</h2>
+        <p>Мы <strong>не собираем и не храним</strong> ваши данные на своих серверах. Все данные пользователя обрабатываются локально на вашем устройстве.</p>
+
+        <h2>Что хранится локально</h2>
+        <ul>
+            <li>Токен доступа OAuth (<code>tmod_access_token</code>), выданный Twitch для авторизации панели;</li>
+            <li>Информация о пользователе: <code>id</code>, <code>login</code>, <code>display_name</code>;</li>
+            <li>Настройки панели: положение окна, размер, выбранные опции, цвета, история анонсов.</li>
+        </ul>
+        <p>Хранение: расширение использует <code>chrome.storage.local</code> в браузере Chrome; пользовательский скрипт — хранилище Tampermonkey (<code>GM_setValue</code>). Данные не покидают ваше устройство и не синхронизируются с облаком.</p>
+
+        <h2>Что передаётся и кому</h2>
+        <p>Панель взаимодействует только с официальными API Twitch:</p>
+        <ul>
+            <li><code>id.twitch.tv</code> — авторизация OAuth;</li>
+            <li><code>api.twitch.tv/helix</code> — запросы модерации (список модераторов, шилд-режим, анонсы, инфо о канале, проверка подписок);</li>
+            <li><code>gql.twitch.tv</code> — внутренние функции Twitch (например, детектор возможных модераторов).</li>
+        </ul>
+        <p>Ваши данные (включая токен) не передаются никаким третьим лицам, кроме Twitch, и только в рамках функций панели.</p>
+
+        <h2>Файлы cookie</h2>
+        <p>Расширение может читать файл cookie <code>auth-token</code> на сайте <code>twitch.tv</code> — он используется исключительно для обращения к внутренним функциям Twitch через <code>gql.twitch.tv</code> из вашего браузера. Значение cookie не хранится и не передаётся никуда, кроме Twitch.</p>
+
+        <h2>Реклама и аналитика</h2>
+        <p>Расширение не содержит рекламы, трекеров, аналитики и не собирает статистику использования.</p>
+
+        <h2>Удаление данных</h2>
+        <p>Все данные можно удалить в любой момент:</p>
+        <ul>
+            <li>в настройках панели («Выйти» / «Сбросить токен»);</li>
+            <li>удалением расширения через <code>chrome://extensions</code> (при этом также очищается <code>chrome.storage.local</code>);</li>
+            <li>удалением скрипта в Tampermonkey (очищается хранилище <code>GM_setValue</code>).</li>
+        </ul>
+
+        <h2>Контакты</h2>
+        <p>По вопросам данных и приватности обращайтесь через <a href="https://github.com/Stepanchikkk/twitch-modpanel/issues">GitHub Issues</a> репозитория проекта.</p>
+
+        <p class="muted">Дата последнего обновления: 11 сентября 2026 г.</p>
+    </div>
+</body>
+</html>

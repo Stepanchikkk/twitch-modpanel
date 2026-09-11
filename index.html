@@ -2,7 +2,6 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="0; url=https://github.com/Stepanchikkk/twitch-modpanel">
     <title>Twitch ModPanel - OAuth Callback</title>
     <style>
         body {
@@ -50,6 +49,10 @@
             if (!token) {
                 document.querySelector('.status').textContent = '❌ Ошибка: токен не получен';
                 document.querySelector('.status').style.color = '#ff6b6b';
+                // Случайное посещение без токена — возвращаем на страницу проекта
+                setTimeout(() => {
+                    window.location.replace('https://github.com/Stepanchikkk/twitch-modpanel');
+                }, 2500);
                 return;
             }
 
