@@ -3148,19 +3148,13 @@ const announceText = content.querySelector('#tmod-announce-text');
 
     // Собирает роли цели из источников; null, если ни один не дал ответа.
     // Приоритет: карточка юзера → живой GQL → GQL-кэш → свежайшее сообщение.
-    async function resolveModRoles(login, userName) {
+    async function resolveLiveModRoles(login, userName) {
         if (!login) return null;
         const card = readRolesFromUserCardDom(login, userName);
         if (card) return card;
         const probe = await probeRolesViaGql(login);
         if (probe) return probe;
-        const cached = readRolesFromGqlCache(login);
-        if (cached) return cached;
-        const msg = await fetchNewestMessageRoles(login);
-        if (msg.isVip != null || msg.isMod != null || msg.isBroadcaster != null) {
-            return { isVip: msg.isVip, isMod: msg.isMod, isBroadcaster: msg.isBroadcaster };
-        }
-        return null;
+        return readRolesFromGqlCache(login);
     }
 
     // Статусы юзера (ban/vip/mod берутся только стримером — у мода 401, остаются null).
@@ -3234,15 +3228,38 @@ const announceText = content.querySelector('#tmod-announce-text');
             }
         }
         // Роли: для стримера Helix уже дал точные значения (isBroadcasterViewer=true);
-        // модератору нужны открытые источники — карточка юзера, GQL, свежайшее сообщение.
+        // модератору — цепочка: живая карточка/GQL → свои сохранённые действия →
+        // свежайшее сообщение → session-флаг.
         const targetLogin = modMenuState && modMenuState.userLogin;
         if (!isBroadcasterViewer && status.isBroadcaster !== true && targetLogin) {
-            const roles = await resolveModRoles(targetLogin, modMenuState && modMenuState.userName);
-            if (roles) {
-                debugLog('mod-roles-resolved', roles);
-                if (roles.isVip != null) status.isVip = roles.isVip;
-                if (roles.isMod != null) status.isMod = roles.isMod;
-                if (roles.isBroadcaster === true) status.isBroadcaster = true;
+            // Живые источники: открытая карточка юзера, живой GQL-проб, GQL-кэш.
+            const live = await resolveLiveModRoles(targetLogin, modMenuState && modMenuState.userName);
+            if (live) {
+                debugLog('mod-roles-live', live);
+                if (live.isVip != null) status.isVip = live.isVip;
+                if (live.isMod != null) status.isMod = live.isMod;
+                if (live.isBroadcaster === true) status.isBroadcaster = true;
+            }
+            // Свои действия через панель, сохранённые в localStorage (переживают
+            // перезагрузку): разжалованный не «возвращается» stale-бейджем сообщения,
+            // выданный VIP не «пропадает». Применяются ниже «живых» источников.
+            const recNow = Date.now();
+            for (const r of local) {
+                if (String(r.userId) !== String(userId)) continue;
+                if (r.kind !== 'vip' && r.kind !== 'mod') continue;
+                if (!r.expiresAt || r.expiresAt <= recNow) continue;
+                if (statusChannelId && String(r.channel) !== String(statusChannelId)) continue;
+                if (r.kind === 'vip' && status.isVip == null) status.isVip = r.value === true;
+                if (r.kind === 'mod' && status.isMod == null) status.isMod = r.value === true;
+            }
+            // Свежайшее сообщение в чате — живого источника нет, а сообщение свежее
+            // кликнутого (после смены роли). Всё ещё может врать (stale-бейджи), поэтому
+            // только при отсутствии других подтверждений.
+            if (status.isVip == null || status.isMod == null) {
+                const fresh = await fetchNewestMessageRoles(targetLogin);
+                if (fresh.isVip != null && status.isVip == null) status.isVip = fresh.isVip;
+                if (fresh.isMod != null && status.isMod == null) status.isMod = fresh.isMod;
+                if (fresh.isBroadcaster === true) status.isBroadcaster = true;
             }
         }
         // Бейджи/флаги с самого сообщения (VIP/мод/стример) — живой статус без API.
@@ -3321,9 +3338,9 @@ const announceText = content.querySelector('#tmod-announce-text');
         return modLocalRecordsCache;
     }
 
-    async function modLocalAdd(userId, kind, expiresAt, createdAt, channel) {
+    async function modLocalAdd(userId, kind, expiresAt, createdAt, channel, value) {
         const list = await getModLocalRecords();
-        list.push({ userId: String(userId), kind: kind, expiresAt, createdAt, channel: String(channel) });
+        list.push({ userId: String(userId), kind: kind, expiresAt, createdAt, channel: String(channel), value: value === undefined ? undefined : value === true });
         modLocalRecordsCache = list;
         await storageSet(TMOD_MOD_LOCAL_KEY, list);
     }
@@ -3339,6 +3356,21 @@ const announceText = content.querySelector('#tmod-announce-text');
             modLocalRecordsCache = next;
             await storageSet(TMOD_MOD_LOCAL_KEY, next);
         }
+    }
+
+    // Память своих VIP/мод-действий (переживает перезагрузку страницы), TTL 2 часа.
+    const ROLE_RECORD_TTL_MS = 2 * 60 * 60 * 1000;
+
+    function persistRoleAction(userId, kind, value) {
+        const recKind = kind === 'mod' ? 'mod' : 'vip';
+        getModeratorContext()
+            .then((ctx) => {
+                if (!ctx) return;
+                const now = Date.now();
+                return modLocalRemove(String(userId), ctx.broadcasterId, recKind)
+                    .then(() => modLocalAdd(String(userId), recKind, now + ROLE_RECORD_TTL_MS, now, ctx.broadcasterId, value === true));
+            })
+            .catch(() => {});
     }
 
     // Всплывающая подсказка для диагностики (в расширении GM_notification нет).
@@ -3565,6 +3597,7 @@ const announceText = content.querySelector('#tmod-announce-text');
             modMenuState.sessionMod = value;
             modMenuState.sessionModAt = Date.now();
         }
+        persistRoleAction(modMenuState.userId, kind, value);
         renderModMenuToggles();
     }
 
