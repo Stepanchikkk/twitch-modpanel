@@ -3163,6 +3163,33 @@ const announceText = content.querySelector('#tmod-announce-text');
                 if (r.kind === 'vip' && status.isVip == null) status.isVip = r.value === true;
                 if (r.kind === 'mod' && status.isMod == null) status.isMod = r.value === true;
             }
+            // Резерв: живые флаги ролей из Fiber сообщения, с которого открыто меню.
+            // Это НЕ «запечённый» бейдж: Твитч обновляет user-объект сообщения в
+            // рантайме (тот же объект, что перерисовывает бейдж). Применяем, только
+            // если карточка и записи роли не дали, и логин совпадает с меню.
+            if ((status.isVip == null || status.isMod == null) && modMenuState && modMenuState.msgEl) {
+                try {
+                    const fiberRoles = readMessageDataFromFiber(modMenuState.msgEl);
+                    if (fiberRoles && fiberRoles.userLogin && String(fiberRoles.userLogin).toLowerCase()
+                        === String(targetLogin).toLowerCase()) {
+                        if (fiberRoles.isVip !== null && fiberRoles.isVip !== undefined) {
+                            if (fiberRoles.isVip === true) status.isVip = true;
+                            else if (status.isVip == null) status.isVip = false;
+                        }
+                        if (fiberRoles.isModerator !== null && fiberRoles.isModerator !== undefined) {
+                            if (fiberRoles.isModerator === true) status.isMod = true;
+                            else if (status.isMod == null) status.isMod = false;
+                        }
+                        if (fiberRoles.isBroadcaster === true) status.isBroadcaster = true;
+                        debugLog('mod-roles-fiber', {
+                            login: fiberRoles.userLogin,
+                            isVip: fiberRoles.isVip,
+                            isMod: fiberRoles.isModerator,
+                            isBroadcaster: fiberRoles.isBroadcaster
+                        });
+                    }
+                } catch (e) {}
+            }
             // Взаимоисключение мода и VIP (само снятие выполняет Twitch).
             if (status.isBroadcaster !== true) {
                 if (status.isMod === true) status.isVip = false;
