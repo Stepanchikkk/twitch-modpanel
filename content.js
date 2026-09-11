@@ -2808,6 +2808,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         if (!lg) return false;
         const clickEl = (el) => {
             if (!el) return false;
+            try { debugLog('tmod-synth-click', { tag: el.tagName, data: el.getAttribute('data-a-target'), cls: String(el.className || '').slice(0, 80) }); } catch (e) {}
             tmodSyntheticClick = true;
             try {
                 el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window, composed: true }));
@@ -3199,9 +3200,14 @@ const announceText = content.querySelector('#tmod-announce-text');
             const opened = openModViewCardFor(targetLogin);
             debugLog('mod-open-card', { opened, login: targetLogin });
             if (opened) {
-                await new Promise((r) => setTimeout(r, 900));
-                mv = readMvCard();
-                viewerCard = readViewerCard();
+                // Карточка рендерится реактом не мгновенно — опрашиваем, пока не
+                // появится нужные данные (до ~1.5с, чтобы не ждать впустую).
+                for (let t = 0; t < 5; t++) {
+                    await new Promise((r) => setTimeout(r, 300));
+                    mv = readMvCard();
+                    viewerCard = readViewerCard();
+                    if (mv || viewerCard) break;
+                }
             }
         }
         // Viewer-карточка — авторитет по ролям: применяем и перечитанную после клика.
@@ -3210,6 +3216,29 @@ const announceText = content.querySelector('#tmod-announce-text');
             if (viewerCard.isVip != null) status.isVip = viewerCard.isVip;
             if (viewerCard.isMod != null) status.isMod = viewerCard.isMod;
             if (viewerCard.isBroadcaster === true) status.isBroadcaster = true;
+        }
+        // Диагностика: карточка так и не нашлась — дамп «похожих» элементов, чтобы
+        // подобрать правильные селекторы под текущую разметку Twitch.
+        if (TMOD_DEBUG && !viewerCard && targetLogin) {
+            const dump = [];
+            try {
+                const sels = '[data-a-target*="card"], [data-test-selector*="card"], [class*="card"], [class*="Card"]';
+                const cands = Array.from(document.querySelectorAll(sels));
+                const lg2 = sanitizeLogin(targetLogin);
+                for (let i = cands.length - 1; i >= 0 && dump.length < 10; i--) {
+                    const c = cands[i];
+                    const txt = (c.textContent || '').replace(/\s+/g, ' ').slice(0, 140);
+                    dump.push({
+                        data: c.getAttribute('data-a-target') || null,
+                        test: c.getAttribute('data-test-selector') || null,
+                        cls: String(c.className || '').slice(0, 90),
+                        imgAlt: !!c.querySelector('img[alt]'),
+                        hasLogin: !!lg2 && !!c.querySelector('a[href="/' + lg2 + '"]'),
+                        txt
+                    });
+                }
+            } catch (e) {}
+            debugLog('mod-card-dump', dump);
         }
         debugLog('mod-modview-resp', mv);
         if (TMOD_DEBUG) {
