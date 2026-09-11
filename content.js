@@ -2829,44 +2829,67 @@ const announceText = content.querySelector('#tmod-announce-text');
         });
     }
 
-    // Читает статус из mod-view карточки юзера Twitch (открывается при клике на ник
-    // в режиме модератора). Twitch сам знает, в бане/таймауте ли юзер сейчас — по его
-    // же виджету «Забанен»/«Отстранён» и/или кнопкам «Разбанить»/«Снять временную
-    // блокировку». Имя юзера рендерится текстом без ссылки — ищем его по тексту.
+    // Читает статус из mod-view карточки юзера Twitch. Twitch сам знает, в бане/таймауте
+    // ли юзер — по «пилюле» «Забанен»/«Отстранён» и/или кнопкам «Разбанить»/«Снять
+    // временную блокировку». Карточка находится и по классическому data-a-target, и по
+    // «пилюле» статуса в новой разметке (имя юзера тут рендерится текстом без ссылки).
     function readModViewStatus(userId, login, userName) {
         const lg = sanitizeLogin(login);
         if (!lg) return null;
+        const normT = (s) => String(s || '').replace(/\s+/g, ' ').toLowerCase();
+        const escPat = (n) => String(n).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/_/g, '[\\s_-]*');
+        const nameOk = (t, n) => new RegExp('(?:[^a-z0-9_]|^)' + escPat(n) + '(?![a-z0-9_])', 'i').test(t);
+        const isMyCard = (root) => {
+            if (!root) return false;
+            const t = normT(root.textContent || '');
+            if (nameOk(t, lg)) return true;
+            if (userName && sanitizeLogin(userName) && sanitizeLogin(userName) !== lg) return nameOk(t, userName);
+            return false;
+        };
         let root = null;
+        // (1) Классическая карточка Mod View.
         try { root = document.querySelector('[data-a-target="mod-view-user-details"]'); } catch (e) {}
-        // Подстраховка на случай новой разметки без data-a-target.
+        if (root && !isMyCard(root)) root = null;
+        // (2) Новая разметка: карточка с «пилюлей» статуса (без data-a-target).
         if (!root) {
-            const sels = ['[data-a-target="mod-user-actions"]', '.user-actions-menu', '[class*="mod-view"][class*="user"]'];
-            for (const sel of sels) {
-                try { root = document.querySelector(sel); } catch (e) {}
+            const pillTexts = ['Забанен', 'Отстранён', 'Отстранен', 'Banned', 'Timed out'];
+            let els = [];
+            try { els = Array.from(document.querySelectorAll('[class*="ill"], [data-a-target*="ill"]')); } catch (e) {}
+            for (const p of els) {
+                const tt = String((p.textContent || '').trim());
+                if (pillTexts.indexOf(tt) === -1) continue;
+                let node = p;
+                for (let d = 0; node && d < 6; node = node.parentElement, d++) {
+                    if (isMyCard(node)) { root = node; break; }
+                }
+                if (root) break;
+            }
+        }
+        if (!root) {
+            // (3) Кнопка «Разбанить»/снятия отстранения как указатель на карточку.
+            const btns = ['Разбанить', 'Unban', 'Снять временную блокировку', 'Lift timeout'];
+            for (const b of btns) {
+                let btn = null;
+                try { btn = document.querySelector('button[aria-label*="' + b + '"]'); } catch (e) {}
+                if (btn) {
+                    let node = btn;
+                    for (let d = 0; node && d < 6; node = node.parentElement, d++) {
+                        if (isMyCard(node)) { root = node; break; }
+                    }
+                }
                 if (root) break;
             }
         }
         if (!root) return null;
-        // Карточка — за тем ли юзером, что в меню? Проверяем по видимому нику (логин
-        // или displayName), нижний колонтитул может быть с подчёркиванием/пробелом.
-        const normT = (s) => String(s || '').replace(/\s+/g, ' ').toLowerCase();
-        const escPat = (n) => String(n).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/_/g, '[\\s_-]*');
-        const nameOk = (n) => new RegExp('(?:[^a-z0-9_]|^)' + escPat(n) + '(?![a-z0-9_])', 'i').test(normT(root.textContent || ''));
-        let mine = !!lg && nameOk(lg);
-        if (!mine && userName && sanitizeLogin(userName) && sanitizeLogin(userName) !== lg) mine = nameOk(userName);
-        if (!mine) return null;
 
-        const out = { isTimedOut: null, isBanned: null };
         const txt = normT(root.textContent || '');
         // Карточка открыта и это наш юзер → ответ авторитетен в обе стороны:
-        // пилюля/кнопка есть → роль активна, нет → подтверждённо не активна.
+        // пилюля/кнопка есть → статус активен, нет → подтверждённо не активен.
         const hasTimeout = !!root.querySelector('button[aria-label*="Снять временную блокировку"], button[aria-label*="Lift timeout"], button[aria-label*="Remove timeout"]')
             || /отстран[её]н/.test(txt);
-        out.isTimedOut = hasTimeout ? true : false;
-        // Бан: кнопка «Разбанить» либо «пилюля» Забанен.
         const hasBan = !!root.querySelector('button[aria-label*="Разбанить"], button[aria-label*="Unban"]')
             || /забанен/.test(txt);
-        out.isBanned = hasBan ? true : false;
+        const out = { isTimedOut: hasTimeout ? true : false, isBanned: hasBan ? true : false };
         // Время окончания таймаута: по строкам действий карточки («отстраняет
         // пользователя <login> на N секунд» + ISO-время старта из id).
         let exp = null, created = null;
@@ -2971,6 +2994,8 @@ const announceText = content.querySelector('#tmod-announce-text');
         const status = { isBanned: null, isTimedOut: null, isVip: null, isMod: null, isBlocked: null, banExpiresAt: null, banCreatedAt: null };
         let statusChannelId = null;
         let isBroadcasterViewer = false;
+        let chattersPresent = null;
+        let chattersCapped = false;
         if (channel) {
             const [broadcasterId, me] = await Promise.all([getChannelId(channel, token), getCurrentUserId(token)]);
             if (broadcasterId) {
@@ -3004,18 +3029,27 @@ const announceText = content.querySelector('#tmod-announce-text');
                     // Внимание: затаймаутенный юзер остаётся в списке чатеров (соединение
                     // живо), поэтому присутствие в чате НЕ означает «не в бане/таймауте».
                     const chatters = await helixCall(`https://api.twitch.tv/helix/chat/chatters?broadcaster_id=${broadcasterId}&moderator_id=${me}&first=1000`);
+                    chattersCapped = !!(chatters.data && chatters.data.total > (chatters.data.data || []).length);
+                    chattersPresent = Array.isArray(chatters.data && chatters.data.data)
+                        ? !!chatters.data.data.find((u) => String(u.user_id) === String(userId))
+                        : null;
                     debugLog('mod-chatters-resp', {
                         ok: chatters.success,
                         status: chatters.status,
                         error: chatters.error,
                         count: chatters.data?.data?.length,
-                        present: Array.isArray(chatters.data?.data) ? !!chatters.data.data.find((u) => String(u.user_id) === String(userId)) : null
+                        total: chatters.data?.total,
+                        present: chattersPresent,
+                        capped: chattersCapped
                     });
                 }
             }
         }
         // Локальный архив: таймауты/баны, выданные через саму панель. Helix-чтение
         // модератору недоступно (401), поэтому свой недавний таймаут знаем локально.
+        // Эти записи — НЕ истина в последней инстанции: их перебивает открытая
+        // ModView-карточка, а список чатеров опровергает устаревший бан (забаненный
+        // физически не может находиться в чате).
         const local = await getModLocalRecords().catch(() => []);
         const localRec = local.find(
             (r) => r.userId === String(userId)
@@ -3024,10 +3058,29 @@ const announceText = content.querySelector('#tmod-announce-text');
         );
         if (localRec) {
             if (localRec.kind === 'ban') {
-                if (status.isBanned == null) { status.isBanned = true; status.banExpiresAt = null; status.banCreatedAt = localRec.createdAt; }
+                if (status.isBanned == null) {
+                    if (chattersPresent === true) {
+                        // Забаненный не может быть в чате: раз он там — бан уже снят
+                        // (вручную или другим модом). Устаревшую запись чистим.
+                        status.isBanned = false;
+                        status.banExpiresAt = null;
+                        status.banCreatedAt = null;
+                        await modLocalRemove(userId, statusChannelId, 'ban');
+                    } else {
+                        status.isBanned = true; status.banExpiresAt = null; status.banCreatedAt = localRec.createdAt;
+                    }
+                }
             } else {
                 if (localRec.expiresAt > Date.now()) {
-                    if (status.isTimedOut == null) { status.isTimedOut = true; status.banExpiresAt = localRec.expiresAt; status.banCreatedAt = localRec.createdAt; }
+                    if (status.isTimedOut == null) {
+                        if (chattersPresent === false && !chattersCapped) {
+                            // Затаймаутенный остаётся в чате; если его там нет и список
+                            // не обрезан — отстранение уже снято.
+                            await modLocalRemove(userId, statusChannelId, 'timeout');
+                        } else {
+                            status.isTimedOut = true; status.banExpiresAt = localRec.expiresAt; status.banCreatedAt = localRec.createdAt;
+                        }
+                    }
                 } else {
                     await modLocalRemove(userId, statusChannelId, 'timeout');
                 }
