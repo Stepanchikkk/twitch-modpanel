@@ -3138,13 +3138,28 @@ const announceText = content.querySelector('#tmod-announce-text');
         // Роли, назначенные/снятые через панель: результат своего действия точен, пока
         // свеж (TTL). Снимает и stale-бейджи сообщения (разжалованный не «возвращается»
         // в моды), и устаревшую карточку — иначе кнопка «Разжаловать» висела бы вечно.
+        // Само снятие другой роли не выполняем и не записываем — Twitch делает это сам.
         const now = Date.now();
         const sessVip = ms2.sessionVip === true || ms2.sessionVip === false ? ms2.sessionVip : null;
         const sessMod = ms2.sessionMod === true || ms2.sessionMod === false ? ms2.sessionMod : null;
-        if (status.isBroadcaster !== true && sessVip != null && (ms2.sessionVipAt || 0) > now - ROLE_SESSION_TTL_MS) status.isVip = sessVip;
-        if (status.isBroadcaster !== true && sessMod != null && (ms2.sessionModAt || 0) > now - ROLE_SESSION_TTL_MS) status.isMod = sessMod;
-        // Мод и VIP — взаимоисключающие роли (Twitch снимает одну при выдаче другой).
-        // Решающим остаётся карточка юзера — она уже применилась выше.
+        const vipOk = status.isBroadcaster !== true && sessVip != null && (ms2.sessionVipAt || 0) > now - ROLE_SESSION_TTL_MS;
+        const modOk = status.isBroadcaster !== true && sessMod != null && (ms2.sessionModAt || 0) > now - ROLE_SESSION_TTL_MS;
+        if (vipOk && modOk) {
+            // Если в течение TTL трогали обе роли — приоритет у более позднего действия.
+            if ((ms2.sessionVipAt || 0) >= (ms2.sessionModAt || 0)) {
+                status.isVip = sessVip;
+                if (sessVip === true) status.isMod = false;
+            } else {
+                status.isMod = sessMod;
+                if (sessMod === true) status.isVip = false;
+            }
+        } else if (vipOk) {
+            status.isVip = sessVip;
+        } else if (modOk) {
+            status.isMod = sessMod;
+        }
+        // Мод и VIP — взаимоисключающие роли; решающее слово за карточкой юзера,
+        // которая уже применилась выше (слабые stale-бейджи не перетирают её).
         if (status.isBroadcaster !== true) {
             if (status.isMod === true) status.isVip = false;
             else if (status.isVip === true) status.isMod = false;
@@ -3234,20 +3249,12 @@ const announceText = content.querySelector('#tmod-announce-text');
 
     function persistRoleAction(userId, kind, value) {
         const recKind = kind === 'mod' ? 'mod' : 'vip';
-        const oppKind = recKind === 'mod' ? 'vip' : 'mod';
         getModeratorContext()
             .then((ctx) => {
                 if (!ctx) return;
                 const now = Date.now();
                 return modLocalRemove(String(userId), ctx.broadcasterId, recKind)
-                    .then(() => modLocalAdd(String(userId), recKind, now + ROLE_RECORD_TTL_MS, now, ctx.broadcasterId, value === true))
-                    .then(() => {
-                        // Взаимоисключение ролей: выдача одной снимает другую.
-                        if (value === true) {
-                            return modLocalAdd(String(userId), oppKind, now + ROLE_RECORD_TTL_MS, now, ctx.broadcasterId, false);
-                        }
-                        return null;
-                    });
+                    .then(() => modLocalAdd(String(userId), recKind, now + ROLE_RECORD_TTL_MS, now, ctx.broadcasterId, value === true));
             })
             .catch(() => {});
     }
@@ -3335,8 +3342,25 @@ const announceText = content.querySelector('#tmod-announce-text');
         const now = Date.now();
         const sessVip = st.sessionVip === true || st.sessionVip === false ? st.sessionVip : null;
         const sessMod = st.sessionMod === true || st.sessionMod === false ? st.sessionMod : null;
-        if (sessVip != null && (st.sessionVipAt || 0) > now - ROLE_SESSION_TTL_MS) s.isVip = sessVip;
-        if (sessMod != null && (st.sessionModAt || 0) > now - ROLE_SESSION_TTL_MS) s.isMod = sessMod;
+        const vipOk = sessVip != null && (st.sessionVipAt || 0) > now - ROLE_SESSION_TTL_MS;
+        const modOk = sessMod != null && (st.sessionModAt || 0) > now - ROLE_SESSION_TTL_MS;
+        if (vipOk && modOk) {
+            // Трогали обе роли в пределах TTL — побеждает более позднее действие.
+            if ((st.sessionVipAt || 0) >= (st.sessionModAt || 0)) {
+                s.isVip = sessVip;
+                if (sessVip === true) s.isMod = false;
+            } else {
+                s.isMod = sessMod;
+                if (sessMod === true) s.isVip = false;
+            }
+        } else if (vipOk) {
+            s.isVip = sessVip;
+        } else if (modOk) {
+            s.isMod = sessMod;
+        }
+        // Взаимоисключение мода и VIP (снятие другой роли не выполняем — Twitch сам).
+        if (s.isMod === true) s.isVip = false;
+        else if (s.isVip === true) s.isMod = false;
         // Бейджи/флаги сообщения применяются, только если роль так и не определена.
         if (s.isVip == null && (st.isVip === true || badges.isVip === true)) s.isVip = true;
         if (s.isMod == null && (st.isModerator === true || badges.isMod === true)) s.isMod = true;
@@ -3471,23 +3495,10 @@ const announceText = content.querySelector('#tmod-announce-text');
             modMenuState.status.isVip = value;
             modMenuState.sessionVip = value;
             modMenuState.sessionVipAt = Date.now();
-            // Мод и VIP взаимоисключающие: выдача VIP снимает мода — фиксируем сразу,
-            // чтобы stale-бейдж старого сообщения не «вернул» снятую роль.
-            if (value === true) {
-                modMenuState.sessionMod = false;
-                modMenuState.sessionModAt = modMenuState.sessionVipAt;
-                modMenuState.status.isMod = false;
-            }
         } else {
             modMenuState.status.isMod = value;
             modMenuState.sessionMod = value;
             modMenuState.sessionModAt = Date.now();
-            // Выдача мода снимает VIP.
-            if (value === true) {
-                modMenuState.sessionVip = false;
-                modMenuState.sessionVipAt = modMenuState.sessionModAt;
-                modMenuState.status.isVip = false;
-            }
         }
         persistRoleAction(modMenuState.userId, kind, value);
         renderModMenuToggles();
