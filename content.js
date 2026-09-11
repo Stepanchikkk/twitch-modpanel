@@ -2848,7 +2848,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         };
         let root = null;
         // (1) Классическая карточка Mod View.
-        try { root = document.querySelector('[data-a-target="mod-view-user-details"]'); } catch (e) {}
+        try { root = document.querySelector('[data-a-target="mod-view-user-details"], [data-test-selector="mod-view-user-details"]'); } catch (e) {}
         if (root && !isMyCard(root)) root = null;
         // (2) Новая разметка: карточка с «пилюлей» статуса (без data-a-target).
         if (!root) {
@@ -3146,16 +3146,36 @@ const announceText = content.querySelector('#tmod-announce-text');
             if (status.isMod === true) status.isVip = false;
             else if (status.isVip === true) status.isMod = false;
         }
-        // Карточка юзера в Mod View: Twitch сам показывает текущий таймаут/бан.
-        // Если карточка ещё не открыта — открываем её сами кликом по нику и читаем.
-        let mv = readModViewStatus(userId, targetLogin, modMenuState && modMenuState.userName);
-        if (!mv && targetLogin) {
+        // Карточки юзера: клик по нику открывает viewer-карточку (бейджи ролей) в обычном
+        // чате либо панель Mod View (текущий таймаут/бан). Если нужных данных в статусе
+        // ещё нет — открываем карточку сами кликом по нику и читаем обе уже после того,
+        // как она появилась. Это чинит и «роль не считывается» (клик даёт карточку, а не
+        // ждёт, пока юзер сам её откроет).
+        const readViewerCard = () => readRolesFromUserCardDom(targetLogin, modMenuState && modMenuState.userName);
+        const readMvCard = () => readModViewStatus(userId, targetLogin, modMenuState && modMenuState.userName);
+        let viewerCard = readViewerCard();
+        let mv = readMvCard();
+        const needCard = Boolean(targetLogin && !isBroadcasterViewer
+            && (
+                (status.isVip == null || status.isMod == null)
+                || (status.isBanned == null || status.isTimedOut == null)
+            )
+            && !viewerCard && !mv);
+        if (needCard) {
             const opened = openModViewCardFor(targetLogin);
             debugLog('mod-open-card', { opened, login: targetLogin });
             if (opened) {
                 await new Promise((r) => setTimeout(r, 900));
-                mv = readModViewStatus(userId, targetLogin, modMenuState && modMenuState.userName);
+                mv = readMvCard();
+                viewerCard = readViewerCard();
             }
+        }
+        // Viewer-карточка — авторитет по ролям: применяем и перечитанную после клика.
+        if (viewerCard && status.isBroadcaster !== true) {
+            debugLog('mod-roles-live', viewerCard);
+            if (viewerCard.isVip != null) status.isVip = viewerCard.isVip;
+            if (viewerCard.isMod != null) status.isMod = viewerCard.isMod;
+            if (viewerCard.isBroadcaster === true) status.isBroadcaster = true;
         }
         debugLog('mod-modview-resp', mv);
         if (TMOD_DEBUG) {
@@ -3187,6 +3207,12 @@ const announceText = content.querySelector('#tmod-announce-text');
                 }
                 await modLocalRemove(userId, statusChannelId, 'ban').catch(() => {});
             }
+        }
+        // Финальное взаимоисключение мода и VIP после всех источников (карточка
+        // перечитанная последней имеет решающее слово).
+        if (status.isBroadcaster !== true) {
+            if (status.isMod === true) status.isVip = false;
+            else if (status.isVip === true) status.isMod = false;
         }
         const blocks = await helixCall('https://api.twitch.tv/helix/users/blocks?first=100');
         if (blocks.success && blocks.data?.data) {
@@ -3433,14 +3459,9 @@ const announceText = content.querySelector('#tmod-announce-text');
             if (out === '') out = sec + ' с'; else if (sec > 0) out += sec + ' с';
             return out.trim();
         };
-        const clean = () => {
-            row.hidden = false;
-            info.textContent = 'Не отстранён — без ограничений';
-            info.style.color = '#8fe3a0';
-            btn.hidden = true;
-        };
+        // «Без ограничений» не показываем: пустая строка статуса — просто
+        // зарезервированное место, никакой лишней информации.
         if (s.isTimedOut !== true || !s.banExpiresAt) {
-            if (s.isBanned === false) { clean(); return; }
             row.hidden = true;
             return;
         }

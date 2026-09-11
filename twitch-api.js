@@ -211,7 +211,7 @@
     // Пытается вытащить данные юзера из открытой карточки модерации через Fiber.
     // Возвращает список «подозрительных» объектов юзера и подрезку props по пути к карточке.
     function getModViewUserDetails() {
-        const el = document.querySelector('[data-a-target="mod-view-user-details"]');
+        const el = document.querySelector('[data-a-target="mod-view-user-details"], [data-test-selector="mod-view-user-details"]');
         if (!el) return null;
         const results = [];
         const fiber = getReactFiber(el);
