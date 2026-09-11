@@ -2525,6 +2525,21 @@ const announceText = content.querySelector('#tmod-announce-text');
     // Данные сообщения из React Fiber.
     // Расширение: postMessage-мост в twitch-api.js (изолированный мир).
     // Юзерскрипт: прямой доступ к fiber (исполняется на странице).
+    // Роли могут жить не в булевых флагах user-объекта, а в массиве бейджей
+    // ({type:'vip'}, ['vip'], {id:'moderator'} и т.п.) — читаем и оттуда.
+    function badgeOf(badges, types) {
+        if (!badges) return null;
+        const arr = Array.isArray(badges) ? badges : [badges];
+        for (const b of arr) {
+            if (b == null) continue;
+            const low = String(b.type ?? b.id ?? b.name ?? b.label ?? b.setID ?? b.set_id ?? b.title ?? b).toLowerCase();
+            for (const t of types) {
+                if (low === t || low.indexOf(t) !== -1) return true;
+            }
+        }
+        return null;
+    }
+
     function readMessageDataFromFiber(el) {
         const fiber = getReactFiber(el);
         if (!fiber) return null;
@@ -2574,9 +2589,18 @@ const announceText = content.querySelector('#tmod-announce-text');
         if (!matchesLogin(u)) u = null;
         u = u || {};
         const flag2 = (v) => (v === true || v === false ? !!v : null);
-        const isVip = flag2(u.isVip ?? u.isVIP ?? u.vip ?? (m && (m.isVip ?? m.vip)));
-        const isModerator = flag2(u.isModerator ?? u.isMod ?? u.moderator ?? (m && (m.isModerator ?? m.isMod ?? m.moderator)));
-        const isBroadcaster = flag2(u.isBroadcaster ?? u.isBROADCASTER ?? (u.role === 'BROADCASTER') ?? (m && m.isBroadcaster));
+        const isVip = flag2(u.isVip ?? u.isVIP ?? u.vip)
+            ?? badgeOf(u.badges, ['vip'])
+            ?? badgeOf(m && m.badges, ['vip'])
+            ?? flag2(m && (m.isVip ?? m.vip));
+        const isModerator = flag2(u.isModerator ?? u.isMod ?? u.moderator)
+            ?? badgeOf(u.badges, ['mod', 'moderator'])
+            ?? badgeOf(m && m.badges, ['mod', 'moderator'])
+            ?? flag2(m && (m.isModerator ?? m.isMod ?? m.moderator));
+        const isBroadcaster = flag2(u.isBroadcaster ?? u.isBROADCASTER ?? (u.role === 'BROADCASTER'))
+            ?? badgeOf(u.badges, ['broadcaster', 'broad'])
+            ?? badgeOf(m && m.badges, ['broadcaster', 'broad'])
+            ?? flag2(m && m.isBroadcaster);
 
         return {
             messageId: m.id || null,
@@ -3174,6 +3198,25 @@ const announceText = content.querySelector('#tmod-announce-text');
                 if (fr.isBroadcaster === true) status.isBroadcaster = true;
                 debugLog('mod-roles-fiber', { login: fr.userLogin, isVip: fr.isVip, isMod: fr.isMod, isBroadcaster: fr.isBroadcaster });
             }
+            // Самый последний резерв — бейджи на текущем сообщении в DOM (alt
+            // содержит «VIP»/«Moderator»/«Broadcaster»). Это «снимок» на момент
+            // отправки, поэтому не перетирает карточку/живой fiber-флаг — только
+            // заполняет пустоту, когда ничего живого нет.
+            if ((status.isVip == null || status.isMod == null) && modMenuState && modMenuState.badges && modMenuState.badges.length) {
+                let bVip = null;
+                let bMod = null;
+                let bBroad = null;
+                for (const b of modMenuState.badges) {
+                    const t = (b.alt || '').toLowerCase();
+                    if (t.indexOf('vip') !== -1) bVip = true;
+                    else if (t === 'mod' || t.indexOf('moderator') !== -1) bMod = true;
+                    else if (t.indexOf('broadcaster') !== -1) bBroad = true;
+                }
+                if (bVip === true && status.isVip == null) status.isVip = true;
+                if (bMod === true && status.isMod == null) status.isMod = true;
+                if (bBroad === true) status.isBroadcaster = true;
+                if (bVip || bMod || bBroad) debugLog('mod-roles-badges', { vip: bVip, mod: bMod, broadcast: bBroad });
+            }
             // Взаимоисключение мода и VIP (само снятие выполняет Twitch).
             if (status.isBroadcaster !== true) {
                 if (status.isMod === true) status.isVip = false;
@@ -3691,9 +3734,9 @@ const announceText = content.querySelector('#tmod-announce-text');
             ...data,
             msgEl: msgEl || null,
             fiberRoles: {
-                isVip: !!(data && data.isVip),
-                isMod: !!(data && data.isModerator),
-                isBroadcaster: !!(data && data.isBroadcaster),
+                isVip: data && (data.isVip === true || data.isVip === false) ? data.isVip : null,
+                isMod: data && (data.isModerator === true || data.isModerator === false) ? data.isModerator : null,
+                isBroadcaster: data && (data.isBroadcaster === true || data.isBroadcaster === false) ? data.isBroadcaster : null,
                 userLogin: (data && data.userLogin) || null
             },
             status: { isBanned: null, isVip: null, isMod: null, isBlocked: null }

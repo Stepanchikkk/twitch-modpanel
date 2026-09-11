@@ -177,9 +177,30 @@
         if (!matchesLogin(u)) u = null;
         u = u || {};
         const flag = (v) => (v === true || v === false ? !!v : null);
-        const isVip = flag(u.isVip ?? u.isVIP ?? u.vip ?? (m && (m.isVip ?? m.vip)));
-        const isModerator = flag(u.isModerator ?? u.isMod ?? u.moderator ?? (m && (m.isModerator ?? m.isMod ?? m.moderator)));
-        const isBroadcaster = flag(u.isBroadcaster ?? u.isBROADCASTER ?? (u.role === 'BROADCASTER') ?? (m && m.isBroadcaster));
+        const badgeOf = (badges, types) => {
+            if (!badges) return null;
+            const arr = Array.isArray(badges) ? badges : [badges];
+            for (const b of arr) {
+                if (b == null) continue;
+                const low = String(b.type ?? b.id ?? b.name ?? b.label ?? b.setID ?? b.set_id ?? b.title ?? b).toLowerCase();
+                for (const t of types) {
+                    if (low === t || low.indexOf(t) !== -1) return true;
+                }
+            }
+            return null;
+        };
+        const isVip = flag(u.isVip ?? u.isVIP ?? u.vip)
+            ?? badgeOf(u.badges, ['vip'])
+            ?? badgeOf(m && m.badges, ['vip'])
+            ?? flag(m && (m.isVip ?? m.vip));
+        const isModerator = flag(u.isModerator ?? u.isMod ?? u.moderator)
+            ?? badgeOf(u.badges, ['mod', 'moderator'])
+            ?? badgeOf(m && m.badges, ['mod', 'moderator'])
+            ?? flag(m && (m.isModerator ?? m.isMod ?? m.moderator));
+        const isBroadcaster = flag(u.isBroadcaster ?? u.isBROADCASTER ?? (u.role === 'BROADCASTER'))
+            ?? badgeOf(u.badges, ['broadcaster', 'broad'])
+            ?? badgeOf(m && m.badges, ['broadcaster', 'broad'])
+            ?? flag(m && m.isBroadcaster);
 
         return {
             messageId: m.id || null,
