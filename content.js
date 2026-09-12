@@ -2347,9 +2347,8 @@ const announceText = content.querySelector('#tmod-announce-text');
         return gqlToken;
     }
 
-    async function gqlRequest(query, variables, token) {
+    async function gqlTransport(body, token) {
         const gqlToken = await gqlGetSessionToken(token);
-        const body = JSON.stringify({ query, variables });
 
         let resp;
         if (IS_EXTENSION) {
@@ -2393,6 +2392,20 @@ const announceText = content.querySelector('#tmod-announce-text');
         } catch {
             return { success: false, error: 'Parse error' };
         }
+    }
+
+    async function gqlRequest(query, variables, token) {
+        return gqlTransport(JSON.stringify({ query, variables }), token);
+    }
+
+    // Повтор перехваченной persisted-операции: без текста запроса, только по
+    // sha256Hash из того же запроса, что прислал сам клиент Твитча.
+    async function gqlPersistedRequest(operationName, hash, variables, token) {
+        return gqlTransport(JSON.stringify({
+            operationName,
+            variables,
+            extensions: { persistedQuery: { version: 1, sha256Hash: hash } }
+        }), token);
     }
 
     async function gqlUpdateBroadcastSettings(token, broadcasterUserId, opts) {
@@ -2449,18 +2462,30 @@ const announceText = content.querySelector('#tmod-announce-text');
         const store = (window.__tmod_gql_ops = window.__tmod_gql_ops || {});
         const orig = window.fetch;
         if (typeof orig !== 'function') return;
+        const capSize = 60;
         window.fetch = function (input, init) {
             try {
                 const url = typeof input === 'string' ? input : (input && input.url) || '';
                 if (url.indexOf('gql.twitch.tv') !== -1 && init && typeof init.body === 'string' && init.body.length > 10) {
                     const body = JSON.parse(init.body);
-                    if (body && typeof body.query === 'string' && body.query.length > 20) {
-                        const q = body.query;
-                        if (/isBanned|expiresAt|bannedAt|banned|timeout/i.test(q)) {
-                            const key = body.operationName || q.slice(0, 80);
-                            if (!store[key] || !/expiresAt|isBanned/.test(store[key].query)) {
-                                store[key] = { op: body.operationName, query: q, vars: body.variables || {} };
+                    if (body && typeof body === 'object') {
+                        const q = (typeof body.query === 'string' ? body.query : '').trim();
+                        const opName = body.operationName || null;
+                        const hash = (body.extensions && body.extensions.persistedQuery && body.extensions.persistedQuery.sha256Hash) || null;
+                        const hasText = q.length > 20;
+                        const textBan = /isBanned|expiresAt|bannedAt|banned|timeout/i.test(q);
+                        const nameBan = opName && /viewer|usercard|ban|timeout|banned|modview|mod/i.test(opName);
+                        const interesting = (hasText && textBan) || nameBan || (hasText && /\buser\s*\{/.test(q));
+                        if (interesting) {
+                            const key = opName || (hash ? ('hash:' + hash.slice(0, 12)) : ('q:' + q.slice(0, 60)));
+                            const prev = store[key];
+                            const want = !prev || (!prev.query && hasText) || (!prev.hash && hash && !prev.query);
+                            if (want) {
+                                store[key] = { op: opName, query: hasText ? q : '', hash: hash || null, vars: body.variables || null };
+                                console.log('[TModAPI] gql-op captured', opName || '(anon)', hasText ? 'text' : 'persisted', hash ? hash.slice(0, 8) : '');
                             }
+                            const entries = Object.keys(store);
+                            if (entries.length > capSize) delete store[entries[0]];
                         }
                     }
                 }
@@ -2471,10 +2496,19 @@ const announceText = content.querySelector('#tmod-announce-text');
     if (!IS_EXTENSION) hookGqlOps();
 
     async function getCapturedBanOps() {
-        if (!IS_EXTENSION) {
-            const store = (window.__tmod_gql_ops || {});
-            return Object.values(store).filter((o) => o && o.query && /isBanned|expiresAt|bannedAt|banned|timeout/i.test(o.query));
-        }
+        const pick = (store) => {
+            const out = Object.values(store).filter((o) => o &&
+                (o.hash || (o.query && /isBanned|expiresAt|bannedAt|banned|timeout/i.test(o.query))));
+            const score = (o) => {
+                let s = 0;
+                if (o.query && /isBanned|expiresAt|bannedAt|banned|timeout/i.test(o.query)) s += 4;
+                if (o.op && /viewercard|usercard|banned|banstatus|modview/i.test(o.op)) s += 2;
+                if (o.hash) s += 1;
+                return s;
+            };
+            return out.sort((a, b) => score(b) - score(a));
+        };
+        if (!IS_EXTENSION) return pick(window.__tmod_gql_ops || {});
         return new Promise((resolve) => {
             const nonce = 'gqlops' + Date.now() + Math.random().toString(36).slice(2, 8);
             let done = false;
@@ -2485,7 +2519,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                 done = true;
                 clearTimeout(timer);
                 window.removeEventListener('message', handler);
-                resolve(Array.isArray(ev.data.data) ? ev.data.data : []);
+                resolve(Array.isArray(ev.data.data) ? pick(ev.data.data) : []);
             };
             window.addEventListener('message', handler);
             window.postMessage({ type: 'TMOD_GET_GQLOPS', nonce }, '*');
@@ -2509,31 +2543,69 @@ const announceText = content.querySelector('#tmod-announce-text');
         return found;
     }
 
-    async function gqlGetUserBanInfo(broadcasterId, targetId, token, extra) {
-        const ops = await getCapturedBanOps();
-        if (!ops || !ops.length) return { error: 'no-ban-op-captured' };
-        let lastError = null;
-        for (const op of ops) {
+    // Строит переменные для повтора перехваченной операции: подменяем по образцу
+    // реально отправленных переменных клиента (это точные имена аргументов), ну и
+    // корректируем семантически ключи channel/user/broadcast под текущий контекст.
+    function buildGqlVars(op, ctx, broadcasterId, targetId) {
+        const setFor = (k) => {
+            if (/\b(?:target|user|chatter|viewer)/i.test(k)) return ctx.targetLogin || String(targetId);
+            if (/\bbroadcast/i.test(k)) return String(broadcasterId);
+            if (/\bchannel/i.test(k)) return ctx.channelLogin || String(broadcasterId);
+            return null;
+        };
+        if (op.vars && typeof op.vars === 'object' && Object.keys(op.vars).length) {
+            const ret = {};
+            let any = false;
+            for (const k of Object.keys(op.vars)) {
+                const sv = op.vars[k];
+                if (sv == null) continue;
+                const vs = String(sv);
+                let v = sv;
+                if (vs === String(targetId) || (ctx.targetLogin && vs.toLowerCase() === String(ctx.targetLogin).toLowerCase())) v = ctx.targetLogin || String(targetId);
+                else if (vs === String(broadcasterId) || (ctx.channelLogin && vs.toLowerCase() === String(ctx.channelLogin).toLowerCase())) v = ctx.channelLogin || String(broadcasterId);
+                ret[k] = v;
+                any = true;
+            }
+            if (any) {
+                for (const k of Object.keys(ret)) {
+                    const nv = setFor(k);
+                    if (nv) ret[k] = nv;
+                }
+                return ret;
+            }
+        }
+        if (op.query) {
             const argNames = Array.from(new Set(String(op.query).match(/\$([A-Za-z_][A-Za-z0-9_]*)/g) || []))
                 .map((s) => s.slice(1));
-            const variables = {};
-            let missing = false;
+            if (!argNames.length) return null;
+            const out = {};
             for (const a of argNames) {
-                if (/broadcast/i.test(a)) variables[a] = String(broadcasterId);
-                else if (/channel/i.test(a)) variables[a] = String(broadcasterId);
-                else if (/target/i.test(a)) variables[a] = String(targetId);
-                else if (/user/i.test(a) || /login/i.test(a)) variables[a] = (extra && extra.userLogin) || String(targetId);
-                else { missing = true; break; }
+                const v = setFor(a);
+                if (v == null) return null;
+                out[a] = v;
             }
-            if (missing) continue;
-            for (const k of Object.keys(variables)) if (variables[k] == null) delete variables[k];
-            const r = await gqlRequest(op.query, variables, token);
+            return out;
+        }
+        return null;
+    }
+
+    async function gqlGetUserBanInfo(broadcasterId, targetId, token, ctx) {
+        const ops = await getCapturedBanOps();
+        if (!ops || !ops.length) return { error: 'no-ban-op-captured' };
+        ctx = ctx || {};
+        let lastError = null;
+        for (const op of ops) {
+            const variables = buildGqlVars(op, ctx, broadcasterId, targetId);
+            if (!variables || !Object.keys(variables).length) continue;
+            const r = op.query
+                ? await gqlRequest(op.query, variables, token)
+                : await gqlPersistedRequest(op.op || 'UnknownOp', op.hash, variables, token);
             if (!r.success) { lastError = r.error || null; continue; }
             const node = extractBanNode(r.data);
             if (node) return { data: node, op: op.op || null };
             lastError = 'ban node not found in response';
         }
-        return { error: lastError };
+        return { error: lastError || 'ban node not found in response' };
     }
 
     // ============================================================================
@@ -3222,7 +3294,10 @@ const announceText = content.querySelector('#tmod-announce-text');
                     });
                     // Статус бана из GQL веб-клиента (то же, что в карточке Mod View).
                     // Авторитетен в обе стороны: и подтверждает, и снимает устаревшее.
-                    const banGql = await gqlGetUserBanInfo(broadcasterId, userId, token, { userLogin: modMenuState && modMenuState.userLogin });
+                    const banGql = await gqlGetUserBanInfo(broadcasterId, userId, token, {
+                        targetLogin: modMenuState && modMenuState.userLogin,
+                        channelLogin: channel
+                    });
                     debugLog('mod-ban-gql', banGql && banGql.data
                         ? { isBanned: banGql.data.isBanned, expiresAt: banGql.data.expiresAt, reason: banGql.data.reason }
                         : { error: banGql && banGql.error });

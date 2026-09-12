@@ -280,31 +280,45 @@
             const store = window.__tmod_gql_ops || {};
             const out = [];
             for (const o of Object.values(store)) {
-                if (o && o.query && /isBanned|expiresAt|bannedAt|banned|timeout/i.test(o.query)) out.push(o);
+                if (o && (o.hash || (o.query && /isBanned|expiresAt|bannedAt|banned|timeout/i.test(o.query)))) out.push(o);
             }
             window.postMessage({ type: 'TMOD_GET_GQLOPS_RESULT', nonce: event.data.nonce, data: out }, '*');
         }
     });
 
     // Перехват GQL-трафика: когда сам клиент запрашивает статус юзера (открытая
-    // карточка/Mod View), запоминаем точный шаблон операции (query + operationName).
-    // Панель потом повторяет этот запрос напрямую — незаметно, без открытия карточки.
+    // карточка/Mod View), запоминаем точный шаблон операции. Многие внутренние
+    // операции Твитча — persisted (текста запроса нет, только operationName +
+    // sha256Hash), поэтому храним и то и другое: по тексту или по хэшу панель
+    // потом повторяет запрос напрямую — незаметно, без открытия карточки.
     (function hookGqlOps() {
         const store = (window.__tmod_gql_ops = window.__tmod_gql_ops || {});
         const orig = window.fetch;
         if (typeof orig !== 'function') return;
+        const capSize = 60;
         window.fetch = function (input, init) {
             try {
                 const url = typeof input === 'string' ? input : (input && input.url) || '';
                 if (url.indexOf('gql.twitch.tv') !== -1 && init && typeof init.body === 'string' && init.body.length > 10) {
                     const body = JSON.parse(init.body);
-                    if (body && typeof body.query === 'string' && body.query.length > 20) {
-                        const q = body.query;
-                        if (/isBanned|expiresAt|bannedAt|banned|timeout/i.test(q)) {
-                            const key = body.operationName || q.slice(0, 80);
-                            if (!store[key] || !/expiresAt|isBanned/.test(store[key].query)) {
-                                store[key] = { op: body.operationName, query: q, vars: body.variables || {} };
+                    if (body && typeof body === 'object') {
+                        const q = (typeof body.query === 'string' ? body.query : '').trim();
+                        const opName = body.operationName || null;
+                        const hash = (body.extensions && body.extensions.persistedQuery && body.extensions.persistedQuery.sha256Hash) || null;
+                        const hasText = q.length > 20;
+                        const textBan = /isBanned|expiresAt|bannedAt|banned|timeout/i.test(q);
+                        const nameBan = opName && /viewer|usercard|ban|timeout|banned|modview|mod/i.test(opName);
+                        const interesting = (hasText && textBan) || nameBan || (hasText && /\buser\s*\{/.test(q));
+                        if (interesting) {
+                            const key = opName || (hash ? ('hash:' + hash.slice(0, 12)) : ('q:' + q.slice(0, 60)));
+                            const prev = store[key];
+                            const want = !prev || (!prev.query && hasText) || (!prev.hash && hash && !prev.query);
+                            if (want) {
+                                store[key] = { op: opName, query: hasText ? q : '', hash: hash || null, vars: body.variables || null };
+                                console.log('[TModAPI] gql-op captured', opName || '(anon)', hasText ? 'text' : 'persisted', hash ? hash.slice(0, 8) : '');
                             }
+                            const entries = Object.keys(store);
+                            if (entries.length > capSize) delete store[entries[0]];
                         }
                     }
                 }
