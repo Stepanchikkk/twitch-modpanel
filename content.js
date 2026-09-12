@@ -2347,8 +2347,9 @@ const announceText = content.querySelector('#tmod-announce-text');
         return gqlToken;
     }
 
-    async function gqlTransport(body, token) {
+    async function gqlRequest(query, variables, token) {
         const gqlToken = await gqlGetSessionToken(token);
+        const body = JSON.stringify({ query, variables });
 
         let resp;
         if (IS_EXTENSION) {
@@ -2394,21 +2395,6 @@ const announceText = content.querySelector('#tmod-announce-text');
         }
     }
 
-    async function gqlRequest(query, variables, token) {
-        return gqlTransport(JSON.stringify({ query, variables }), token);
-    }
-
-    // Повтор перехваченной persisted-операции: без текста запроса, только по
-    // sha256Hash из того же запроса, что прислал сам клиент Твитча.
-    async function gqlPersistedRequest(operationName, hash, variables, token) {
-        const body = {
-            variables,
-            extensions: { persistedQuery: { version: 1, sha256Hash: hash } }
-        };
-        if (operationName) body.operationName = operationName;
-        return gqlTransport(JSON.stringify(body), token);
-    }
-
     async function gqlUpdateBroadcastSettings(token, broadcasterUserId, opts) {
         const input = { userID: broadcasterUserId };
         if (opts.status !== undefined) input.status = opts.status;
@@ -2451,237 +2437,22 @@ const announceText = content.querySelector('#tmod-announce-text');
     // чем рисуется секция «Забанен/Отстранён» в карточке Mod View. Работает и для
     // модераторского токена (Helix moderation/banned для него даёт 401), без открытия
     // карточки. expiriesAt: null = перманентный бан, дата = таймаут до неё.
-    //
-    // Имя операции у Твитча неизвестно публично, поэтому используем реальные шаблоны,
-    // перехваченные из трафика самого клиента (hook window.fetch/message → gql.twitch.tv):
-    // один раз открытая карточка юзера сохраняет точный query, дальше панель повторяет
-    // его сама, незаметно. В юзерскрипте (страничный контекст) перехват ставим здесь же,
-    // в расширении это делает twitch-api.js на document_start.
-    const GQL_OPS_STORAGE_KEY = 'tmod_gql_ops_v1';
-
-    // Захваченные операции живут в storage: их видно из любой вкладки/попанута.
-    async function persistGqlOp(key, rec) {
-        try {
-            const raw = await storageGet(GQL_OPS_STORAGE_KEY);
-            const map = raw && typeof raw === 'object' ? raw : {};
-            const prev = map[key] || {};
-            map[key] = {
-                op: rec.op !== undefined ? rec.op : prev.op,
-                query: rec.query || prev.query || '',
-                hash: rec.hash || prev.hash || null,
-                vars: rec.vars || prev.vars || null,
-                ban: !!(rec.ban || prev.ban),
-                resp: rec.resp || prev.resp || null,
-                src: (location && location.pathname) || ''
-            };
-            const keys = Object.keys(map);
-            if (keys.length > 150) { delete map[keys[0]]; }
-            await storageSet(GQL_OPS_STORAGE_KEY, map);
-        } catch (e) {}
-    }
-
-    async function getStoredGqlOps() {
-        try {
-            const raw = await storageGet(GQL_OPS_STORAGE_KEY);
-            return raw && typeof raw === 'object' ? raw : {};
-        } catch (e) { return {}; }
-    }
-
-    function hookGqlOps() {
-        if (window.__tmod_gql_hooked) return;
-        window.__tmod_gql_hooked = true;
-        const store = (window.__tmod_gql_ops = window.__tmod_gql_ops || {});
-        const orig = window.fetch;
-        if (typeof orig !== 'function') return;
-        const capSize = 150;
-        window.__tmod_gql_logged = 0;
-        window.fetch = function (input, init) {
-            let keyToWatch = null;
-            let tagBan = false;
-            try {
-                const url = typeof input === 'string' ? input : (input && input.url) || '';
-                if (url.indexOf('gql.twitch.tv') !== -1 && init && typeof init.body === 'string' && init.body.length > 10) {
-                    const body = JSON.parse(init.body);
-                    if (body && typeof body === 'object') {
-                        const q = (typeof body.query === 'string' ? body.query : '').trim();
-                        const opName = body.operationName || null;
-                        const hash = (body.extensions && body.extensions.persistedQuery && body.extensions.persistedQuery.sha256Hash) || null;
-                        const hasText = q.length > 20;
-                        const textBan = /isBanned|expiresAt|bannedAt|banned|timeout/i.test(q);
-                        const nameBan = opName && /viewer|usercard|ban|timeout|banned|modview|mod/i.test(opName);
-                        const interesting = (hasText && textBan) || nameBan || (hasText && /\buser\s*\{/.test(q));
-                        const key = opName || (hash ? ('hash:' + hash) : ('q:' + q.slice(0, 60)));
-                        const prev = store[key];
-                        const want = !prev || (!prev.query && hasText) || (!prev.hash && hash && !prev.query);
-                        if (key && (interesting || hash || q.length > 20)) {
-                            if (want) {
-                                store[key] = { op: opName, query: hasText ? q : '', hash: hash || null, vars: body.variables || null };
-                                try { persistGqlOp(key, store[key]); } catch (e) {}
-                            }
-                            keyToWatch = key;
-                            tagBan = textBan || nameBan;
-                            const entries = Object.keys(store);
-                            if (entries.length > capSize) delete store[entries[0]];
-                        }
-                    }
-                }
-            } catch (e) {}
-            const ret = orig.apply(this, arguments);
-            if (keyToWatch) {
-                try {
-                    ret && ret.then && ret.then((resp) => {
-                        try {
-                            if (!resp || typeof resp.clone !== 'function') return;
-                            resp.clone().text().then((txt) => {
-                                if (!txt) return;
-                                if (/\"isBanned\"|\"bannedUntil\"|\"timeoutUntil\"|\"banStatus\"/.test(txt)) {
-                                    const rec = store[keyToWatch];
-                                    if (rec && !rec.ban) {
-                                        rec.ban = true;
-                                        rec.resp = txt.slice(0, 3000);
-                                        try { persistGqlOp(keyToWatch, rec); } catch (e) {}
-                                    }
-                                }
-                            }).catch(() => {});
-                        } catch (e) {}
-                    });
-                } catch (e) {}
-            }
-            return ret;
-        };
-    }
-    if (!IS_EXTENSION) hookGqlOps();
-
-    async function getCapturedBanOps() {
-        const SAFE = (o) => {
-            if (!o) return false;
-            if (o.query && /^\s*(?:query|fragment)\b/i.test(o.query)) return true;
-            return !!(o.hash && o.ban);
-        };
-        const score = (o) => {
-            let s = 0;
-            if (o.query && /^\s*query\b/i.test(o.query) && /isBanned|expiresAt|bannedAt|banned|timeout/i.test(o.query)) s += 4;
-            if (o.ban) s += 3;
-            if (o.op && /viewercard|usercard|banned|banstatus|modview/i.test(o.op)) s += 2;
-            if (o.query) s += 1;
-            return s;
-        };
-        const pick = (store) => Object.values(store)
-            .filter(SAFE)
-            .sort((a, b) => score(b) - score(a));
-        const union = {};
-        const windowOps = IS_EXTENSION ? {} : (window.__tmod_gql_ops || {});
-        Object.assign(union, IS_EXTENSION ? {} : windowOps);
-        Object.assign(union, await getStoredGqlOps());
-        if (!IS_EXTENSION) Object.assign(union, window.__tmod_gql_ops || {});
-        const fromStore = pick(union);
-        if (!IS_EXTENSION) return fromStore;
-        return new Promise((resolve) => {
-            const nonce = 'gqlops' + Date.now() + Math.random().toString(36).slice(2, 8);
-            let done = false;
-            const timer = setTimeout(async () => { if (!done) { done = true; resolve(pick(await getStoredGqlOps())); } }, 800);
-            const handler = async (ev) => {
-                if (ev.source !== window || !ev.data || ev.data.type !== 'TMOD_GET_GQLOPS_RESULT' || ev.data.nonce !== nonce) return;
-                if (done) return;
-                done = true;
-                clearTimeout(timer);
-                window.removeEventListener('message', handler);
-                resolve(pick(ev.data.data).concat(pick(await getStoredGqlOps())));
-            };
-            window.addEventListener('message', handler);
-            window.postMessage({ type: 'TMOD_GET_GQLOPS', nonce }, '*');
-        });
-    }
-
-    // Достаёт первый узел ответа, где есть `isBanned` (плюс соседние поля).
-    function extractBanNode(root) {
-        if (!root || typeof root !== 'object') return null;
-        let found = null;
-        const walk = (v, depth) => {
-            if (found || depth > 24 || !v || typeof v !== 'object') return;
-            if (Array.isArray(v)) { for (const x of v) walk(x, depth + 1); return; }
-            if ('isBanned' in v && (typeof v.isBanned === 'boolean' || v.isBanned === null)) {
-                found = v;
-                return;
-            }
-            for (const k of Object.keys(v)) walk(v[k], depth + 1);
-        };
-        walk(root, 0);
-        return found;
-    }
-
-    // Строит переменные для повтора перехваченной операции: подменяем по образцу
-    // реально отправленных переменных клиента (это точные имена аргументов), ну и
-    // корректируем семантически ключи channel/user/broadcast под текущий контекст.
-    function buildGqlVars(op, ctx, broadcasterId, targetId) {
-        const setFor = (k) => {
-            if (/\b(?:target|user|chatter|viewer)/i.test(k)) return ctx.targetLogin || String(targetId);
-            if (/\bbroadcast/i.test(k)) return String(broadcasterId);
-            if (/\bchannel/i.test(k)) return ctx.channelLogin || String(broadcasterId);
-            return null;
-        };
-        if (op.vars && typeof op.vars === 'object' && Object.keys(op.vars).length) {
-            const ret = {};
-            let any = false;
-            for (const k of Object.keys(op.vars)) {
-                const sv = op.vars[k];
-                if (sv == null) continue;
-                const vs = String(sv);
-                let v = sv;
-                if (vs === String(targetId) || (ctx.targetLogin && vs.toLowerCase() === String(ctx.targetLogin).toLowerCase())) v = ctx.targetLogin || String(targetId);
-                else if (vs === String(broadcasterId) || (ctx.channelLogin && vs.toLowerCase() === String(ctx.channelLogin).toLowerCase())) v = ctx.channelLogin || String(broadcasterId);
-                ret[k] = v;
-                any = true;
-            }
-            if (any) {
-                for (const k of Object.keys(ret)) {
-                    const nv = setFor(k);
-                    if (nv) ret[k] = nv;
-                }
-                return ret;
-            }
-        }
-        if (op.query) {
-            const argNames = Array.from(new Set(String(op.query).match(/\$([A-Za-z_][A-Za-z0-9_]*)/g) || []))
-                .map((s) => s.slice(1));
-            if (!argNames.length) return null;
-            const out = {};
-            for (const a of argNames) {
-                const v = setFor(a);
-                if (v == null) return null;
-                out[a] = v;
-            }
-            return out;
-        }
-        return null;
-    }
-
-    async function gqlGetUserBanInfo(broadcasterId, targetId, token, ctx) {
-        const ops = await getCapturedBanOps();
-        const capSummary = () => ops.map((o) => (o.op || '?') + (o.query ? ':text' : (o.ban ? ':ban-hash' : ':hash')));
-        if (!ops || !ops.length) return { error: 'no-ban-op-captured', captured: capSummary() };
-        ctx = ctx || {};
+    async function gqlGetUserBanInfo(broadcasterId, targetId, token) {
+        const vars = { broadcasterID: String(broadcasterId), targetID: String(targetId) };
+        const candidates = [
+            'query userBanInfo($broadcasterID: ID!, $targetID: ID!) { userBanInfo(broadcasterID: $broadcasterID, targetID: $targetID) { isBannable isBanned bannedAt expiresAt reason isPermanentBan } }',
+            'query userBanInfo($broadcasterID: ID!, $targetID: ID!) { userBanInfo(broadcasterID: $broadcasterID, targetID: $targetID) { isBannable isBanned bannedAt expiresAt reason } }'
+        ];
         let lastError = null;
-        let tried = 0;
-        const seenKeys = new Set();
-        for (const op of ops) {
-            if (tried >= 12) break;
-            const k = op.query ? ('q:' + op.query.slice(0, 200)) : ('h:' + (op.hash || ''));
-            if (seenKeys.has(k)) continue;
-            seenKeys.add(k);
-            if (tried >= 12) break;
-            const variables = buildGqlVars(op, ctx, broadcasterId, targetId);
-            if (!variables || !Object.keys(variables).length) continue;
-            tried++;
-            const r = op.query
-                ? await gqlRequest(op.query, variables, token)
-                : await gqlPersistedRequest(op.op || null, op.hash, variables, token);
+        for (const query of candidates) {
+            const r = await gqlRequest(query, vars, token);
             if (!r.success) { lastError = r.error || null; continue; }
-            const node = extractBanNode(r.data);
-            if (node) return { data: node, op: op.op || null };
-            lastError = 'ban node not found in response';
+            try {
+                const d = (r.data && r.data.userBanInfo) || null;
+                if (d && typeof d === 'object') return { data: d };
+            } catch (e) { lastError = String(e && e.message || e); }
         }
-        return { error: lastError || 'ban node not found in response', captured: capSummary() };
+        return { error: lastError };
     }
 
     // ============================================================================
@@ -3310,236 +3081,6 @@ const announceText = content.querySelector('#tmod-announce-text');
         return imgs.length ? { isVip: false, isMod: false, isBroadcaster: false } : null;
     }
 
-    // --- «Действия модератора» (popout/moderator/<канал>/mod-actions) ---
-    // Список последних действий по юзерам («Забанен/Разбанен/Отстранен/Отстранение
-    // снято/статус VIP/...») виден только модератору — это наш авторитетный (и хоть
-    // какой-то вменяемый) источник текущего статуса банов, не зависящий от Helix.
-    // Попанут — это обычная страница twitch.tv, поэтому контент-скрипт там работает:
-    // парсит список, кладёт в storage, и панель в основной вкладке им пользуется.
-    const MOD_ACTIONS_STORAGE_KEY = 'tmod_mod_actions_v1';
-
-    function classifyModAction(t) {
-        const s = String(t || '').toLowerCase();
-        const o = { action: 'other', durationSec: null };
-        if (s.indexOf('разбанен') !== -1) o.action = 'unban';
-        else if (s.indexOf('отстранение снято') !== -1) o.action = 'untimeout';
-        else if (s.indexOf('снял статус vip') !== -1) o.action = 'vip-off';
-        else if (s.indexOf('предоставляет статус vip') !== -1) o.action = 'vip';
-        else if (s.indexOf('снял статус модератора') !== -1) o.action = 'mod-off';
-        else if (s.indexOf('предоставляет') !== -1) o.action = 'mod';
-        else if (s.indexOf('отстранен') !== -1) {
-            o.action = 'timeout';
-            const m = s.match(/на\s+(\d+)\s*(сек|секунд|минут|минуты|минуту)/);
-            if (m) o.durationSec = parseInt(m[1], 10) * (m[2].indexOf('сек') === 0 ? 1 : 60);
-        }
-        else if (s.indexOf('забанен') !== -1) o.action = 'ban';
-        return o;
-    }
-
-    function parseRelTs(t, now) {
-        const m = String(t || '').match(/(\d+)\s*(сек|секунд|минут|минуту|минуты|часов|час|дней|день|дня)/i);
-        if (!m) return null;
-        const n = parseInt(m[1], 10);
-        const u = m[2].toLowerCase();
-        let ms;
-        if (u.indexOf('сек') === 0) ms = n * 1000;
-        else if (u.indexOf('час') === 0) ms = n * 3600000;
-        else if (u.indexOf('дн') === 0 || u.indexOf('день') === 0 || u.indexOf('дня') === 0) ms = n * 86400000;
-        else ms = n * 60000;
-        return now - ms;
-    }
-
-    function extractModActionsFromDOM(now) {
-        const rows = [];
-        const rowMap = new Map();
-        const dump = [];
-        let totalEls = 0, withLen = 0, withAction = 0, withSep = 0, withLogin = 0;
-        const actionRE = /(Забанен|Разбанен|Отстранен|Отстранение снято|предоставляет|статус VIP|снял статус)/i;
-        let els = [];
-        try { els = Array.from(document.querySelectorAll('div,li,section,article')); } catch (e) { return { rows, dump, counts: { totalEls, withLen, withAction, withSep, withLogin } }; }
-        for (const el of els) {
-            totalEls++;
-            const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
-            if (t.length < 40 || t.length > 700) continue;
-            withLen++;
-            if (!actionRE.test(t)) continue;
-            withAction++;
-            const sep = t.indexOf('•');
-            if (sep === -1) continue;
-            withSep++;
-            const mt = t.match(/^([a-z0-9_]{3,25})\b/i);
-            if (!mt) continue;
-            withLogin++;
-            const login = mt[1].toLowerCase();
-            const phrase = t.slice(mt[0].length, sep).trim();
-            const cls = classifyModAction(phrase);
-            if (cls.action === 'other') continue;
-            const timeTxt = t.slice(sep + 1).trim();
-            const rowKey = login + '|' + phrase;
-            const prev = rowMap.get(rowKey);
-            if (prev && prev.len <= t.length) continue;
-            rowMap.set(rowKey, { login, action: cls.action, durationSec: cls.durationSec, tsMs: parseRelTs(timeTxt, now), raw: t.slice(0, 160), len: t.length, el });
-        }
-        for (const e of rowMap.values()) {
-            rows.push({ login: e.login, action: e.action, durationSec: e.durationSec, tsMs: e.tsMs, raw: e.raw });
-            if (dump.length < 10) {
-                let chain = [];
-                let node = e.el;
-                for (let d = 0; node && chain.length < 6; node = node.parentElement, d++) {
-                    const cls = String(node.className || '').split(' ').slice(0, 3).map((x) => x.slice(0, 30)).join('.');
-                    chain.push(node.tagName.toLowerCase() + (cls ? '.' + cls : ''));
-                }
-                dump.push(e.raw + ' | CHAIN=' + chain.join(' < '));
-            }
-        }
-        return { rows, dump, counts: { totalEls, withLen, withAction, withSep, withLogin, rows: rows.length } };
-    }
-
-    // Резервный путь: сырой массив действий из fiber-пропсов (если DOM не разобрался).
-    function extractModActionsFromFiber(now) {
-        const out = [];
-        let budget = 300000;
-        const seen = new Set();
-        const walk = (v, depth) => {
-            if (!budget || depth > 22 || v == null) return;
-            if (typeof v !== 'object') return;
-            budget--;
-            if (typeof v === 'string' && v.length < 200 && /\bразбанен\b|\bзабанен\b/i.test(v)) return;
-            if (Array.isArray(v)) { for (const x of v) walk(x, depth + 1); return; }
-            if (seen.has(v)) return;
-            try { seen.add(v); } catch (e) { return; }
-            const arr = v.memoizedProps || v.pendingProps || v.props || null;
-            if (arr && typeof arr === 'object') {
-                const scan = (o) => {
-                    if (!o || typeof o !== 'object') return;
-                    const tu = o.targetUser || o.user || o.chatter || null;
-                    let act = null;
-                    if (typeof o.action === 'string' && o.action.length < 120) act = o.action;
-                    else if (typeof o.moderationAction === 'string') act = o.moderationAction;
-                    else if (typeof o.actionType === 'string') act = o.actionType;
-                    const ts = o.timestamp || o.time || o.createdAt || null;
-                    if (tu && act !== null) {
-                        const login = sanitizeLogin(tu.login || tu.userLogin || (typeof tu.displayName === 'string' ? tu.displayName : ''));
-                        const cls = classifyModAction(act);
-                        if (login) out.push({ login, action: cls.action, durationSec: cls.durationSec, tsMs: ts || null, raw: act.slice(0, 160), src: 'fiber' });
-                    }
-                };
-                if (Array.isArray(arr)) { for (const x of arr) scan(x); }
-                else if (Array.isArray(arr.data)) { for (const x of arr.data) scan(x); }
-                else if (Array.isArray(arr.results)) { for (const x of arr.results) scan(x); }
-            }
-            for (const k of ['child', 'children', 'sibling', 'return']) {
-                const c = v[k];
-                if (c && typeof c === 'object') walk(c, depth + 1);
-            }
-        };
-        const root = document.body ? getReactFiber(document.body) : null;
-        if (root) { try { walk(root, 0); } catch (e) {} }
-        return out;
-    }
-
-    async function collectModActions() {
-        const now = Date.now();
-        const domRes = extractModActionsFromDOM(now);
-        const fiberRes = extractModActionsFromFiber(now);
-        const byKey = new Map();
-        const add = (e) => {
-            if (!e || !e.login) return;
-            const k = e.login + '|' + e.action + '|' + (e.tsMs || '');
-            if (byKey.has(k)) return;
-            byKey.set(k, e);
-        };
-        for (const e of domRes.rows) add(e);
-        for (const e of fiberRes) add(e);
-        return { entries: Array.from(byKey.values()), dump: domRes.dump || [], counts: domRes.counts || null };
-    }
-
-    async function modActionsStatusFor(userId, targetLogin) {
-        try {
-            const raw = await storageGet(MOD_ACTIONS_STORAGE_KEY);
-            if (!raw || !Array.isArray(raw.entries) || !raw.entries.length) return null;
-            const lg = sanitizeLogin(targetLogin);
-            if (!lg) return null;
-            let best = null;
-            for (const e of raw.entries) {
-                if (sanitizeLogin(e.login) !== lg) continue;
-                const ts = e.tsMs || 0;
-                if (!best || ts > best.tsMs) best = e;
-            }
-            if (!best) return null;
-            const out = { isBanned: null, isTimedOut: null, banExpiresAt: null };
-            if (best.action === 'ban') out.isBanned = true;
-            else if (best.action === 'unban') out.isBanned = false;
-            else if (best.action === 'timeout') {
-                out.isTimedOut = true;
-                if (best.durationSec) out.banExpiresAt = new Date((best.tsMs || Date.now()) + best.durationSec * 1000).toISOString();
-            } else if (best.action === 'untimeout') out.isTimedOut = false;
-            return out;
-        } catch (e) { return null; }
-    }
-
-    function maybeCaptureModActions() {
-        if (!/^\/popout\/moderator\/[^/]+\/mod-actions/.test(location.pathname)) return;
-        // Список подгружается после логина и рендера — пробуем несколько раз с паузами.
-        const delays = [2500, 5000, 8000, 13000, 20000, 28000];
-        const attempt = (idx) => {
-            if (idx >= delays.length) return;
-            setTimeout(async () => {
-                const res = await collectModActions();
-                if (res.entries.length) {
-                    await storageSet(MOD_ACTIONS_STORAGE_KEY, { entries: res.entries, fetchedAt: Date.now() });
-                    debugLog('mod-actions-x', { count: res.entries.length, sample: res.entries.slice(0, 6).map((e) => e.login + ':' + e.action) });
-                    return;
-                }
-                debugLog('mod-actions-x', { count: 0, note: 'round ' + idx, counts: res.counts, dump: (res.dump || []).slice(0, 8) });
-                attempt(idx + 1);
-            }, delays[idx]);
-        };
-        attempt(0);
-    }
-
-    let modActionsFreshening = null;
-    async function ensureFreshModActions() {
-        // Сам попанут уже заполняет storage — тут всё на месте.
-        if (/^\/popout\/moderator\/[^/]+\/mod-actions/.test(location.pathname)) return null;
-        if (modActionsFreshening) return modActionsFreshening;
-        modActionsFreshening = (async () => {
-            const read = await storageGet(MOD_ACTIONS_STORAGE_KEY).catch(() => null);
-            const fresh = read && Array.isArray(read.entries) && read.entries.length
-                && read.fetchedAt && (Date.now() - read.fetchedAt) < 180000;
-            if (fresh) return read;
-            if (!IS_EXTENSION) return null; // userscript: попанут открывается вручную
-            const channel = (modMenuState && modMenuState.channel) || getChannelName();
-            if (!channel) return null;
-            const start = Date.now();
-            let opened = false;
-            try {
-                const r = await chrome.runtime.sendMessage({
-                    type: 'OPEN_MOD_ACTIONS_WINDOW',
-                    url: 'https://www.twitch.tv/popout/moderator/' + channel + '/mod-actions'
-                }).catch(() => ({ success: false }));
-                opened = !!(r && r.success);
-                debugLog('mod-actions-open', { channel, opened });
-            } catch (e) {
-                debugLog('mod-actions-open', { channel, error: e.message });
-            }
-            if (!opened) return null;
-            // Ждём свежий снимок от попанута (каждые 2 с до 32 с), потом закрываем окно.
-            for (let i = 0; i < 16; i++) {
-                await new Promise((res) => setTimeout(res, 2000));
-                const r2 = await storageGet(MOD_ACTIONS_STORAGE_KEY).catch(() => null);
-                if (r2 && r2.fetchedAt >= start && Array.isArray(r2.entries) && r2.entries.length) {
-                    debugLog('mod-actions-open', { got: r2.entries.length });
-                    try { await chrome.runtime.sendMessage({ type: 'CLOSE_MOD_ACTIONS_WINDOW' }).catch(() => {}); } catch (e) {}
-                    return r2;
-                }
-            }
-            try { await chrome.runtime.sendMessage({ type: 'CLOSE_MOD_ACTIONS_WINDOW' }).catch(() => {}); } catch (e) {}
-            return null;
-        })().finally(() => { modActionsFreshening = null; });
-        return modActionsFreshening;
-    }
-
     // Статус бана/таймаута: для модератора точный ответ даёт GQL userBanInfo
     // (то, что рисует карточка Mod View); роли через GQL не берём — ненадёжны
     // (не различают мод/не-мод, вип/не-вип), их источник — карточка/фiber/записи.
@@ -3600,13 +3141,10 @@ const announceText = content.querySelector('#tmod-announce-text');
                     });
                     // Статус бана из GQL веб-клиента (то же, что в карточке Mod View).
                     // Авторитетен в обе стороны: и подтверждает, и снимает устаревшее.
-                    const banGql = await gqlGetUserBanInfo(broadcasterId, userId, token, {
-                        targetLogin: modMenuState && modMenuState.userLogin,
-                        channelLogin: channel
-                    });
+                    const banGql = await gqlGetUserBanInfo(broadcasterId, userId, token);
                     debugLog('mod-ban-gql', banGql && banGql.data
                         ? { isBanned: banGql.data.isBanned, expiresAt: banGql.data.expiresAt, reason: banGql.data.reason }
-                        : { error: banGql && banGql.error, captured: banGql && banGql.captured });
+                        : { error: banGql && banGql.error });
                     if (banGql && banGql.data && typeof banGql.data.isBanned === 'boolean') {
                         const g = banGql.data;
                         status.isBanned = g.isBanned && !g.expiresAt;
@@ -3853,18 +3391,6 @@ const announceText = content.querySelector('#tmod-announce-text');
                     status.banExpiresAt = null;
                 }
                 await modLocalRemove(userId, statusChannelId, 'ban').catch(() => {});
-            }
-        }
-        // «Действия модератора» (попанут, storage): последнее действие по юзеру
-        // заполняет только NULL-статусы — карточка/GQL выше имеют приоритет.
-        if (status.isBanned == null || status.isTimedOut == null) {
-            await ensureFreshModActions();
-            const acts = await modActionsStatusFor(userId, modMenuState && modMenuState.userLogin);
-            if (acts) {
-                debugLog('mod-actions-status', acts);
-                if (typeof acts.isBanned === 'boolean' && status.isBanned == null) status.isBanned = acts.isBanned;
-                if (typeof acts.isTimedOut === 'boolean' && status.isTimedOut == null) status.isTimedOut = acts.isTimedOut;
-                if (acts.banExpiresAt) status.banExpiresAt = acts.banExpiresAt;
             }
         }
         // Финальное взаимоисключение мода и VIP после всех источников (карточка
@@ -4598,13 +4124,6 @@ const announceText = content.querySelector('#tmod-announce-text');
     }
 
     function initModerationMenu() {
-        // Захваченные GQL-операции из любого таба/попанута (страничный мир) копируем
-        // в storage — панель в основной вкладке сможет их повторить без открытого окна.
-        window.addEventListener('message', (ev) => {
-            if (ev.source !== window || !ev.data || ev.data.type !== 'TMOD_GQL_OP_CAPTURED' || !ev.data.key) return;
-            persistGqlOp(ev.data.key, ev.data.rec || {});
-        });
-        maybeCaptureModActions();
         getPanelSettings().then((s) => { tmodContextMenuEnabled = s.contextMenu !== false; });
         getToken().then((t) => {
             modTokenCache = !!t;
