@@ -280,7 +280,7 @@
             const store = window.__tmod_gql_ops || {};
             const out = [];
             for (const o of Object.values(store)) {
-                if (o && (o.hash || (o.query && /isBanned|expiresAt|bannedAt|banned|timeout/i.test(o.query)))) out.push(o);
+                if (o && (o.hash || (o.query && o.query.length > 20))) out.push(o);
             }
             window.postMessage({ type: 'TMOD_GET_GQLOPS_RESULT', nonce: event.data.nonce, data: out }, '*');
         }
@@ -295,9 +295,11 @@
         const store = (window.__tmod_gql_ops = window.__tmod_gql_ops || {});
         const orig = window.fetch;
         if (typeof orig !== 'function') return;
-        const capSize = 60;
+        const capSize = 150;
         window.__tmod_gql_logged = 0;
         window.fetch = function (input, init) {
+            let keyToWatch = null;
+            let tagBan = null;
             try {
                 const url = typeof input === 'string' ? input : (input && input.url) || '';
                 if (url.indexOf('gql.twitch.tv') !== -1 && init && typeof init.body === 'string' && init.body.length > 10) {
@@ -312,23 +314,51 @@
                         const interesting = (hasText && textBan) || nameBan || (hasText && /\buser\s*\{/.test(q));
                         if (window.__tmod_gql_logged < 300) {
                             window.__tmod_gql_logged++;
-                            console.log('[TModAPI] gql request', opName || '(anon)', 'text=' + q.length, hasText ? (textBan ? 'ban-text' : 'plain') : 'persisted', hash ? hash.slice(0, 8) : '', interesting ? '->keep' : '');
+                            console.log('[TModAPI] gql request', opName || '(anon)', 'text=' + q.length, hasText ? (textBan ? 'ban-text' : 'plain') : 'persisted', hash ? hash.slice(0, 8) : '');
                         }
-                        if (interesting) {
-                            const key = opName || (hash ? ('hash:' + hash.slice(0, 12)) : ('q:' + q.slice(0, 60)));
-                            const prev = store[key];
-                            const want = !prev || (!prev.query && hasText) || (!prev.hash && hash && !prev.query);
+                        // Копим ВСЕ persisted-операции: какая из них про бан, выясним по ответу
+                        // (ban-метка), а не по имени/тексту — так точнее и безопаснее для повтора.
+                        const key = opName || (hash ? ('hash:' + hash) : ('q:' + q.slice(0, 60)));
+                        const prev = store[key];
+                        const want = !prev || (!prev.query && hasText) || (!prev.hash && hash && !prev.query);
+                        if (key && (interesting || hash || q.length > 20)) {
                             if (want) {
                                 store[key] = { op: opName, query: hasText ? q : '', hash: hash || null, vars: body.variables || null };
-                                console.log('[TModAPI] gql-op captured', opName || '(anon)', hasText ? 'text' : 'persisted', hash ? hash.slice(0, 8) : '');
+                                window.postMessage({ type: 'TMOD_GQL_OP_CAPTURED', key, rec: store[key], url: location.pathname }, '*');
+                                if (interesting) console.log('[TModAPI] gql-op captured', opName || '(anon)', hasText ? 'text' : 'persisted', hash ? hash.slice(0, 8) : '');
                             }
+                            keyToWatch = key;
+                            tagBan = textBan || nameBan;
                             const entries = Object.keys(store);
                             if (entries.length > capSize) delete store[entries[0]];
                         }
                     }
                 }
             } catch (e) {}
-            return orig.apply(this, arguments);
+            const ret = orig.apply(this, arguments);
+            if (keyToWatch) {
+                try {
+                    ret && ret.then && ret.then((resp) => {
+                        try {
+                            if (!resp || typeof resp.clone !== 'function') return;
+                            resp.clone().text().then((txt) => {
+                                if (!txt) return;
+                                let isBanResp = /"isBanned"|"bannedUntil"|"timeoutUntil"|"banStatus"/.test(txt);
+                                if (isBanResp) {
+                                    const rec = store[keyToWatch];
+                                    if (rec && !rec.ban) {
+                                        rec.ban = true;
+                                        rec.resp = txt.slice(0, 3000);
+                                        window.postMessage({ type: 'TMOD_GQL_OP_CAPTURED', key: keyToWatch, rec, url: location.pathname }, '*');
+                                        console.log('[TModAPI] gql-op BAN-RESPONSE', keyToWatch);
+                                    }
+                                }
+                            }).catch(() => {});
+                        } catch (e) {}
+                    });
+                } catch (e) {}
+            }
+            return ret;
         };
     })();
 
