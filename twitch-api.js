@@ -276,8 +276,42 @@
             window.postMessage({ type: 'TMOD_GET_MSG_RESULT', nonce: event.data.nonce, data }, '*');
         } else if (event.data?.type === 'TMOD_GET_MODSTATUS') {
             window.postMessage({ type: 'TMOD_GET_MODSTATUS_RESULT', nonce: event.data.nonce, data: getModViewUserDetails() }, '*');
+        } else if (event.data?.type === 'TMOD_GET_GQLOPS') {
+            const store = window.__tmod_gql_ops || {};
+            const out = [];
+            for (const o of Object.values(store)) {
+                if (o && o.query && /isBanned|expiresAt|bannedAt|banned|timeout/i.test(o.query)) out.push(o);
+            }
+            window.postMessage({ type: 'TMOD_GET_GQLOPS_RESULT', nonce: event.data.nonce, data: out }, '*');
         }
     });
+
+    // Перехват GQL-трафика: когда сам клиент запрашивает статус юзера (открытая
+    // карточка/Mod View), запоминаем точный шаблон операции (query + operationName).
+    // Панель потом повторяет этот запрос напрямую — незаметно, без открытия карточки.
+    (function hookGqlOps() {
+        const store = (window.__tmod_gql_ops = window.__tmod_gql_ops || {});
+        const orig = window.fetch;
+        if (typeof orig !== 'function') return;
+        window.fetch = function (input, init) {
+            try {
+                const url = typeof input === 'string' ? input : (input && input.url) || '';
+                if (url.indexOf('gql.twitch.tv') !== -1 && init && typeof init.body === 'string' && init.body.length > 10) {
+                    const body = JSON.parse(init.body);
+                    if (body && typeof body.query === 'string' && body.query.length > 20) {
+                        const q = body.query;
+                        if (/isBanned|expiresAt|bannedAt|banned|timeout/i.test(q)) {
+                            const key = body.operationName || q.slice(0, 80);
+                            if (!store[key] || !/expiresAt|isBanned/.test(store[key].query)) {
+                                store[key] = { op: body.operationName, query: q, vars: body.variables || {} };
+                            }
+                        }
+                    }
+                }
+            } catch (e) {}
+            return orig.apply(this, arguments);
+        };
+    })();
 
     window.TModAPI = {
         sendChatMessage: sendToTwitchChat,

@@ -2437,20 +2437,101 @@ const announceText = content.querySelector('#tmod-announce-text');
     // чем рисуется секция «Забанен/Отстранён» в карточке Mod View. Работает и для
     // модераторского токена (Helix moderation/banned для него даёт 401), без открытия
     // карточки. expiriesAt: null = перманентный бан, дата = таймаут до неё.
-    async function gqlGetUserBanInfo(broadcasterId, targetId, token) {
-        const vars = { broadcasterID: String(broadcasterId), targetID: String(targetId) };
-        const candidates = [
-            'query userBanInfo($broadcasterID: ID!, $targetID: ID!) { userBanInfo(broadcasterID: $broadcasterID, targetID: $targetID) { isBannable isBanned bannedAt expiresAt reason isPermanentBan } }',
-            'query userBanInfo($broadcasterID: ID!, $targetID: ID!) { userBanInfo(broadcasterID: $broadcasterID, targetID: $targetID) { isBannable isBanned bannedAt expiresAt reason } }'
-        ];
-        let lastError = null;
-        for (const query of candidates) {
-            const r = await gqlRequest(query, vars, token);
-            if (!r.success) { lastError = r.error || null; continue; }
+    //
+    // Имя операции у Твитча неизвестно публично, поэтому используем реальные шаблоны,
+    // перехваченные из трафика самого клиента (hook window.fetch/message → gql.twitch.tv):
+    // один раз открытая карточка юзера сохраняет точный query, дальше панель повторяет
+    // его сама, незаметно. В юзерскрипте (страничный контекст) перехват ставим здесь же,
+    // в расширении это делает twitch-api.js на document_start.
+    function hookGqlOps() {
+        if (window.__tmod_gql_hooked) return;
+        window.__tmod_gql_hooked = true;
+        const store = (window.__tmod_gql_ops = window.__tmod_gql_ops || {});
+        const orig = window.fetch;
+        if (typeof orig !== 'function') return;
+        window.fetch = function (input, init) {
             try {
-                const d = (r.data && r.data.userBanInfo) || null;
-                if (d && typeof d === 'object') return { data: d };
-            } catch (e) { lastError = String(e && e.message || e); }
+                const url = typeof input === 'string' ? input : (input && input.url) || '';
+                if (url.indexOf('gql.twitch.tv') !== -1 && init && typeof init.body === 'string' && init.body.length > 10) {
+                    const body = JSON.parse(init.body);
+                    if (body && typeof body.query === 'string' && body.query.length > 20) {
+                        const q = body.query;
+                        if (/isBanned|expiresAt|bannedAt|banned|timeout/i.test(q)) {
+                            const key = body.operationName || q.slice(0, 80);
+                            if (!store[key] || !/expiresAt|isBanned/.test(store[key].query)) {
+                                store[key] = { op: body.operationName, query: q, vars: body.variables || {} };
+                            }
+                        }
+                    }
+                }
+            } catch (e) {}
+            return orig.apply(this, arguments);
+        };
+    }
+    if (!IS_EXTENSION) hookGqlOps();
+
+    async function getCapturedBanOps() {
+        if (!IS_EXTENSION) {
+            const store = (window.__tmod_gql_ops || {});
+            return Object.values(store).filter((o) => o && o.query && /isBanned|expiresAt|bannedAt|banned|timeout/i.test(o.query));
+        }
+        return new Promise((resolve) => {
+            const nonce = 'gqlops' + Date.now() + Math.random().toString(36).slice(2, 8);
+            let done = false;
+            const timer = setTimeout(() => { if (!done) { done = true; resolve([]); } }, 800);
+            const handler = (ev) => {
+                if (ev.source !== window || !ev.data || ev.data.type !== 'TMOD_GET_GQLOPS_RESULT' || ev.data.nonce !== nonce) return;
+                if (done) return;
+                done = true;
+                clearTimeout(timer);
+                window.removeEventListener('message', handler);
+                resolve(Array.isArray(ev.data.data) ? ev.data.data : []);
+            };
+            window.addEventListener('message', handler);
+            window.postMessage({ type: 'TMOD_GET_GQLOPS', nonce }, '*');
+        });
+    }
+
+    // Достаёт первый узел ответа, где есть `isBanned` (плюс соседние поля).
+    function extractBanNode(root) {
+        if (!root || typeof root !== 'object') return null;
+        let found = null;
+        const walk = (v, depth) => {
+            if (found || depth > 24 || !v || typeof v !== 'object') return;
+            if (Array.isArray(v)) { for (const x of v) walk(x, depth + 1); return; }
+            if ('isBanned' in v && (typeof v.isBanned === 'boolean' || v.isBanned === null)) {
+                found = v;
+                return;
+            }
+            for (const k of Object.keys(v)) walk(v[k], depth + 1);
+        };
+        walk(root, 0);
+        return found;
+    }
+
+    async function gqlGetUserBanInfo(broadcasterId, targetId, token, extra) {
+        const ops = await getCapturedBanOps();
+        if (!ops || !ops.length) return { error: 'no-ban-op-captured' };
+        let lastError = null;
+        for (const op of ops) {
+            const argNames = Array.from(new Set(String(op.query).match(/\$([A-Za-z_][A-Za-z0-9_]*)/g) || []))
+                .map((s) => s.slice(1));
+            const variables = {};
+            let missing = false;
+            for (const a of argNames) {
+                if (/broadcast/i.test(a)) variables[a] = String(broadcasterId);
+                else if (/channel/i.test(a)) variables[a] = String(broadcasterId);
+                else if (/target/i.test(a)) variables[a] = String(targetId);
+                else if (/user/i.test(a) || /login/i.test(a)) variables[a] = (extra && extra.userLogin) || String(targetId);
+                else { missing = true; break; }
+            }
+            if (missing) continue;
+            for (const k of Object.keys(variables)) if (variables[k] == null) delete variables[k];
+            const r = await gqlRequest(op.query, variables, token);
+            if (!r.success) { lastError = r.error || null; continue; }
+            const node = extractBanNode(r.data);
+            if (node) return { data: node, op: op.op || null };
+            lastError = 'ban node not found in response';
         }
         return { error: lastError };
     }
@@ -3141,7 +3222,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                     });
                     // Статус бана из GQL веб-клиента (то же, что в карточке Mod View).
                     // Авторитетен в обе стороны: и подтверждает, и снимает устаревшее.
-                    const banGql = await gqlGetUserBanInfo(broadcasterId, userId, token);
+                    const banGql = await gqlGetUserBanInfo(broadcasterId, userId, token, { userLogin: modMenuState && modMenuState.userLogin });
                     debugLog('mod-ban-gql', banGql && banGql.data
                         ? { isBanned: banGql.data.isBanned, expiresAt: banGql.data.expiresAt, reason: banGql.data.reason }
                         : { error: banGql && banGql.error });
