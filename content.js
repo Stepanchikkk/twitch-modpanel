@@ -3310,6 +3310,187 @@ const announceText = content.querySelector('#tmod-announce-text');
         return imgs.length ? { isVip: false, isMod: false, isBroadcaster: false } : null;
     }
 
+    // --- «Действия модератора» (popout/moderator/<канал>/mod-actions) ---
+    // Список последних действий по юзерам («Забанен/Разбанен/Отстранен/Отстранение
+    // снято/статус VIP/...») виден только модератору — это наш авторитетный (и хоть
+    // какой-то вменяемый) источник текущего статуса банов, не зависящий от Helix.
+    // Попанут — это обычная страница twitch.tv, поэтому контент-скрипт там работает:
+    // парсит список, кладёт в storage, и панель в основной вкладке им пользуется.
+    const MOD_ACTIONS_STORAGE_KEY = 'tmod_mod_actions_v1';
+
+    function classifyModAction(t) {
+        const s = String(t || '').toLowerCase();
+        const o = { action: 'other', durationSec: null };
+        if (s.indexOf('разбанен') !== -1) o.action = 'unban';
+        else if (s.indexOf('отстранение снято') !== -1) o.action = 'untimeout';
+        else if (s.indexOf('снял статус vip') !== -1) o.action = 'vip-off';
+        else if (s.indexOf('предоставляет статус vip') !== -1) o.action = 'vip';
+        else if (s.indexOf('снял статус модератора') !== -1) o.action = 'mod-off';
+        else if (s.indexOf('предоставляет') !== -1) o.action = 'mod';
+        else if (s.indexOf('отстранен') !== -1) {
+            o.action = 'timeout';
+            const m = s.match(/на\s+(\d+)\s*(сек|секунд|минут|минуты|минуту)/);
+            if (m) o.durationSec = parseInt(m[1], 10) * (m[2].indexOf('сек') === 0 ? 1 : 60);
+        }
+        else if (s.indexOf('забанен') !== -1) o.action = 'ban';
+        return o;
+    }
+
+    function parseRelTs(t, now) {
+        const m = String(t || '').match(/(\d+)\s*(сек|секунд|минут|минуту|минуты|часов|час|дней|день|дня)/i);
+        if (!m) return null;
+        const n = parseInt(m[1], 10);
+        const u = m[2].toLowerCase();
+        let ms;
+        if (u.indexOf('сек') === 0) ms = n * 1000;
+        else if (u.indexOf('час') === 0) ms = n * 3600000;
+        else if (u.indexOf('дн') === 0 || u.indexOf('день') === 0 || u.indexOf('дня') === 0) ms = n * 86400000;
+        else ms = n * 60000;
+        return now - ms;
+    }
+
+    function extractModActionsFromDOM(now) {
+        const rows = [];
+        const seen = new Set();
+        const dump = [];
+        const actionRE = /(Забанен|Разбанен|Отстранен|Отстранение снято|предоставляет|статус VIP|снял статус)/i;
+        const loginRE = /\b([a-z0-9_]{3,25})\b/i;
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+            acceptNode: (n) => {
+                const t = String(n.textContent || '').trim();
+                return actionRE.test(t) && t.length < 180 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+            }
+        });
+        const nodes = [];
+        while (walker.nextNode()) nodes.push(walker.currentNode);
+        for (const node of nodes) {
+            const txt = String(node.textContent || '').trim();
+            let el = document.createElement('div');
+            try { el = node.parentElement; } catch (e) {}
+            let row = null;
+            for (let d = 0; el && d < 6; el = el.parentElement, d++) {
+                const t = String(el.textContent || '').trim();
+                if (t.length < 400 && loginRE.test(t)) { row = el; break; }
+            }
+            if (!row) { if (dump.length < 12) dump.push(txt.slice(0, 140)); continue; }
+            const key = txt.slice(0, 120);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const rt = txt.match(/•\s*(.+)$/);
+            const rm = row.textContent.match(loginRE);
+            const rowTxt = String(row.textContent || '');
+            const firstCap = rowTxt.search(loginRE);
+            const login = rm ? rm[1].toLowerCase() : null;
+            const cls = classifyModAction(txt);
+            const entry = { login, action: cls.action, durationSec: cls.durationSec, tsMs: parseRelTs(rt ? rt[1] : null, now), raw: txt.slice(0, 160) };
+            if (login && cls.action !== 'other') rows.push(entry);
+            if (dump.length < 12 && rowTxt.length < 200) dump.push(rowTxt.trim().slice(0, 190));
+        }
+        return { rows, dump };
+    }
+
+    // Резервный путь: сырой массив действий из fiber-пропсов (если DOM не разобрался).
+    function extractModActionsFromFiber(now) {
+        const out = [];
+        let budget = 300000;
+        const seen = new Set();
+        const walk = (v, depth) => {
+            if (!budget || depth > 22 || v == null) return;
+            if (typeof v !== 'object') return;
+            budget--;
+            if (typeof v === 'string' && v.length < 200 && /\bразбанен\b|\bзабанен\b/i.test(v)) return;
+            if (Array.isArray(v)) { for (const x of v) walk(x, depth + 1); return; }
+            if (seen.has(v)) return;
+            try { seen.add(v); } catch (e) { return; }
+            const arr = v.memoizedProps || v.pendingProps || v.props || null;
+            if (arr && typeof arr === 'object') {
+                const scan = (o) => {
+                    if (!o || typeof o !== 'object') return;
+                    const tu = o.targetUser || o.user || o.chatter || null;
+                    let act = null;
+                    if (typeof o.action === 'string' && o.action.length < 120) act = o.action;
+                    else if (typeof o.moderationAction === 'string') act = o.moderationAction;
+                    else if (typeof o.actionType === 'string') act = o.actionType;
+                    const ts = o.timestamp || o.time || o.createdAt || null;
+                    if (tu && act !== null) {
+                        const login = sanitizeLogin(tu.login || tu.userLogin || (typeof tu.displayName === 'string' ? tu.displayName : ''));
+                        const cls = classifyModAction(act);
+                        if (login) out.push({ login, action: cls.action, durationSec: cls.durationSec, tsMs: ts || null, raw: act.slice(0, 160), src: 'fiber' });
+                    }
+                };
+                if (Array.isArray(arr)) { for (const x of arr) scan(x); }
+                else if (Array.isArray(arr.data)) { for (const x of arr.data) scan(x); }
+                else if (Array.isArray(arr.results)) { for (const x of arr.results) scan(x); }
+            }
+            for (const k of ['child', 'children', 'sibling', 'return']) {
+                const c = v[k];
+                if (c && typeof c === 'object') walk(c, depth + 1);
+            }
+        };
+        const root = document.body ? getReactFiber(document.body) : null;
+        if (root) { try { walk(root, 0); } catch (e) {} }
+        return out;
+    }
+
+    async function collectModActions() {
+        const now = Date.now();
+        const domRes = extractModActionsFromDOM(now);
+        const fiberRes = extractModActionsFromFiber(now);
+        const byKey = new Map();
+        const add = (e) => {
+            if (!e || !e.login) return;
+            const k = e.login + '|' + e.action + '|' + (e.tsMs || '');
+            if (byKey.has(k)) return;
+            byKey.set(k, e);
+        };
+        for (const e of domRes.rows) add(e);
+        for (const e of fiberRes) add(e);
+        return { entries: Array.from(byKey.values()), dump: domRes.dump || [] };
+    }
+
+    async function modActionsStatusFor(userId, targetLogin) {
+        try {
+            const raw = await storageGet(MOD_ACTIONS_STORAGE_KEY);
+            if (!raw || !Array.isArray(raw.entries) || !raw.entries.length) return null;
+            const lg = sanitizeLogin(targetLogin);
+            if (!lg) return null;
+            let best = null;
+            for (const e of raw.entries) {
+                if (sanitizeLogin(e.login) !== lg) continue;
+                const ts = e.tsMs || 0;
+                if (!best || ts > best.tsMs) best = e;
+            }
+            if (!best) return null;
+            const out = { isBanned: null, isTimedOut: null, banExpiresAt: null };
+            if (best.action === 'ban') out.isBanned = true;
+            else if (best.action === 'unban') out.isBanned = false;
+            else if (best.action === 'timeout') {
+                out.isTimedOut = true;
+                if (best.durationSec) out.banExpiresAt = new Date((best.tsMs || Date.now()) + best.durationSec * 1000).toISOString();
+            } else if (best.action === 'untimeout') out.isTimedOut = false;
+            return out;
+        } catch (e) { return null; }
+    }
+
+    function maybeCaptureModActions() {
+        if (!/^\/popout\/moderator\/[^/]+\/mod-actions/.test(location.pathname)) return;
+        const attempt = (tryNum) => {
+            setTimeout(async () => {
+                const res = await collectModActions();
+                if (res.entries.length) {
+                    await storageSet(MOD_ACTIONS_STORAGE_KEY, { entries: res.entries, fetchedAt: Date.now() });
+                    debugLog('mod-actions-x', { count: res.entries.length, sample: res.entries.slice(0, 6).map((e) => e.login + ':' + e.action) });
+                } else if (tryNum < 2) {
+                    debugLog('mod-actions-x', { count: 0, note: 'retry ' + tryNum });
+                    attempt(tryNum + 1);
+                } else {
+                    debugLog('mod-actions-x', { count: 0, note: 'no rows parsed', dump: (res.dump || []).slice(0, 10) });
+                }
+            }, tryNum === 0 ? 3000 : 7000);
+        };
+        attempt(0);
+    }
+
     // Статус бана/таймаута: для модератора точный ответ даёт GQL userBanInfo
     // (то, что рисует карточка Mod View); роли через GQL не берём — ненадёжны
     // (не различают мод/не-мод, вип/не-вип), их источник — карточка/фiber/записи.
@@ -3623,6 +3804,17 @@ const announceText = content.querySelector('#tmod-announce-text');
                     status.banExpiresAt = null;
                 }
                 await modLocalRemove(userId, statusChannelId, 'ban').catch(() => {});
+            }
+        }
+        // «Действия модератора» (попанут, storage): последнее действие по юзеру
+        // заполняет только NULL-статусы — карточка/GQL выше имеют приоритет.
+        if (status.isBanned == null || status.isTimedOut == null) {
+            const acts = await modActionsStatusFor(userId, modMenuState && modMenuState.userLogin);
+            if (acts) {
+                debugLog('mod-actions-status', acts);
+                if (typeof acts.isBanned === 'boolean' && status.isBanned == null) status.isBanned = acts.isBanned;
+                if (typeof acts.isTimedOut === 'boolean' && status.isTimedOut == null) status.isTimedOut = acts.isTimedOut;
+                if (acts.banExpiresAt) status.banExpiresAt = acts.banExpiresAt;
             }
         }
         // Финальное взаимоисключение мода и VIP после всех источников (карточка
@@ -4362,6 +4554,7 @@ const announceText = content.querySelector('#tmod-announce-text');
             if (ev.source !== window || !ev.data || ev.data.type !== 'TMOD_GQL_OP_CAPTURED' || !ev.data.key) return;
             persistGqlOp(ev.data.key, ev.data.rec || {});
         });
+        maybeCaptureModActions();
         getPanelSettings().then((s) => { tmodContextMenuEnabled = s.contextMenu !== false; });
         getToken().then((t) => {
             modTokenCache = !!t;
