@@ -2433,6 +2433,28 @@ const announceText = content.querySelector('#tmod-announce-text');
         );
     }
 
+    // Статус бана/таймаута юзера канала через внутренний GQL веб-клиента — то самое,
+    // чем рисуется секция «Забанен/Отстранён» в карточке Mod View. Работает и для
+    // модераторского токена (Helix moderation/banned для него даёт 401), без открытия
+    // карточки. expiriesAt: null = перманентный бан, дата = таймаут до неё.
+    async function gqlGetUserBanInfo(broadcasterId, targetId, token) {
+        const vars = { broadcasterID: String(broadcasterId), targetID: String(targetId) };
+        const candidates = [
+            'query userBanInfo($broadcasterID: ID!, $targetID: ID!) { userBanInfo(broadcasterID: $broadcasterID, targetID: $targetID) { isBannable isBanned bannedAt expiresAt reason isPermanentBan } }',
+            'query userBanInfo($broadcasterID: ID!, $targetID: ID!) { userBanInfo(broadcasterID: $broadcasterID, targetID: $targetID) { isBannable isBanned bannedAt expiresAt reason } }'
+        ];
+        let lastError = null;
+        for (const query of candidates) {
+            const r = await gqlRequest(query, vars, token);
+            if (!r.success) { lastError = r.error || null; continue; }
+            try {
+                const d = (r.data && r.data.userBanInfo) || null;
+                if (d && typeof d === 'object') return { data: d };
+            } catch (e) { lastError = String(e && e.message || e); }
+        }
+        return { error: lastError };
+    }
+
     // ============================================================================
     // Меню модерации (ПКМ по сообщению в чате)
     // ============================================================================
@@ -3059,9 +3081,9 @@ const announceText = content.querySelector('#tmod-announce-text');
         return imgs.length ? { isVip: false, isMod: false, isBroadcaster: false } : null;
     }
 
-    // Роли цели: авторитетен только открытый карточка юзера. GQL-роли Twitch
-    // ненадёжны (не различают мод/не-мод, вип/не-вип) и убраны; для статуса
-    // бан/таймаут они не использовались.
+    // Статус бана/таймаута: для модератора точный ответ даёт GQL userBanInfo
+    // (то, что рисует карточка Mod View); роли через GQL не берём — ненадёжны
+    // (не различают мод/не-мод, вип/не-вип), их источник — карточка/фiber/записи.
     async function fetchModStatus(userId) {
         const channel = getChannelName();
         const token = await getToken();
@@ -3117,6 +3139,19 @@ const announceText = content.querySelector('#tmod-announce-text');
                         present: chattersPresent,
                         capped: chattersCapped
                     });
+                    // Статус бана из GQL веб-клиента (то же, что в карточке Mod View).
+                    // Авторитетен в обе стороны: и подтверждает, и снимает устаревшее.
+                    const banGql = await gqlGetUserBanInfo(broadcasterId, userId, token);
+                    debugLog('mod-ban-gql', banGql && banGql.data
+                        ? { isBanned: banGql.data.isBanned, expiresAt: banGql.data.expiresAt, reason: banGql.data.reason }
+                        : { error: banGql && banGql.error });
+                    if (banGql && banGql.data && typeof banGql.data.isBanned === 'boolean') {
+                        const g = banGql.data;
+                        status.isBanned = g.isBanned && !g.expiresAt;
+                        status.isTimedOut = g.isBanned && !!g.expiresAt;
+                        status.banExpiresAt = g.expiresAt ? String(g.expiresAt) : null;
+                        status.banCreatedAt = g.bannedAt ? String(g.bannedAt) : null;
+                    }
                 }
             }
         }
