@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Twitch ModPanel",
-  "version": "0.1.2.0",
+  "version": "0.1.3.0",
   "description": "Панель модератора для Twitch — быстрый и удобный доступ к инструментам модерации и управления трансляцией.",
   "permissions": [
     "storage",
