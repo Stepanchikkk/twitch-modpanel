@@ -296,6 +296,7 @@
         const orig = window.fetch;
         if (typeof orig !== 'function') return;
         const capSize = 60;
+        window.__tmod_gql_logged = 0;
         window.fetch = function (input, init) {
             try {
                 const url = typeof input === 'string' ? input : (input && input.url) || '';
@@ -309,6 +310,10 @@
                         const textBan = /isBanned|expiresAt|bannedAt|banned|timeout/i.test(q);
                         const nameBan = opName && /viewer|usercard|ban|timeout|banned|modview|mod/i.test(opName);
                         const interesting = (hasText && textBan) || nameBan || (hasText && /\buser\s*\{/.test(q));
+                        if (window.__tmod_gql_logged < 300) {
+                            window.__tmod_gql_logged++;
+                            console.log('[TModAPI] gql request', opName || '(anon)', 'text=' + q.length, hasText ? (textBan ? 'ban-text' : 'plain') : 'persisted', hash ? hash.slice(0, 8) : '', interesting ? '->keep' : '');
+                        }
                         if (interesting) {
                             const key = opName || (hash ? ('hash:' + hash.slice(0, 12)) : ('q:' + q.slice(0, 60)));
                             const prev = store[key];

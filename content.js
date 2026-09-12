@@ -2591,7 +2591,8 @@ const announceText = content.querySelector('#tmod-announce-text');
 
     async function gqlGetUserBanInfo(broadcasterId, targetId, token, ctx) {
         const ops = await getCapturedBanOps();
-        if (!ops || !ops.length) return { error: 'no-ban-op-captured' };
+        const capSummary = () => ops.map((o) => (o.op || '?') + (o.query ? ':text' : ':hash'));
+        if (!ops || !ops.length) return { error: 'no-ban-op-captured', captured: capSummary() };
         ctx = ctx || {};
         let lastError = null;
         for (const op of ops) {
@@ -2605,7 +2606,7 @@ const announceText = content.querySelector('#tmod-announce-text');
             if (node) return { data: node, op: op.op || null };
             lastError = 'ban node not found in response';
         }
-        return { error: lastError || 'ban node not found in response' };
+        return { error: lastError || 'ban node not found in response', captured: capSummary() };
     }
 
     // ============================================================================
@@ -3300,7 +3301,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                     });
                     debugLog('mod-ban-gql', banGql && banGql.data
                         ? { isBanned: banGql.data.isBanned, expiresAt: banGql.data.expiresAt, reason: banGql.data.reason }
-                        : { error: banGql && banGql.error });
+                        : { error: banGql && banGql.error, captured: banGql && banGql.captured });
                     if (banGql && banGql.data && typeof banGql.data.isBanned === 'boolean') {
                         const g = banGql.data;
                         status.isBanned = g.isBanned && !g.expiresAt;
