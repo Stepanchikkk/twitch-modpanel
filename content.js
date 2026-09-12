@@ -3480,21 +3480,64 @@ const announceText = content.querySelector('#tmod-announce-text');
 
     function maybeCaptureModActions() {
         if (!/^\/popout\/moderator\/[^/]+\/mod-actions/.test(location.pathname)) return;
-        const attempt = (tryNum) => {
+        // Список подгружается после логина и рендера — пробуем несколько раз с паузами.
+        const delays = [2500, 5000, 8000, 13000, 20000, 28000];
+        const attempt = (idx) => {
+            if (idx >= delays.length) return;
             setTimeout(async () => {
                 const res = await collectModActions();
                 if (res.entries.length) {
                     await storageSet(MOD_ACTIONS_STORAGE_KEY, { entries: res.entries, fetchedAt: Date.now() });
                     debugLog('mod-actions-x', { count: res.entries.length, sample: res.entries.slice(0, 6).map((e) => e.login + ':' + e.action) });
-                } else if (tryNum < 2) {
-                    debugLog('mod-actions-x', { count: 0, note: 'retry ' + tryNum, counts: res.counts, dump: (res.dump || []).slice(0, 8) });
-                    attempt(tryNum + 1);
-                } else {
-                    debugLog('mod-actions-x', { count: 0, note: 'no rows parsed', counts: res.counts, dump: (res.dump || []).slice(0, 8) });
+                    return;
                 }
-            }, tryNum === 0 ? 3000 : 7000);
+                debugLog('mod-actions-x', { count: 0, note: 'round ' + idx, counts: res.counts, dump: (res.dump || []).slice(0, 8) });
+                attempt(idx + 1);
+            }, delays[idx]);
         };
         attempt(0);
+    }
+
+    let modActionsFreshening = null;
+    async function ensureFreshModActions() {
+        // Сам попанут уже заполняет storage — тут всё на месте.
+        if (/^\/popout\/moderator\/[^/]+\/mod-actions/.test(location.pathname)) return null;
+        if (modActionsFreshening) return modActionsFreshening;
+        modActionsFreshening = (async () => {
+            const read = await storageGet(MOD_ACTIONS_STORAGE_KEY).catch(() => null);
+            const fresh = read && Array.isArray(read.entries) && read.entries.length
+                && read.fetchedAt && (Date.now() - read.fetchedAt) < 180000;
+            if (fresh) return read;
+            if (!IS_EXTENSION) return null; // userscript: попанут открывается вручную
+            const channel = (modMenuState && modMenuState.channel) || getChannelName();
+            if (!channel) return null;
+            const start = Date.now();
+            let opened = false;
+            try {
+                const r = await chrome.runtime.sendMessage({
+                    type: 'OPEN_MOD_ACTIONS_WINDOW',
+                    url: 'https://www.twitch.tv/popout/moderator/' + channel + '/mod-actions'
+                }).catch(() => ({ success: false }));
+                opened = !!(r && r.success);
+                debugLog('mod-actions-open', { channel, opened });
+            } catch (e) {
+                debugLog('mod-actions-open', { channel, error: e.message });
+            }
+            if (!opened) return null;
+            // Ждём свежий снимок от попанута (каждые 2 с до 32 с), потом закрываем окно.
+            for (let i = 0; i < 16; i++) {
+                await new Promise((res) => setTimeout(res, 2000));
+                const r2 = await storageGet(MOD_ACTIONS_STORAGE_KEY).catch(() => null);
+                if (r2 && r2.fetchedAt >= start && Array.isArray(r2.entries) && r2.entries.length) {
+                    debugLog('mod-actions-open', { got: r2.entries.length });
+                    try { await chrome.runtime.sendMessage({ type: 'CLOSE_MOD_ACTIONS_WINDOW' }).catch(() => {}); } catch (e) {}
+                    return r2;
+                }
+            }
+            try { await chrome.runtime.sendMessage({ type: 'CLOSE_MOD_ACTIONS_WINDOW' }).catch(() => {}); } catch (e) {}
+            return null;
+        })().finally(() => { modActionsFreshening = null; });
+        return modActionsFreshening;
     }
 
     // Статус бана/таймаута: для модератора точный ответ даёт GQL userBanInfo
@@ -3815,6 +3858,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         // «Действия модератора» (попанут, storage): последнее действие по юзеру
         // заполняет только NULL-статусы — карточка/GQL выше имеют приоритет.
         if (status.isBanned == null || status.isTimedOut == null) {
+            await ensureFreshModActions();
             const acts = await modActionsStatusFor(userId, modMenuState && modMenuState.userLogin);
             if (acts) {
                 debugLog('mod-actions-status', acts);

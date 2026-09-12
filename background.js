@@ -147,6 +147,9 @@ async function saveTokenAndUser(token, resolve) {
 // Хелперы
 // ============================================================================
 
+// Окно «Действия модератора», открытое по запросу панели (чтобы закрыть его позже).
+let modActionsWindowId = null;
+
 async function getToken() {
     const result = await chrome.storage.local.get([STORAGE_KEY_TOKEN]);
     return result[STORAGE_KEY_TOKEN] || null;
@@ -184,6 +187,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             .then(async (r) => sendResponse({ success: true, status: r.status, text: await r.text() }))
             .catch((e) => sendResponse({ success: false, error: e.message }));
         return true;
+    } else if (message.type === 'OPEN_MOD_ACTIONS_WINDOW') {
+        // «Действия модератора» открываются в фоне, их контент-скрипт парсит список
+        // и пишет в storage, после чего панель просит закрыть окно.
+        chrome.windows.create({
+            url: message.url || 'https://www.twitch.tv/',
+            type: 'popup',
+            width: 460,
+            height: 760,
+            focused: false
+        }, (win) => {
+            if (win && win.id) modActionsWindowId = win.id;
+            sendResponse({ success: !!(win && win.id), id: win && win.id });
+        });
+        return true;
+    } else if (message.type === 'CLOSE_MOD_ACTIONS_WINDOW') {
+        if (modActionsWindowId != null) {
+            chrome.windows.remove(modActionsWindowId, () => { modActionsWindowId = null; });
+        }
+        sendResponse({ success: true });
+        return false;
     } else if (message.type === 'TMOD_DEBUG_LOG') {
         // Отладка панели: логи из content.js видны здесь, в консоли service worker
         // (chrome://extensions → «Отладка страниц» → service worker → Console).
