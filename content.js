@@ -3351,42 +3351,48 @@ const announceText = content.querySelector('#tmod-announce-text');
 
     function extractModActionsFromDOM(now) {
         const rows = [];
-        const seen = new Set();
+        const rowMap = new Map();
         const dump = [];
+        let totalEls = 0, withLen = 0, withAction = 0, withSep = 0, withLogin = 0;
         const actionRE = /(Забанен|Разбанен|Отстранен|Отстранение снято|предоставляет|статус VIP|снял статус)/i;
-        const loginRE = /\b([a-z0-9_]{3,25})\b/i;
-        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
-            acceptNode: (n) => {
-                const t = String(n.textContent || '').trim();
-                return actionRE.test(t) && t.length < 180 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
-            }
-        });
-        const nodes = [];
-        while (walker.nextNode()) nodes.push(walker.currentNode);
-        for (const node of nodes) {
-            const txt = String(node.textContent || '').trim();
-            let el = document.createElement('div');
-            try { el = node.parentElement; } catch (e) {}
-            let row = null;
-            for (let d = 0; el && d < 6; el = el.parentElement, d++) {
-                const t = String(el.textContent || '').trim();
-                if (t.length < 400 && loginRE.test(t)) { row = el; break; }
-            }
-            if (!row) { if (dump.length < 12) dump.push(txt.slice(0, 140)); continue; }
-            const key = txt.slice(0, 120);
-            if (seen.has(key)) continue;
-            seen.add(key);
-            const rt = txt.match(/•\s*(.+)$/);
-            const rm = row.textContent.match(loginRE);
-            const rowTxt = String(row.textContent || '');
-            const firstCap = rowTxt.search(loginRE);
-            const login = rm ? rm[1].toLowerCase() : null;
-            const cls = classifyModAction(txt);
-            const entry = { login, action: cls.action, durationSec: cls.durationSec, tsMs: parseRelTs(rt ? rt[1] : null, now), raw: txt.slice(0, 160) };
-            if (login && cls.action !== 'other') rows.push(entry);
-            if (dump.length < 12 && rowTxt.length < 200) dump.push(rowTxt.trim().slice(0, 190));
+        let els = [];
+        try { els = Array.from(document.querySelectorAll('div,li,section,article')); } catch (e) { return { rows, dump, counts: { totalEls, withLen, withAction, withSep, withLogin } }; }
+        for (const el of els) {
+            totalEls++;
+            const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+            if (t.length < 40 || t.length > 700) continue;
+            withLen++;
+            if (!actionRE.test(t)) continue;
+            withAction++;
+            const sep = t.indexOf('•');
+            if (sep === -1) continue;
+            withSep++;
+            const mt = t.match(/^([a-z0-9_]{3,25})\b/i);
+            if (!mt) continue;
+            withLogin++;
+            const login = mt[1].toLowerCase();
+            const phrase = t.slice(mt[0].length, sep).trim();
+            const cls = classifyModAction(phrase);
+            if (cls.action === 'other') continue;
+            const timeTxt = t.slice(sep + 1).trim();
+            const rowKey = login + '|' + phrase;
+            const prev = rowMap.get(rowKey);
+            if (prev && prev.len <= t.length) continue;
+            rowMap.set(rowKey, { login, action: cls.action, durationSec: cls.durationSec, tsMs: parseRelTs(timeTxt, now), raw: t.slice(0, 160), len: t.length, el });
         }
-        return { rows, dump };
+        for (const e of rowMap.values()) {
+            rows.push({ login: e.login, action: e.action, durationSec: e.durationSec, tsMs: e.tsMs, raw: e.raw });
+            if (dump.length < 10) {
+                let chain = [];
+                let node = e.el;
+                for (let d = 0; node && chain.length < 6; node = node.parentElement, d++) {
+                    const cls = String(node.className || '').split(' ').slice(0, 3).map((x) => x.slice(0, 30)).join('.');
+                    chain.push(node.tagName.toLowerCase() + (cls ? '.' + cls : ''));
+                }
+                dump.push(e.raw + ' | CHAIN=' + chain.join(' < '));
+            }
+        }
+        return { rows, dump, counts: { totalEls, withLen, withAction, withSep, withLogin, rows: rows.length } };
     }
 
     // Резервный путь: сырой массив действий из fiber-пропсов (если DOM не разобрался).
@@ -3445,7 +3451,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         };
         for (const e of domRes.rows) add(e);
         for (const e of fiberRes) add(e);
-        return { entries: Array.from(byKey.values()), dump: domRes.dump || [] };
+        return { entries: Array.from(byKey.values()), dump: domRes.dump || [], counts: domRes.counts || null };
     }
 
     async function modActionsStatusFor(userId, targetLogin) {
@@ -3481,10 +3487,10 @@ const announceText = content.querySelector('#tmod-announce-text');
                     await storageSet(MOD_ACTIONS_STORAGE_KEY, { entries: res.entries, fetchedAt: Date.now() });
                     debugLog('mod-actions-x', { count: res.entries.length, sample: res.entries.slice(0, 6).map((e) => e.login + ':' + e.action) });
                 } else if (tryNum < 2) {
-                    debugLog('mod-actions-x', { count: 0, note: 'retry ' + tryNum });
+                    debugLog('mod-actions-x', { count: 0, note: 'retry ' + tryNum, counts: res.counts, dump: (res.dump || []).slice(0, 8) });
                     attempt(tryNum + 1);
                 } else {
-                    debugLog('mod-actions-x', { count: 0, note: 'no rows parsed', dump: (res.dump || []).slice(0, 10) });
+                    debugLog('mod-actions-x', { count: 0, note: 'no rows parsed', counts: res.counts, dump: (res.dump || []).slice(0, 8) });
                 }
             }, tryNum === 0 ? 3000 : 7000);
         };
