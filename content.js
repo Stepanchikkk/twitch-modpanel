@@ -3189,7 +3189,7 @@ const announceText = content.querySelector('#tmod-announce-text');
             const when = mAgo ? ' • ' + String(mAgo[0]).trim()
                 : /сейчас|только что|менее\s+минуты/i.test(seg) ? ' • сейчас' : '';
             const text = (desc + (mFrom ? ' • от ' + mFrom[1] : '') + when).replace(/\s+/g, ' ').trim();
-            if (text) out.statusText = text.replace(/^./, (c) => c.toUpperCase());
+            if (text) out.statusText = passiveVerb(text.replace(/^./, (c) => c.toUpperCase()));
         }
         // Время окончания таймаута: по строкам действий карточки («отстраняет
         // пользователя <login> на N секунд» + ISO-время старта из id).
@@ -3446,9 +3446,9 @@ const announceText = content.querySelector('#tmod-announce-text');
                             const ago = timeAgoMs(new Date(b.created_at).getTime());
                             if (b.expires_at) {
                                 const dur = fmtDurShort(new Date(b.expires_at).getTime() - new Date(b.created_at).getTime());
-                                status.statusText = `Отстранить на ${dur} на ${channel} • от ${mod} • ${ago}`;
+                                status.statusText = `Отстранён на ${dur} на ${channel} • от ${mod} • ${ago}`;
                             } else {
-                                status.statusText = `Забанен на ${channel} • от ${mod} • ${ago}`;
+                                status.statusText = `Забанён на ${channel} • от ${mod} • ${ago}`;
                             }
                         }
                     }
@@ -3796,6 +3796,17 @@ const announceText = content.querySelector('#tmod-announce-text');
         const h = Math.floor(m / 60);
         return h + ' ч назад';
     }
+    // Краткое причастие по глаголу, оставшемуся в строке карточки: в карточке
+    // пишется инфинитив («Забанить на …», «Отстранить на …»), а в плашке нужна
+    // краткая пассивная форма («Забанён на …», «Отстранён на …»).
+    function passiveVerb(text) {
+        const t = String(text || '').trim();
+        const first = t.split(/\s+/)[0] || '';
+        const l = first.toLowerCase();
+        if (l === 'забанить' || l === 'забанит') return 'Забанён' + t.slice(first.length);
+        if (l === 'отстранить' || l === 'отстранит') return 'Отстранён' + t.slice(first.length);
+        return t;
+    }
     // Длительность таймаута/бана в русском формате («10.5 мин», «1 ч»).
     function fmtDurShort(ms) {
         const total = Math.max(0, Math.round(ms / 1000));
@@ -3809,9 +3820,9 @@ const announceText = content.querySelector('#tmod-announce-text');
     function localStatusText(kind, createdAtMs, expiresAtMs) {
         const me = modUserLogin() || 'вы';
         const chan = getChannelName() || 'канал';
-        if (kind === 'ban') return `Забанен на ${chan} • от ${me} • ${timeAgoMs(createdAtMs)}`;
+        if (kind === 'ban') return `Забанён на ${chan} • от ${me} • ${timeAgoMs(createdAtMs)}`;
         const dur = expiresAtMs ? fmtDurShort(expiresAtMs - createdAtMs) : '';
-        return `Отстранить на ${dur} на ${chan} • от ${me} • ${timeAgoMs(createdAtMs)}`;
+        return `Отстранён на ${dur} на ${chan} • от ${me} • ${timeAgoMs(createdAtMs)}`;
     }
     // Кэш ID канала (channelName -> id) и текущего юзера — не меняются между
     // открытиями меню, каждый раз их заново запрашивать незачем.
@@ -4066,7 +4077,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         const s = modMenuState?.status || {};
         const chips = [];
         if (s.isTimedOut === true) chips.push(['timedout', 'Отстранён']);
-        if (s.isBanned === true) chips.push(['banned', 'Забанен']);
+        if (s.isBanned === true) chips.push(['banned', 'Забанён']);
         if (s.isBlocked === true) chips.push(['blocked', 'В блоке']);
         host.innerHTML = chips.map(([cls, label]) => `<span class="mm-chip ${cls}">${label}</span>`).join('');
     }
@@ -4145,7 +4156,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         } else {
             const by = s.banCreatedBy ? ` От: ${s.banCreatedBy}` : '';
             const agob = s.banCreatedAt ? ` • ${timeAgoMs(new Date(s.banCreatedAt).getTime())}` : '';
-            info.textContent = `Забанен (постоянный бан)${by}${agob}`;
+            info.textContent = `Забанён (постоянный бан)${by}${agob}`;
         }
         info.style.color = '#ff6b6b';
     }
