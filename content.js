@@ -3160,6 +3160,29 @@ const announceText = content.querySelector('#tmod-announce-text');
             && !/комментарии модерат|действия модератора|забанен|отстран/i.test(txt)) {
             return null;
         }
+        // Кто и когда выдал статус: строки карточки вида «…на <канал> • от <мод> •
+        // N минут/секунд назад». Режем окрестность строки статуса именно нашего канала
+        // (агрегированная секция «Комментарии модераторов» мешает счётчик и по другим
+        // каналам). Для таймаута точное время позже даст id строки действия; здесь —
+        // фолбэк/обогащение («от <мод>» + «N … назад»).
+        const toSec = (n, unit) => {
+            const u = String(unit || '').toLowerCase();
+            if (u.indexOf('сек') === 0) return n;
+            if (u.indexOf('минут') === 0 || u.indexOf('мин') === 0) return n * 60;
+            if (u.indexOf('час') === 0 || u.indexOf('часа') === 0) return n * 3600;
+            return n * 60;
+        };
+        const lineMatch = (lineTimeout && lineTimeout.exec(txt)) || (lineBan && lineBan.exec(txt));
+        if (lineMatch) {
+            const seg = txt.slice(lineMatch.index, Math.min(txt.length, lineMatch.index + 200));
+            const mFrom = seg.match(/\u2022\s*от\s+([a-z0-9_]{2,30})/i);
+            if (mFrom) out.banCreatedBy = mFrom[1];
+            const mAgo = seg.match(/(\d+)\s+(секунд[аы]?|минут[аы]?|мин\.?|час[ао]в?)\s+назад/i);
+            if (mAgo) {
+                const agoSec = toSec(parseInt(mAgo[1], 10), mAgo[2]);
+                if (agoSec > 0) out.banCreatedAt = new Date(Date.now() - agoSec * 1000).toISOString();
+            }
+        }
         // Время окончания таймаута: по строкам действий карточки («отстраняет
         // пользователя <login> на N секунд» + ISO-время старта из id).
         let exp = null, created = null;
@@ -3177,13 +3200,6 @@ const announceText = content.querySelector('#tmod-announce-text');
         // от <мод> • N минут/секунд назад». Точного времени старта тут нет — оцениваем
         // по «N … назад» от момента чтения.
         if (exp == null && hasTimeout) {
-            const toSec = (n, unit) => {
-                const u = String(unit || '').toLowerCase();
-                if (u.indexOf('сек') === 0) return n;
-                if (u.indexOf('минут') === 0 || u.indexOf('мин') === 0) return n * 60;
-                if (u.indexOf('час') === 0 || u.indexOf('часа') === 0) return n * 3600;
-                return n * 60;
-            };
             const durM = txt.match(/(?:отстранить|отстран[её]н)[^\u2022]{0,80}?на\s+(\d+)\s+(секунд[аы]?|минут[аы]?|мин\.?|час[ао]в?)/i);
             const agoM = txt.match(/(\d+)\s+(секунд[аы]?|минут[аы]?|мин\.?|час[ао]в?)\s+назад/i);
             if (durM && agoM) {
@@ -3214,6 +3230,14 @@ const announceText = content.querySelector('#tmod-announce-text');
     // TTL кэша статуса юзера: в пределах него повторное открытие меню рендерит сразу
     // (фон. обновление доводит точность), после — перечитываем заново.
     const MOD_STATUS_CACHE_TTL_MS = 25000;
+    // Персистентный кэш статусов юзеров (channel:userId -> статус): переживает
+    // перезагрузку страницы, чтобы первый ПКМ-клик по знакомому юзеру рендерился
+    // мгновенно (stale-while-revalidate: показываем старое, фоном досчитываем свежее).
+    const PERSISTENT_STATUS_CACHE_KEY = 'tmod_status_cache_v1';
+    // 500 записей × ~200Б ≈ 100КБ — порядки меньше лимита chrome.storage.local (5МБ).
+    const PERSISTENT_STATUS_CACHE_MAX = 500;
+    // Старше — уже не «старая инфа», а мусор: роли/баны за сутки наверняка изменились.
+    const PERSISTENT_STATUS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
     const CHAT_MESSAGE_SELECTORS = [
         '[data-test-selector="chat-line-message"]',
@@ -3297,7 +3321,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         const channel = getChannelName();
         const token = await getToken();
         if (!token) return { isBanned: null, isTimedOut: null, isVip: null, isMod: null, isBlocked: null, banExpiresAt: null, banCreatedAt: null };
-        const status = { isBanned: null, isTimedOut: null, isVip: null, isMod: null, isBlocked: null, banExpiresAt: null, banCreatedAt: null };
+        const status = { isBanned: null, isTimedOut: null, isVip: null, isMod: null, isBlocked: null, banExpiresAt: null, banCreatedAt: null, banCreatedBy: null };
         let statusChannelId = null;
         let isBroadcasterViewer = false;
         let chattersPresent = null;
@@ -3410,6 +3434,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                         status.isTimedOut = !!b && !!b.expires_at;
                         status.banExpiresAt = b ? (b.expires_at || null) : null;
                         status.banCreatedAt = b ? (b.created_at || null) : null;
+                        status.banCreatedBy = b ? (b.moderator_login || b.moderator_name || null) : null;
                     }
                     const vips = await helixCall(`https://api.twitch.tv/helix/channels/vips?broadcaster_id=${broadcasterId}&user_id=${userId}`);
                     debugLog('mod-vips-resp', { ok: vips.success, status: vips.status, error: vips.error });
@@ -3464,6 +3489,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                         await modLocalRemove(userId, statusChannelId, 'ban');
                     } else {
                         status.isBanned = true; status.banExpiresAt = null; status.banCreatedAt = localRec.createdAt;
+                        status.banCreatedBy = modUserLogin() || null;
                     }
                 }
             } else {
@@ -3475,6 +3501,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                             await modLocalRemove(userId, statusChannelId, 'timeout');
                         } else {
                             status.isTimedOut = true; status.banExpiresAt = localRec.expiresAt; status.banCreatedAt = localRec.createdAt;
+                            status.banCreatedBy = modUserLogin() || null;
                         }
                     }
                 } else {
@@ -3627,6 +3654,8 @@ const announceText = content.querySelector('#tmod-announce-text');
             } else {
                 status.isTimedOut = true; status.banExpiresAt = localRec.expiresAt; status.banCreatedAt = localRec.createdAt;
             }
+            // Действие выдано через саму панель — источник известен (мы).
+            status.banCreatedBy = modUserLogin() || null;
         }
         debugLog('mod-modview-resp', mv);
         if (mv && !cardStale) {
@@ -3637,9 +3666,11 @@ const announceText = content.querySelector('#tmod-announce-text');
                     status.isTimedOut = true;
                     status.banExpiresAt = mv.banExpiresAt;
                     status.banCreatedAt = mv.banCreatedAt;
+                    status.banCreatedBy = mv.banCreatedBy || null;
                 } else {
                     status.isTimedOut = false;
                     status.banExpiresAt = null;
+                    status.banCreatedBy = null;
                 }
                 await modLocalRemove(userId, statusChannelId, 'timeout').catch(() => {});
             }
@@ -3648,9 +3679,11 @@ const announceText = content.querySelector('#tmod-announce-text');
                     status.isBanned = true;
                     status.banExpiresAt = null;
                     status.banCreatedAt = null;
+                    status.banCreatedBy = mv.banCreatedBy || null;
                 } else {
                     status.isBanned = false;
                     status.banExpiresAt = null;
+                    status.banCreatedBy = null;
                 }
                 await modLocalRemove(userId, statusChannelId, 'ban').catch(() => {});
             }
@@ -3683,8 +3716,64 @@ const announceText = content.querySelector('#tmod-announce-text');
     // Идёт чтение карточки юзера (клики/прокрутка чата не должны закрывать меню).
     let modCardReadBusy = false;
     // Кэш последнего статуса по юзеру (channel:userId) — мгновенный рендер повторных
-    // открытий меню, фоновое обновление доводит за ~1с.
+    // открытий меню, фоновое обновление доводит за ~1с. Персистентный слой:
+    // загружается при старте (loadModStatusCache), пишется после каждого фетча
+    // (write-through) и чистится по LRU+TTL (pruneModStatusCache).
     let modStatusCache = {};
+
+    // Ключ кэша привязан к каналу: один и тот же зритель на разных каналах может иметь
+    // разные роли/статусы (VIP у одного стримера ≠ VIP у другого, бан тоже канальный).
+    function modStatusCacheKey(userId) {
+        return getChannelName() + ':' + String(userId);
+    }
+
+    // Write-through в хранилище. Не критичен: сбой сохранения лишь откатит нас к живому
+    // чтению при следующем открытии — поэтому fire-and-forget.
+    function persistModStatusCache() {
+        pruneModStatusCache();
+        storageSet(PERSISTENT_STATUS_CACHE_KEY, modStatusCache).catch(() => {});
+    }
+
+    // Разовые чистки: протухшие (TTL) убираем всегда, при переполнении — LRU.
+    function pruneModStatusCache() {
+        const now = Date.now();
+        let keys = Object.keys(modStatusCache);
+        for (const k of keys) {
+            const v = modStatusCache[k];
+            if (!v || !v.at || now - v.at > PERSISTENT_STATUS_CACHE_TTL_MS) delete modStatusCache[k];
+        }
+        keys = Object.keys(modStatusCache);
+        if (keys.length > PERSISTENT_STATUS_CACHE_MAX) {
+            keys.sort((a, b) => (modStatusCache[a].at || 0) - (modStatusCache[b].at || 0));
+            const drop = keys.length - PERSISTENT_STATUS_CACHE_MAX;
+            for (let i = 0; i < drop; i++) delete modStatusCache[keys[i]];
+        }
+    }
+
+    // Поднимает персистентный кэш в память при старте страницы. До первого открытия
+    // меню почти всегда успевает; даже если нет — меню просто рендерится без «старой
+    // инфы», как раньше, и заполняется живым фетчем.
+    async function loadModStatusCache() {
+        try {
+            const raw = await storageGet(PERSISTENT_STATUS_CACHE_KEY);
+            if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+                modStatusCache = raw;
+                pruneModStatusCache();
+                const n = Object.keys(modStatusCache).length;
+                if (n) debugLog('mod-status-cache-loaded', { entries: n });
+            }
+        } catch (e) {}
+    }
+
+    // «N сек/мин/час назад» (RU) для строк «От <мод> • … назад».
+    function timeAgoMs(ms) {
+        const s = Math.max(1, Math.round((Date.now() - ms) / 1000));
+        if (s < 60) return s + ' сек назад';
+        const m = Math.floor(s / 60);
+        if (m < 60) return m + ' мин назад';
+        const h = Math.floor(m / 60);
+        return h + ' ч назад';
+    }
     // Кэш ID канала (channelName -> id) и текущего юзера — не меняются между
     // открытиями меню, каждый раз их заново запрашивать незачем.
     const channelIdCache = {};
@@ -3809,8 +3898,11 @@ const announceText = content.querySelector('#tmod-announce-text');
         setMenuBusy(false);
         if (res.success) {
             // Действие поменяло статус юзера — кэш статуса теперь врёт, сбрасываем,
-            // чтобы refreshModMenuStatus перечитал свежее.
-            if (modMenuState) delete modStatusCache[getChannelName() + ':' + String(modMenuState.userId)];
+            // чтобы refreshModMenuStatus перечитал свежее (и память, и хранилище).
+            if (modMenuState) {
+                delete modStatusCache[modStatusCacheKey(modMenuState.userId)];
+                persistModStatusCache();
+            }
             setMenuStatus(res.viaChat ? `✓ ${label} — команда отправлена \`${res.viaChat}\`` : '✓ ' + label + ' — готово', 'ok');
             refreshModMenuStatus();
         } else {
@@ -3872,10 +3964,13 @@ const announceText = content.querySelector('#tmod-announce-text');
         // Кэш статуса: повторный клик по тому же юзеру в пределах TTL рендерит сразу,
         // без Helix-цепочки и чтения карточки (данные ещё свежие). По истечении TTL
         // выполняется полноценный перечитывающий фетч ниже — после него кэш обновляется.
-        const cacheKey = getChannelName() + ':' + String(snap.userId);
+        const cacheKey = modStatusCacheKey(snap.userId);
         const cached = modStatusCache[cacheKey];
         if (cached && cached.at > Date.now() - MOD_STATUS_CACHE_TTL_MS && String(cached.userId) === String(snap.userId)) {
-            modMenuState.status = cached.status;
+            // Вливаем кэш в текущий статус, не заменяя объект целиком: так сессионные
+            // флаги своего действия (applyInstantModStatus уже применил их) не теряются.
+            modMenuState.status = modMenuState.status || {};
+            Object.assign(modMenuState.status, cached.status);
             modCardReadBusy = false;
             renderModMenuChips();
             renderModMenuToggles();
@@ -3892,8 +3987,9 @@ const announceText = content.querySelector('#tmod-announce-text');
         if (String(modMenuState.userId) !== String(snap.userId)) return;
         modMenuState.status = status;
         // Запоминаем для мгновенного рендера повторного клика; заодно фетч свежий —
-        // кэш становится актуальным источником.
+        // кэш становится актуальным источником. Write-through в хранилище.
         modStatusCache[cacheKey] = { at: Date.now(), userId: String(snap.userId), status };
+        persistModStatusCache();
         modCardReadBusy = false;
         renderModMenuChips();
         renderModMenuToggles();
@@ -3976,8 +4072,10 @@ const announceText = content.querySelector('#tmod-announce-text');
                 return;
             }
             const given = created ? fmt(expires - created) : '?';
+            const by = s.banCreatedBy ? ` От: ${s.banCreatedBy}` : '';
+            const ago = created ? ` • ${timeAgoMs(created)}` : '';
             info.style.color = '#ffb3b3';
-            info.textContent = `Отстранён. Дано: ${given}. До конца: ${fmt(remain)}`;
+            info.textContent = `Отстранён. Дано: ${given}. До конца: ${fmt(remain)}${by}${ago}`;
             row.hidden = false;
             if (btn) btn.hidden = false;
         };
@@ -3997,7 +4095,9 @@ const announceText = content.querySelector('#tmod-announce-text');
             return;
         }
         row.hidden = false;
-        info.textContent = 'Забанен (постоянный бан)';
+        const by = s.banCreatedBy ? ` От: ${s.banCreatedBy}` : '';
+        const agob = s.banCreatedAt ? ` • ${timeAgoMs(new Date(s.banCreatedAt).getTime())}` : '';
+        info.textContent = `Забанен (постоянный бан)${by}${agob}`;
         info.style.color = '#ff6b6b';
     }
 
@@ -4079,6 +4179,15 @@ const announceText = content.querySelector('#tmod-announce-text');
 
     function showModMenu(data, msgEl) {
         closeModMenu();
+        // Stale-while-revalidate: если статус юзера на этом канале уже видели, заранее
+        // подкладываем его в меню — сразу же рендерятся чипсы VIP/мод/бан, а фоновый
+        // refreshModMenuStatus ниже досчитает свежее и перерисует. Копия делаем, чтобы
+        // живые действия (setSessionRole/runModAction) не мутировали запись кэша.
+        const cacheKey = modStatusCacheKey(data.userId);
+        const cached = modStatusCache[cacheKey];
+        const cachedStatus = cached && cached.status
+            && (Date.now() - (cached.at || 0) < PERSISTENT_STATUS_CACHE_TTL_MS)
+            ? Object.assign({}, cached.status) : null;
         modMenuState = {
             ...data,
             msgEl: msgEl || null,
@@ -4088,7 +4197,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                 isBroadcaster: data && (data.isBroadcaster === true || data.isBroadcaster === false) ? data.isBroadcaster : null,
                 userLogin: (data && data.userLogin) || null
             },
-            status: { isBanned: null, isVip: null, isMod: null, isBlocked: null }
+            status: cachedStatus || { isBanned: null, isTimedOut: null, isVip: null, isMod: null, isBlocked: null, banExpiresAt: null, banCreatedAt: null }
         };
 
         const menu = document.createElement('div');
@@ -4616,8 +4725,9 @@ const announceText = content.querySelector('#tmod-announce-text');
             if (window.location.pathname !== lastPath) {
                 const prevPath = lastPath;
                 lastPath = window.location.pathname;
-                // Кэши статусов юзеров и ID канала релевантны старому каналу — сбрасываем.
-                modStatusCache = {};
+                // Кэш статусов ключован по каналу (channel:userId) — записи других
+                // каналов не перепутаются и при возврате на канал рендерятся мгновенно,
+                // поэтому хранилище не сбрасываем. Кэш ID канала — наоборот, одноразовый.
                 delete channelIdCache[prevPath];
                 const btnWrapper = document.getElementById('tmod-btn-wrapper');
                 if (btnWrapper) btnWrapper.remove();
@@ -4648,6 +4758,8 @@ const announceText = content.querySelector('#tmod-announce-text');
     watchChannelChanges();
     initModerationMenu();
     initChatAutofocus();
+    // Персистентный кэш статусов в память — к первому ПКМ-клику почти наверняка готов.
+    loadModStatusCache();
     // Разовый дожимающий вход для пользователей со старыми правами. Отложен,
     // чтобы не спорить с остальным стартом и не мешать первому рендеру.
     setTimeout(ensureScopesFresh, 1500);
