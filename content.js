@@ -3224,6 +3224,19 @@ const announceText = content.querySelector('#tmod-announce-text');
             out.banCreatedAt = created ? new Date(created).toISOString() : null;
             out.banExpiresAt = new Date(exp).toISOString();
         }
+        // Если lineTimeout не матчит текст карточки (ModView может иметь другой
+        // формат), statusText остаётся null — достраиваем из targeted-mod-action
+        // данных, чтобы плашка показывала «Отстранён на N мин на канал • от мод • назад».
+        if (out.isTimedOut && !out.statusText && chan) {
+            const durMs = (exp && created) ? exp - created : null;
+            const durText = durMs ? fmtDurShort(durMs) : null;
+            const byText = out.banCreatedBy ? ` • от ${out.banCreatedBy}` : '';
+            const agoMs = created || null;
+            const agoText = agoMs ? ` • ${timeAgoMs(agoMs)}` : '';
+            out.statusText = passiveVerb(
+                `Отстранён${durText ? ' на ' + durText : ''} на ${chan}${byText}${agoText}`
+            );
+        }
         return out;
     }
 
