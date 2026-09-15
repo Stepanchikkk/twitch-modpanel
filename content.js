@@ -2433,28 +2433,6 @@ const announceText = content.querySelector('#tmod-announce-text');
         );
     }
 
-    // Статус бана/таймаута юзера канала через внутренний GQL веб-клиента — то самое,
-    // чем рисуется секция «Забанен/Отстранён» в карточке Mod View. Работает и для
-    // модераторского токена (Helix moderation/banned для него даёт 401), без открытия
-    // карточки. expiriesAt: null = перманентный бан, дата = таймаут до неё.
-    async function gqlGetUserBanInfo(broadcasterId, targetId, token) {
-        const vars = { broadcasterID: String(broadcasterId), targetID: String(targetId) };
-        const candidates = [
-            'query userBanInfo($broadcasterID: ID!, $targetID: ID!) { userBanInfo(broadcasterID: $broadcasterID, targetID: $targetID) { isBannable isBanned bannedAt expiresAt reason isPermanentBan } }',
-            'query userBanInfo($broadcasterID: ID!, $targetID: ID!) { userBanInfo(broadcasterID: $broadcasterID, targetID: $targetID) { isBannable isBanned bannedAt expiresAt reason } }'
-        ];
-        let lastError = null;
-        for (const query of candidates) {
-            const r = await gqlRequest(query, vars, token);
-            if (!r.success) { lastError = r.error || null; continue; }
-            try {
-                const d = (r.data && r.data.userBanInfo) || null;
-                if (d && typeof d === 'object') return { data: d };
-            } catch (e) { lastError = String(e && e.message || e); }
-        }
-        return { error: lastError };
-    }
-
     // ============================================================================
     // Меню модерации (ПКМ по сообщению в чате)
     // ============================================================================
@@ -2844,78 +2822,221 @@ const announceText = content.querySelector('#tmod-announce-text');
         return helixCall(`https://api.twitch.tv/helix/users/blocks?target_user_id=${userId}`, { method: unblock ? 'DELETE' : 'PUT' });
     }
 
-    // Клик по нику юзера в чате открывает карточку (viewer-карточку с бейджами ролей в
-    // обычном чате, либо панель Mod View со статусом бана/таймаута). Сообщение, из
-    // которого открыто меню, виртуализация чата могла уже пересоздать — поэтому ищем
-    // свежую копию сообщения юзера в живом DOM, но ТОЛЬКО среди сообщений чата
-    // (карточки канала в сайдбаре не задеваем). Кликать через интерфейс канал/ссылка,
-    // а не по DIV-контейнеру: синтетический клик по контейнеру карточку не открывает.
-    function openModViewCardFor(login) {
-        const lg = sanitizeLogin(login);
-        if (!lg) return false;
-        const clickEl = (el) => {
-            if (!el) return false;
-            try { debugLog('tmod-synth-click', { tag: el.tagName, data: el.getAttribute('data-a-target'), cls: String(el.className || '').slice(0, 80) }); } catch (e) {}
-            tmodSyntheticClick = true;
+    // Карточка юзера (viewer-карточка чата с бейджами ролей и панель Mod View со
+    // статусом бана/таймаута) открывается синтетическим кликом по нику юзера в чате.
+    // Селекторы карточки юзера (viewer-карточка чата и панель Mod View).
+    const VIEWER_CARD_SELECTORS = [
+        '[data-a-target="chat-user-card"]',
+        '[data-a-target="user-card"]',
+        '[data-test-selector="user-card"]',
+        '.chat-room__viewer-card',
+        '[data-a-target="mod-view-user-details"]',
+        '[data-test-selector="mod-view-user-details"]',
+        '[class*="viewer-card"]'
+    ];
+
+    // Пока читаем карточку, прячем её от глаз юзера (она всё равно рендерится и грузит
+    // данные — просто не рисуется). visibility, а не display: layout не меняется.
+    const TMOD_HIDE_CARD_ID = 'tmod-hide-card';
+    function setCardHiddenUI(hidden) {
+        try {
+            let style = document.getElementById(TMOD_HIDE_CARD_ID);
+            if (hidden && !style) {
+                style = document.createElement('style');
+                style.id = TMOD_HIDE_CARD_ID;
+                style.textContent = VIEWER_CARD_SELECTORS.join(', ')
+                    + ' { visibility: hidden !important; pointer-events: none !important; }';
+                (document.head || document.documentElement).appendChild(style);
+            } else if (!hidden && style) {
+                style.remove();
+            }
+        } catch (e) {}
+    }
+
+    function cardEls() {
+        try { return Array.from(document.querySelectorAll(VIEWER_CARD_SELECTORS.join(', '))); } catch (e) { return []; }
+    }
+
+    function isCardVisible(el) {
+        if (!el || !el.isConnected) return false;
+        try {
+            const cs = window.getComputedStyle(el);
+            if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0) return false;
+            const r = el.getBoundingClientRect();
+            return r.width > 2 && r.height > 2
+                && r.bottom > 0 && r.right > 0 && r.top < window.innerHeight && r.left < window.innerWidth;
+        } catch (e) { return false; }
+    }
+
+    // Открыта ли карточка (по реальной видимости, не считая собственный tmod-hide-card).
+    function cardStillOpen() {
+        let open = false;
+        let style = null;
+        try { style = document.getElementById(TMOD_HIDE_CARD_ID); } catch (e) {}
+        if (style) style.remove();
+        try { open = cardEls().some(isCardVisible); } catch (e) {}
+        if (style && !document.getElementById(TMOD_HIDE_CARD_ID)) {
+            try { (document.head || document.documentElement).appendChild(style); } catch (e) {}
+        }
+        return open;
+    }
+
+    const cardSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    // Синхронный «полный набор» событий над элементом (pointer + мышь, down..up). Без
+    // него кнопка «Скрыть» карточку не закрывает — одного dispatchEvent(click) мало.
+    function synthFire(el, x, y, withClick) {
+        const base = {
+            bubbles: true, cancelable: true, composed: true, view: window,
+            button: 0, clientX: x, clientY: y, screenX: x, screenY: y,
+            keyCode: 0, which: 1
+        };
+        const fire = (Ctor, type) => {
             try {
-                el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window, composed: true }));
-            } catch (e) {} finally {
-                tmodSyntheticClick = false;
-            }
-            return true;
+                el.dispatchEvent(new Ctor(type, Object.assign({}, base, {
+                    pointerType: 'mouse', pointerId: 1, isPrimary: true,
+                    buttons: type === 'pointerup' || type === 'mouseup' || type === 'click' ? 0 : 1,
+                    pressure: type === 'pointerup' ? 0 : 0.5
+                })));
+            } catch (e) {}
         };
-        const anchorSel = 'a[href="/' + CSS.escape(lg) + '"]';
-        const pick = (node) => {
-            for (const sel of [anchorSel, '[data-a-target="chat-line-avatar"]', '[data-a-target="chat-line-username"]']) {
-                let el = null;
-                try { el = node.querySelector(sel); } catch (e) {}
-                if (el) return el;
+        fire(PointerEvent, 'pointerover');
+        fire(MouseEvent, 'mouseover');
+        fire(PointerEvent, 'pointermove');
+        fire(MouseEvent, 'mousemove');
+        fire(PointerEvent, 'pointerdown');
+        fire(MouseEvent, 'mousedown');
+        fire(PointerEvent, 'pointerup');
+        fire(MouseEvent, 'mouseup');
+        if (withClick) {
+            tmodSyntheticClick = true;
+            try { fire(MouseEvent, 'click'); } finally { tmodSyntheticClick = false; }
+        }
+    }
+
+    // Закрывает открытую карточку юзера (по нашему же клику она открылась). Проверка
+    // «закрылась» — по видимости, а не по наличию узла в DOM: при закрытии React не
+    // всегда размонтирует карточку, часто просто прячет/чистит её.
+    async function closeUserCard() {
+        // (1) Крестик/«Скрыть» внутри карточки.
+        for (const card of cardEls().reverse()) {
+            let btn = null;
+            try {
+                btn = Array.from(card.querySelectorAll('button')).find((b) => {
+                    const l = (b.getAttribute('aria-label') || '').trim();
+                    return /^(Скрыть|Hide|Close)$/i.test(l) || (b.textContent || '').trim() === 'Скрыть';
+                });
+            } catch (e) {}
+            if (!btn) continue;
+            const r = btn.getBoundingClientRect();
+            synthFire(btn, r.left + r.width / 2, r.top + r.height / 2, true);
+            await cardSleep(350);
+            if (!cardStillOpen()) return true;
+        }
+        // (2) Escape.
+        for (const type of ['keydown', 'keyup']) {
+            try {
+                document.dispatchEvent(new KeyboardEvent(type, {
+                    key: 'Escape', code: 'Escape', keyCode: 27, which: 27,
+                    bubbles: true, cancelable: true, composed: true
+                }));
+            } catch (e) {}
+        }
+        await cardSleep(350);
+        if (!cardStillOpen()) return true;
+        // (3) Клик по «фону» слева от карточки (некоторые карточки закрываются по
+        // клику мимо). Последний резерв — если и это не сработает, карточку видно
+        // юзеру, и он закроет её вручную (X/Escape).
+        try {
+            const card = cardEls()[cardEls().length - 1];
+            if (card) {
+                const r = card.getBoundingClientRect();
+                const x = Math.max(30, r.left - 150);
+                const y = Math.max(30, r.top + Math.min(120, Math.max(0, r.height) / 2));
+                const el = document.elementFromPoint(x, y);
+                if (el) {
+                    synthFire(el, x, y, true);
+                    await cardSleep(350);
+                    if (!cardStillOpen()) return true;
+                }
             }
-            return null;
-        };
-        // Свежее сообщение из меню плюс последние сообщения юзера в живом чате.
-        const scopes = [];
-        const msgEl = (modMenuState && modMenuState.msgEl) || null;
-        if (msgEl) scopes.push(msgEl);
-        for (const sel of CHAT_MESSAGE_SELECTORS) {
-            let nodes = [];
-            try { nodes = Array.from(document.querySelectorAll(sel)); } catch (e) {}
-            for (let i = nodes.length - 1; i >= 0; i--) scopes.push(nodes[i]);
-        }
-        const strip = (s) => String(s || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-        for (const scope of scopes) {
-            const hl = pick(scope);
-            if (hl) return clickEl(hl);
-            // Ник без ссылки/атрибутов — сверяем видимый текст с логином/именем.
-            let nick = null;
-            try { nick = scope.querySelector('[class*="chat-author__display-name"], [class*="chat-line__username"]'); } catch (e) {}
-            if (!nick) continue;
-            const text = strip(nick.textContent);
-            const cands = [strip(lg)];
-            const un = modMenuState && modMenuState.userName;
-            if (un && strip(un)) cands.push(strip(un));
-            if (text && cands.indexOf(text) !== -1) return clickEl(nick);
-        }
+        } catch (e) {}
         return false;
     }
 
-    // Запрашивает у страницы выжимку Fiber-данных открытой карточки Mod View.
-    function requestModViewFiberProbe(timeoutMs) {
-        return new Promise((resolve) => {
-            const nonce = 'modprobe' + Date.now() + Math.random().toString(36).slice(2, 8);
-            let done = false;
-            const timer = setTimeout(() => { if (!done) { done = true; resolve(null); } }, timeoutMs || 1500);
-            const handler = (ev) => {
-                if (ev.source !== window || !ev.data || ev.data.type !== 'TMOD_GET_MODSTATUS_RESULT' || ev.data.nonce !== nonce) return;
-                if (done) return;
-                done = true;
-                clearTimeout(timer);
-                window.removeEventListener('message', handler);
-                resolve(ev.data.data);
-            };
-            window.addEventListener('message', handler);
-            window.postMessage({ type: 'TMOD_GET_MODSTATUS', nonce }, '*');
-        });
+    // Открытие карточки юзера синтезом событий мыши/пойнтера поверх ника в чате.
+    // В текущей раскладке (как в обычном чате, так и в Mod View) карточка открывается
+    // по клику, а не по hover; синтетической последовательности достаточно даже без
+    // isTrusted. Цель — текстовый спановый ник: клик по самому <a href> увёл бы
+    // навигацией на канал (его глушит ниже отдельный гард по tmodSyntheticClick).
+    // Сообщение, из которого открыто меню, виртуализация чата могла уже пересоздать —
+    // ищем свежую копию ника в живом DOM (только в чате, карточки канала не трогаем).
+    async function openModViewCardFor(login) {
+        const lg = sanitizeLogin(login);
+        if (!lg) return false;
+        const findTarget = () => {
+            let conts = [];
+            try {
+                conts = Array.from(document.querySelectorAll('.chat-line__username-container, [class*="chat-author__display-name"]'))
+                    .filter((n) => String(n.textContent || '').toLowerCase().includes(lg));
+            } catch (e) {}
+            // Самое свежее сообщение юзера — последний контейнер с его ником.
+            const last = conts[conts.length - 1];
+            if (!last) return null;
+            // Самый глубокий span, чей текст ровно логин (сам ник, обычно внутри <a>).
+            let spans = [];
+            try { spans = Array.from(last.querySelectorAll('span')); } catch (e) {}
+            for (let i = spans.length - 1; i >= 0; i--) {
+                const s = spans[i];
+                if (!s.tagName || s.tagName === 'A') continue;
+                if (String(s.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase() === lg) return s;
+            }
+            try { return last.querySelector('[data-a-target="chat-line-username"]') || last; } catch (e) { return last; }
+        };
+        let target = null;
+        const msgEl = (modMenuState && modMenuState.msgEl) || null;
+        if (msgEl) {
+            try { target = msgEl.querySelector('[data-a-target="chat-line-username"]') || msgEl; } catch (e) {}
+        }
+        if (!target) target = findTarget();
+        if (!target) return false;
+        const r = target.getBoundingClientRect();
+        const x = r.left + r.width / 2, y = r.top + r.height / 2;
+        const fire = (Ctor, type, buttons) => {
+            try {
+                target.dispatchEvent(new Ctor(type, Object.assign({}, {
+                    bubbles: true, cancelable: true, composed: true, view: window,
+                    button: 0, buttons: buttons != null ? buttons : 1, clientX: x, clientY: y,
+                    screenX: x, screenY: y, keyCode: 0, which: 1,
+                    pointerType: 'mouse', pointerId: 1, isPrimary: true,
+                    pressure: buttons === 0 ? 0 : 0.5
+                })));
+            } catch (e) {}
+        };
+        const hoverSet = () => {
+            fire(PointerEvent, 'pointerover', 1);
+            fire(MouseEvent, 'mouseover', 1);
+            fire(PointerEvent, 'pointermove', 1);
+            fire(MouseEvent, 'mousemove', 1);
+        };
+        // Проверенная последовательность: 4 раунда hover-событий, в 0-м — нажатие
+        // кнопки, в 3-м — отпускание + клик. Без пауз карточка не открывается.
+        const phases = [true, false, false, true];
+        for (let i = 0; i < 4; i++) {
+            hoverSet();
+            if (phases[i]) {
+                fire(PointerEvent, 'pointerdown', 1);
+                fire(MouseEvent, 'mousedown', 1);
+                fire(PointerEvent, 'pointerup', 0);
+                fire(MouseEvent, 'mouseup', 0);
+                if (i === 3) {
+                    tmodSyntheticClick = true;
+                    try { fire(MouseEvent, 'click', 0); } finally { tmodSyntheticClick = false; }
+                }
+            }
+            if (i < 3) await cardSleep(120);
+        }
+        return true;
     }
 
     // Читает статус из mod-view карточки юзера Twitch. Twitch сам знает, в бане/таймауте
@@ -2960,8 +3081,8 @@ const announceText = content.querySelector('#tmod-announce-text');
             }
         }
         if (!root) {
-            // (3) Кнопка «Разбанить»/снятия отстранения как указатель на карточку.
-            const btns = ['Разбанить', 'Unban', 'Снять временную блокировку', 'Lift timeout'];
+            // (3) Кнопки «Разбанить»/снятия отстранения как указатель на карточку.
+            const btns = ['Разбанить', 'Unban', 'Снять временную блокировку', 'Lift timeout', 'Remove timeout', 'Прервать отстранение', 'Cancel timeout', 'Clear timeout'];
             for (const b of btns) {
                 let btn = null;
                 try { btn = document.querySelector('button[aria-label*="' + b + '"]'); } catch (e) {}
@@ -2974,16 +3095,44 @@ const announceText = content.querySelector('#tmod-announce-text');
                 if (root) break;
             }
         }
+        // (4) Viewer-карточка чата (та же, из которой читаются бейджи ролей).
+        if (!root) {
+            for (const sel of ['[data-a-target="chat-user-card"]', '[data-a-target="user-card"]', '.chat-room__viewer-card', '[data-test-selector="user-card"]']) {
+                let els = [];
+                try { els = Array.from(document.querySelectorAll(sel)); } catch (e) {}
+                for (const el of els) {
+                    if (isMyCard(el)) { root = el; break; }
+                }
+                if (root) break;
+            }
+        }
         if (!root) return null;
 
         const txt = normT(root.textContent || '');
+        // Секция «Комментарии модераторов» агрегирует строки статуса по ВСЕМ каналам,
+        // где мы мод («Забанен на <другой_канал>», «(+N) с других каналов»). Нам нужен
+        // статус именно текущего канала — строки фильтруем по имени канала.
+        const chan = sanitizeLogin(getChannelName() || '');
+        const escChan = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const chanOfStatus = (needle) => chan
+            ? new RegExp(needle + '[^\\u2022]{0,80}?на\\s+' + escChan(chan) + '(?:[^\\w]|$)', 'i')
+            : null;
+        const lineTimeout = chanOfStatus('(?:отстран[её]н|отстранить)');
+        const lineBan = chanOfStatus('забанен');
         // Карточка открыта и это наш юзер → ответ авторитетен в обе стороны:
         // пилюля/кнопка есть → статус активен, нет → подтверждённо не активен.
-        const hasTimeout = !!root.querySelector('button[aria-label*="Снять временную блокировку"], button[aria-label*="Lift timeout"], button[aria-label*="Remove timeout"]')
-            || /отстран[её]н/.test(txt);
+        const hasTimeout = !!root.querySelector('button[aria-label*="Снять временную блокировку"], button[aria-label*="Lift timeout"], button[aria-label*="Remove timeout"], button[aria-label*="Прервать отстранение"], button[aria-label*="Cancel timeout"], button[aria-label*="Clear timeout"]')
+            || (lineTimeout && lineTimeout.test(txt));
         const hasBan = !!root.querySelector('button[aria-label*="Разбанить"], button[aria-label*="Unban"]')
-            || /забанен/.test(txt);
+            || (lineBan && lineBan.test(txt));
         const out = { isTimedOut: hasTimeout ? true : false, isBanned: hasBan ? true : false };
+        // Пустая болванка карточки (контент ещё грузится) не может авторитетно сказать
+        // «Забанен/не забанен» — без реальных доказательств статуса отвечаем «неизвестно»,
+        // иначе сняли бы бан юзеру, чья карточка просто ещё не догрузилась.
+        if (!hasTimeout && !hasBan
+            && !/комментарии модерат|действия модератора|забанен|отстран/i.test(txt)) {
+            return null;
+        }
         // Время окончания таймаута: по строкам действий карточки («отстраняет
         // пользователя <login> на N секунд» + ISO-время старта из id).
         let exp = null, created = null;
@@ -2997,6 +3146,28 @@ const announceText = content.querySelector('#tmod-announce-text');
             const durSec = m ? parseInt(String(m[1]).replace(/\s/g, ''), 10) || 0 : 0;
             if (created === null || start > created) { created = start; exp = start + durSec * 1000; }
         });
+        // Фолбэк срока для viewer-карточки: «Отстранить на N минут/секунд на <канал> •
+        // от <мод> • N минут/секунд назад». Точного времени старта тут нет — оцениваем
+        // по «N … назад» от момента чтения.
+        if (exp == null && hasTimeout) {
+            const toSec = (n, unit) => {
+                const u = String(unit || '').toLowerCase();
+                if (u.indexOf('сек') === 0) return n;
+                if (u.indexOf('минут') === 0 || u.indexOf('мин') === 0) return n * 60;
+                if (u.indexOf('час') === 0 || u.indexOf('часа') === 0) return n * 3600;
+                return n * 60;
+            };
+            const durM = txt.match(/(?:отстранить|отстран[её]н)[^\u2022]{0,80}?на\s+(\d+)\s+(секунд[аы]?|минут[аы]?|мин\.?|час[ао]в?)/i);
+            const agoM = txt.match(/(\d+)\s+(секунд[аы]?|минут[аы]?|мин\.?|час[ао]в?)\s+назад/i);
+            if (durM && agoM) {
+                const durSec = toSec(parseInt(durM[1], 10), durM[2]);
+                const agoSec = toSec(parseInt(agoM[1], 10), agoM[2]);
+                if (durSec > 0) {
+                    exp = Date.now() + (durSec - agoSec) * 1000;
+                    created = Date.now() - agoSec * 1000;
+                }
+            }
+        }
         if (exp && exp > Date.now()) {
             out.isTimedOut = true;
             out.banCreatedAt = created ? new Date(created).toISOString() : null;
@@ -3139,19 +3310,6 @@ const announceText = content.querySelector('#tmod-announce-text');
                         present: chattersPresent,
                         capped: chattersCapped
                     });
-                    // Статус бана из GQL веб-клиента (то же, что в карточке Mod View).
-                    // Авторитетен в обе стороны: и подтверждает, и снимает устаревшее.
-                    const banGql = await gqlGetUserBanInfo(broadcasterId, userId, token);
-                    debugLog('mod-ban-gql', banGql && banGql.data
-                        ? { isBanned: banGql.data.isBanned, expiresAt: banGql.data.expiresAt, reason: banGql.data.reason }
-                        : { error: banGql && banGql.error });
-                    if (banGql && banGql.data && typeof banGql.data.isBanned === 'boolean') {
-                        const g = banGql.data;
-                        status.isBanned = g.isBanned && !g.expiresAt;
-                        status.isTimedOut = g.isBanned && !!g.expiresAt;
-                        status.banExpiresAt = g.expiresAt ? String(g.expiresAt) : null;
-                        status.banCreatedAt = g.bannedAt ? String(g.bannedAt) : null;
-                    }
                 }
             }
         }
@@ -3295,6 +3453,9 @@ const announceText = content.querySelector('#tmod-announce-text');
         const readMvCard = () => readModViewStatus(userId, targetLogin, modMenuState && modMenuState.userName);
         let viewerCard = readViewerCard();
         let mv = readMvCard();
+        // Карточка отдала статус, противоречащий свежей локальной записи нашего же
+        // действия (см. ниже) — тогда её результат не применяем, а берём запись.
+        let cardStale = false;
         const needCard = Boolean(targetLogin && !isBroadcasterViewer
             && (
                 (status.isVip == null || status.isMod == null)
@@ -3302,17 +3463,62 @@ const announceText = content.querySelector('#tmod-announce-text');
             )
             && !viewerCard && !mv);
         if (needCard) {
-            const opened = openModViewCardFor(targetLogin);
-            debugLog('mod-open-card', { opened, login: targetLogin });
-            if (opened) {
-                // Карточка рендерится реактом не мгновенно — опрашиваем, пока не
-                // появится нужные данные (до ~1.5с, чтобы не ждать впустую).
-                for (let t = 0; t < 5; t++) {
-                    await new Promise((r) => setTimeout(r, 300));
-                    mv = readMvCard();
-                    viewerCard = readViewerCard();
-                    if (mv || viewerCard) break;
+            // Карточка рендерится и досылает «Комментарии модераторов» не мгновенно
+            // (Twitch кеширует секцию на пару секунд). Свежая локальная запись своего
+            // действия — «судья»: если первый проход карточки конфликтует с ней,
+            // переоткрываем карточку и берём стабильный результат.
+            const freshLocal = localRec && ((localRec.kind === 'ban' && !localRec.expiresAt)
+                || (localRec.kind === 'timeout' && localRec.expiresAt > Date.now()));
+            setCardHiddenUI(true);
+            try {
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    const opened = await openModViewCardFor(targetLogin);
+                    debugLog('mod-open-card', { opened, login: targetLogin, attempt });
+                    if (!opened) break;
+                    for (let t = 0; t < 12; t++) {
+                        await cardSleep(350);
+                        let card = null;
+                        try { card = findOpenUserCard(targetLogin, modMenuState && modMenuState.userName); } catch (e) {}
+                        if (card) {
+                            let imgs = 0, btns = 0;
+                            try { imgs = card.querySelectorAll('img').length; } catch (e) {}
+                            try { btns = card.querySelectorAll('button').length; } catch (e) {}
+                            const textLen = (card.textContent || '').length;
+                            // Пустая болванка карточки ролей/статуса не даёт — ждём
+                            // появления «живого» контента (до ~4.2с).
+                            if (imgs > 1 || textLen > 200 || btns > 2) {
+                                mv = readMvCard();
+                                viewerCard = readViewerCard();
+                                break;
+                            }
+                        }
+                    }
+                    if (!mv && !viewerCard) {
+                        await closeUserCard();
+                        break;
+                    }
+                    // Сталка: карточка отдала старое (например, до смены бан→таймаут),
+                    // а мы знаем свежий результат своего действия — переоткрываем.
+                    const conflict = freshLocal && mv && (
+                        (localRec.kind === 'timeout' && (mv.isBanned === true || (mv.isTimedOut === false && mv.isBanned === false)))
+                        || (localRec.kind === 'ban' && mv.isBanned === false)
+                    );
+                    if (conflict) {
+                        cardStale = true;
+                        if (attempt < 2) {
+                            mv = null;
+                            viewerCard = null;
+                            await closeUserCard();
+                            await cardSleep(400);
+                            continue;
+                        }
+                    }
+                    break;
                 }
+            } finally {
+                const closed = await closeUserCard();
+                setCardHiddenUI(false);
+                debugLog('mod-card-read', { login: targetLogin, mv, viewerCard, stale: cardStale, closed });
             }
         }
         // Viewer-карточка — авторитет по ролям: применяем и перечитанную после клика.
@@ -3322,52 +3528,16 @@ const announceText = content.querySelector('#tmod-announce-text');
             if (viewerCard.isMod != null) status.isMod = viewerCard.isMod;
             if (viewerCard.isBroadcaster === true) status.isBroadcaster = true;
         }
-        // Диагностика: карточка так и не нашлась — дамп «похожих» элементов и структуры,
-        // чтобы подобрать правильные селекторы под текущую разметку Twitch.
-        if (TMOD_DEBUG && !viewerCard && targetLogin) {
-            const lines = ['--- card dump ---'];
-            try {
-                const lg3 = sanitizeLogin(targetLogin);
-                const cands = Array.from(document.querySelectorAll('[data-a-target*="card"], [data-test-selector*="card"], [class*="card"], [class*="Card"]'));
-                for (let i = cands.length - 1; i >= 0 && lines.length < 26; i--) {
-                    const c = cands[i];
-                    const txt = (c.textContent || '').replace(/\s+/g, ' ').slice(0, 110);
-                    lines.push('[' + i + '] data=' + (c.getAttribute('data-a-target') || '-')
-                        + ' test=' + (c.getAttribute('data-test-selector') || '-')
-                        + ' cls=' + String(c.className || '').slice(0, 70)
-                        + ' imgAlt=' + !!c.querySelector('img[alt]')
-                        + ' href=' + (!!lg3 && !!c.querySelector('a[href="/' + lg3 + '"]'))
-                        + ' txt=' + txt);
-                }
-                // Самая мелкая структура, содержащая логин И значок.
-                let best = null;
-                const all = Array.from(document.querySelectorAll('div,section,article'));
-                for (const el of all) {
-                    const t = (el.textContent || '').replace(/\s+/g, ' ');
-                    if (t.length > 1500 || !t.includes(lg3) || !el.querySelector('img[alt]')) continue;
-                    if (!best || t.length < best.len) best = { el, len: t.length };
-                }
-                if (best) {
-                    const chain = [];
-                    let node = best.el;
-                    for (let d = 0; node && chain.length < 10; node = node.parentElement, d++) {
-                        const cls = String(node.className || '').split(' ').slice(0, 3).map((x) => x.slice(0, 40)).join('.');
-                        chain.push(node.tagName.toLowerCase() + (cls ? '.' + cls : ''));
-                    }
-                    lines.push('SMALLEST-CARD len=' + best.len + ' CHAIN=' + chain.join(' < '));
-                    lines.push('SMALLEST-CARD txt=' + (best.el.textContent || '').replace(/\s+/g, ' ').slice(0, 400));
-                } else {
-                    lines.push('no element with login+img found');
-                }
-            } catch (e) { lines.push('ERROR ' + e); }
-            debugLog('mod-card-dump', '\n' + lines.join('\n'));
+        // После отмены сталки свежую локальную запись применяем вместо устаревшей карточки.
+        if (cardStale && freshLocal) {
+            if (localRec.kind === 'ban') {
+                status.isBanned = true; status.banExpiresAt = null; status.banCreatedAt = localRec.createdAt;
+            } else {
+                status.isTimedOut = true; status.banExpiresAt = localRec.expiresAt; status.banCreatedAt = localRec.createdAt;
+            }
         }
         debugLog('mod-modview-resp', mv);
-        if (TMOD_DEBUG) {
-            const probe = await requestModViewFiberProbe(1200);
-            debugLog('mod-fiber-probe', probe);
-        }
-        if (mv) {
+        if (mv && !cardStale) {
             // ModView-карточка открыта и читается — Twitch сам знает актуальный статус:
             // применяем и «да», и «нет», а устаревшую запись своего действия чистим.
             if (mv.isTimedOut === true || mv.isTimedOut === false) {
@@ -4216,6 +4386,20 @@ const announceText = content.querySelector('#tmod-announce-text');
                     }
                 }
                 closeModMenu();
+            }
+        }, true);
+
+        // Синтетический клик по нику для открытия карточки может приходиться на спановый
+        // ник внутри <a href>. У таких кликов навигацию на канал юзера гасим — нужна
+        // только карточка, а не переход на страницу канала.
+        document.addEventListener('click', (e) => {
+            if (!tmodSyntheticClick || e.defaultPrevented) return;
+            const path = e.composedPath ? e.composedPath() : [];
+            for (const n of path) {
+                if (n && n.tagName === 'A' && n.getAttribute && n.getAttribute('href')) {
+                    e.preventDefault();
+                    return;
+                }
             }
         }, true);
 
