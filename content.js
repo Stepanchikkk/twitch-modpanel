@@ -3182,6 +3182,14 @@ const announceText = content.querySelector('#tmod-announce-text');
                 const agoSec = toSec(parseInt(mAgo[1], 10), mAgo[2]);
                 if (agoSec > 0) out.banCreatedAt = new Date(Date.now() - agoSec * 1000).toISOString();
             }
+            // Плашка: строка статуса как в карточке юзера («отстранить на N <ед.>
+            // на <канал> • от <мод> • <время>»). «сейчас/только что» — свежее действие,
+            // счётчика нет.
+            const desc = String(lineMatch[0] || '').replace(/\s+/g, ' ').trim();
+            const when = mAgo ? ' • ' + String(mAgo[0]).trim()
+                : /сейчас|только что|менее\s+минуты/i.test(seg) ? ' • сейчас' : '';
+            const text = (desc + (mFrom ? ' • от ' + mFrom[1] : '') + when).replace(/\s+/g, ' ').trim();
+            if (text) out.statusText = text.replace(/^./, (c) => c.toUpperCase());
         }
         // Время окончания таймаута: по строкам действий карточки («отстраняет
         // пользователя <login> на N секунд» + ISO-время старта из id).
@@ -3433,6 +3441,16 @@ const announceText = content.querySelector('#tmod-announce-text');
                         status.banExpiresAt = b ? (b.expires_at || null) : null;
                         status.banCreatedAt = b ? (b.created_at || null) : null;
                         status.banCreatedBy = b ? (b.moderator_login || b.moderator_name || null) : null;
+                        if (b && b.created_at) {
+                            const mod = status.banCreatedBy || 'стример';
+                            const ago = timeAgoMs(new Date(b.created_at).getTime());
+                            if (b.expires_at) {
+                                const dur = fmtDurShort(new Date(b.expires_at).getTime() - new Date(b.created_at).getTime());
+                                status.statusText = `Отстранить на ${dur} на ${channel} • от ${mod} • ${ago}`;
+                            } else {
+                                status.statusText = `Забанен на ${channel} • от ${mod} • ${ago}`;
+                            }
+                        }
                     }
                     const vips = await helixCall(`https://api.twitch.tv/helix/channels/vips?broadcaster_id=${broadcasterId}&user_id=${userId}`);
                     debugLog('mod-vips-resp', { ok: vips.success, status: vips.status, error: vips.error });
@@ -3488,6 +3506,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                     } else {
                         status.isBanned = true; status.banExpiresAt = null; status.banCreatedAt = localRec.createdAt;
                         status.banCreatedBy = modUserLogin() || null;
+                        status.statusText = localStatusText('ban', new Date(localRec.createdAt).getTime());
                     }
                 }
             } else {
@@ -3500,6 +3519,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                         } else {
                             status.isTimedOut = true; status.banExpiresAt = localRec.expiresAt; status.banCreatedAt = localRec.createdAt;
                             status.banCreatedBy = modUserLogin() || null;
+                            status.statusText = localStatusText('timeout', new Date(localRec.createdAt).getTime(), new Date(localRec.expiresAt).getTime());
                         }
                     }
                 } else {
@@ -3654,6 +3674,11 @@ const announceText = content.querySelector('#tmod-announce-text');
             }
             // Действие выдано через саму панель — источник известен (мы).
             status.banCreatedBy = modUserLogin() || null;
+            status.statusText = localStatusText(
+                localRec.kind,
+                new Date(localRec.createdAt).getTime(),
+                localRec.expiresAt ? new Date(localRec.expiresAt).getTime() : null
+            );
         }
         debugLog('mod-modview-resp', mv);
         if (mv && !cardStale) {
@@ -3665,10 +3690,12 @@ const announceText = content.querySelector('#tmod-announce-text');
                     status.banExpiresAt = mv.banExpiresAt;
                     status.banCreatedAt = status.banCreatedAt || mv.banCreatedAt;
                     status.banCreatedBy = mv.banCreatedBy || status.banCreatedBy;
+                    if (mv.statusText) status.statusText = mv.statusText;
                 } else {
                     status.isTimedOut = false;
                     status.banExpiresAt = null;
                     status.banCreatedBy = null;
+                    status.statusText = null;
                 }
                 await modLocalRemove(userId, statusChannelId, 'timeout').catch(() => {});
             }
@@ -3678,10 +3705,12 @@ const announceText = content.querySelector('#tmod-announce-text');
                     status.banExpiresAt = null;
                     status.banCreatedAt = status.banCreatedAt || mv.banCreatedAt || null;
                     status.banCreatedBy = mv.banCreatedBy || status.banCreatedBy || null;
+                    if (mv.statusText) status.statusText = mv.statusText;
                 } else {
                     status.isBanned = false;
                     status.banExpiresAt = null;
                     status.banCreatedBy = null;
+                    status.statusText = null;
                 }
                 await modLocalRemove(userId, statusChannelId, 'ban').catch(() => {});
             }
@@ -3766,6 +3795,23 @@ const announceText = content.querySelector('#tmod-announce-text');
         if (m < 60) return m + ' мин назад';
         const h = Math.floor(m / 60);
         return h + ' ч назад';
+    }
+    // Длительность таймаута/бана в русском формате («10.5 мин», «1 ч»).
+    function fmtDurShort(ms) {
+        const total = Math.max(0, Math.round(ms / 1000));
+        const m = total / 60;
+        if (m < 60) return (Math.round(m * 10) / 10) + ' мин';
+        const h = total / 3600;
+        return (Math.round(h * 100) / 100) + ' ч';
+    }
+    // Плашка для локальных записей (своё недавнее действие): карточка может быть
+    // ещё устаревшей, поэтому строку статуса собираем сами — как читалась бы из карточки.
+    function localStatusText(kind, createdAtMs, expiresAtMs) {
+        const me = modUserLogin() || 'вы';
+        const chan = getChannelName() || 'канал';
+        if (kind === 'ban') return `Забанен на ${chan} • от ${me} • ${timeAgoMs(createdAtMs)}`;
+        const dur = expiresAtMs ? fmtDurShort(expiresAtMs - createdAtMs) : '';
+        return `Отстранить на ${dur} на ${chan} • от ${me} • ${timeAgoMs(createdAtMs)}`;
     }
     // Кэш ID канала (channelName -> id) и текущего юзера — не меняются между
     // открытиями меню, каждый раз их заново запрашивать незачем.
@@ -4067,8 +4113,13 @@ const announceText = content.querySelector('#tmod-announce-text');
             const given = created ? fmt(expires - created) : '?';
             const by = s.banCreatedBy ? ` От: ${s.banCreatedBy}` : '';
             const ago = created ? ` • ${timeAgoMs(created)}` : '';
+            // Плашка: строка статуса из карточки (с каналом и модератором) — как в
+            // секции бана. Если карточка не отдала текст, собираем сами.
+            const plaque = s.statusText ? String(s.statusText) : '';
             info.style.color = '#ffb3b3';
-            info.textContent = `Отстранён. Дано: ${given}. До конца: ${fmt(remain)}${by}${ago}`;
+            info.textContent = plaque
+                ? `${plaque}\nДо конца: ${fmt(remain)}`
+                : `Отстранён. Дано: ${given}. До конца: ${fmt(remain)}${by}${ago}`;
             row.hidden = false;
             if (btn) btn.hidden = false;
         };
@@ -4088,9 +4139,14 @@ const announceText = content.querySelector('#tmod-announce-text');
             return;
         }
         row.hidden = false;
-        const by = s.banCreatedBy ? ` От: ${s.banCreatedBy}` : '';
-        const agob = s.banCreatedAt ? ` • ${timeAgoMs(new Date(s.banCreatedAt).getTime())}` : '';
-        info.textContent = `Забанен (постоянный бан)${by}${agob}`;
+        // Плашка из карточки (как в секции таймаута): «Забанен на <канал> • от <мод> • N назад».
+        if (s.statusText) {
+            info.textContent = String(s.statusText);
+        } else {
+            const by = s.banCreatedBy ? ` От: ${s.banCreatedBy}` : '';
+            const agob = s.banCreatedAt ? ` • ${timeAgoMs(new Date(s.banCreatedAt).getTime())}` : '';
+            info.textContent = `Забанен (постоянный бан)${by}${agob}`;
+        }
         info.style.color = '#ff6b6b';
     }
 
@@ -4263,9 +4319,9 @@ const announceText = content.querySelector('#tmod-announce-text');
                 #tmod-mod-menu .mm-status.err { color: #ff6b6b; }
                 #tmod-mod-menu .mm-status.ok { color: #00d66a; }
                 #tmod-mod-menu .mm-timeout-row { margin: 6px 0 2px; padding: 6px 10px; border: 1px solid #5c2323; border-radius: 6px; background: #261414; }
-                #tmod-mod-menu .mm-timeout-info { font-size: 11.5px; color: #ffb3b3; margin-bottom: 4px; user-select: text; -webkit-user-select: text; word-break: break-word; }
+                #tmod-mod-menu .mm-timeout-info { font-size: 11.5px; color: #ffb3b3; margin-bottom: 4px; user-select: text; -webkit-user-select: text; word-break: break-word; white-space: pre-line; }
                 #tmod-mod-menu .mm-ban-row { margin: 6px 0 2px; padding: 6px 10px; border: 1px solid #3a3a3d; border-radius: 6px; background: #101014; }
-                #tmod-mod-menu .mm-ban-info { font-size: 11.5px; color: #adadb8; user-select: text; -webkit-user-select: text; word-break: break-word; }
+                #tmod-mod-menu .mm-ban-info { font-size: 11.5px; color: #adadb8; user-select: text; -webkit-user-select: text; word-break: break-word; white-space: pre-line; }
             </style>
             <div class="mm-header">
                 <div class="mm-header-top">
