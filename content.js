@@ -3236,8 +3236,6 @@ const announceText = content.querySelector('#tmod-announce-text');
     const PERSISTENT_STATUS_CACHE_KEY = 'tmod_status_cache_v1';
     // 500 записей × ~200Б ≈ 100КБ — порядки меньше лимита chrome.storage.local (5МБ).
     const PERSISTENT_STATUS_CACHE_MAX = 500;
-    // Старше — уже не «старая инфа», а мусор: роли/баны за сутки наверняка изменились.
-    const PERSISTENT_STATUS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
     const CHAT_MESSAGE_SELECTORS = [
         '[data-test-selector="chat-line-message"]',
@@ -3734,15 +3732,10 @@ const announceText = content.querySelector('#tmod-announce-text');
         storageSet(PERSISTENT_STATUS_CACHE_KEY, modStatusCache).catch(() => {});
     }
 
-    // Разовые чистки: протухшие (TTL) убираем всегда, при переполнении — LRU.
+    // Чистка только по размеру (LRU): по времени не выбрасываем — фоновый SWR-фетч на
+    // каждом открытии всё равно обновит запись, а старая инфа лучше, чем никакой.
     function pruneModStatusCache() {
-        const now = Date.now();
         let keys = Object.keys(modStatusCache);
-        for (const k of keys) {
-            const v = modStatusCache[k];
-            if (!v || !v.at || now - v.at > PERSISTENT_STATUS_CACHE_TTL_MS) delete modStatusCache[k];
-        }
-        keys = Object.keys(modStatusCache);
         if (keys.length > PERSISTENT_STATUS_CACHE_MAX) {
             keys.sort((a, b) => (modStatusCache[a].at || 0) - (modStatusCache[b].at || 0));
             const drop = keys.length - PERSISTENT_STATUS_CACHE_MAX;
@@ -4186,7 +4179,6 @@ const announceText = content.querySelector('#tmod-announce-text');
         const cacheKey = modStatusCacheKey(data.userId);
         const cached = modStatusCache[cacheKey];
         const cachedStatus = cached && cached.status
-            && (Date.now() - (cached.at || 0) < PERSISTENT_STATUS_CACHE_TTL_MS)
             ? Object.assign({}, cached.status) : null;
         modMenuState = {
             ...data,
