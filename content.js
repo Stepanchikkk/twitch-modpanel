@@ -4110,10 +4110,6 @@ const announceText = content.querySelector('#tmod-announce-text');
         const info = modMenuEl.querySelector('.mm-timeout-info');
         const btn = modMenuEl.querySelector('[data-action="untimeout"]');
         if (!row || !info) return;
-        debugLog('mod-timeout-render-ctx', {
-            statusText: s.statusText, isTimedOut: s.isTimedOut,
-            banExpiresAt: s.banExpiresAt, banCreatedAt: s.banCreatedAt, banCreatedBy: s.banCreatedBy
-        });
         if (modTimeoutTimer) { clearInterval(modTimeoutTimer); modTimeoutTimer = null; }
         const fmt = (ms) => {
             const total = Math.max(0, Math.round(ms / 1000));
@@ -4157,7 +4153,6 @@ const announceText = content.querySelector('#tmod-announce-text');
                 : (expires !== null
                     ? `Отстранён. Дано: ${given}. До конца: ${fmt(remain)}${by}${ago}`
                     : `Отстранён${by}${ago}`);
-            debugLog('mod-timeout-render', { plaque, expires, remain, given, by, ago, statusText: s.statusText, banExpiresAt: s.banExpiresAt, isTimedOut: s.isTimedOut });
             row.hidden = false;
             if (btn) btn.hidden = false;
         };
