@@ -112,6 +112,16 @@
         }
     }
 
+    // «Один раз на метку»: тот же debugLog, но каждую метку печатает однократно.
+    // Повторные вызовы с той же меткой игнорируются — чтобы многократные
+    // refresh(status/roles/ctx) на одно открытие карточки не засоряли консоль.
+    const debugLogOnceLabels = {};
+    function debugLogOnce(label, value) {
+        if (debugLogOnceLabels[label]) return;
+        debugLogOnceLabels[label] = true;
+        debugLog(label, value);
+    }
+
     let cachedAccentColor = null;
     let cachedAccentChannel = null;
     let accentProbedAt = 0;
@@ -3366,7 +3376,7 @@ const announceText = content.querySelector('#tmod-announce-text');
             let mvOut = null, viewerOut = null;
             try {
                 const opened = await openModViewCardFor(targetLogin, snapLocal.msgEl);
-                debugLog('mod-open-card', { opened, login: targetLogin });
+                debugLogOnce('mod-open-card', { opened, login: targetLogin });
                 if (!opened || cardToken !== modMenuFetchToken) return null;
                 let seen = 0, sawCard = 0;
                 for (let t = 0; t < 14 && cardToken === modMenuFetchToken; t++) {
@@ -3413,7 +3423,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                 // меню уже переключилось на другого юзера, флаг оставляем на нём.
                 if (cardToken === modMenuFetchToken) modCardReadBusy = false;
                 setCardHiddenUI(false);
-                debugLog('mod-card-read', { login: targetLogin, mv: mvOut, viewerCard: viewerOut, stale: cardStale, closed });
+                debugLogOnce('mod-card-read', { login: targetLogin, mv: mvOut, viewerCard: viewerOut, stale: cardStale, closed });
             }
         }
 
@@ -3438,7 +3448,7 @@ const announceText = content.querySelector('#tmod-announce-text');
             const me = currentUserIdCache || null;
             if (broadcasterId) {
                 statusChannelId = broadcasterId;
-                debugLog('mod-ctx', { channel, broadcasterId, me });
+                debugLogOnce('mod-ctx', { channel, broadcasterId, me });
                 const isBroadcaster = me && String(me) === String(broadcasterId);
                 isBroadcasterViewer = isBroadcaster;
                 if (isBroadcaster) {
@@ -3486,7 +3496,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                         chattersPresent = Array.isArray(chatters.data && chatters.data.data)
                             ? !!chatters.data.data.find((u) => String(u.user_id) === String(userId))
                             : null;
-                        debugLog('mod-chatters-resp', {
+                        debugLogOnce('mod-chatters-resp', {
                             ok: chatters.success,
                             status: chatters.status,
                             error: chatters.error,
@@ -3548,7 +3558,7 @@ const announceText = content.querySelector('#tmod-announce-text');
             // Живой источник ролей — открытая карточка юзера. Всё прочее уступает ей.
             const live = readRolesFromUserCardDom(targetLogin, snapLocal.userName);
             if (live) {
-                debugLog('mod-roles-live', live);
+                debugLogOnce('mod-roles-live', live);
                 if (live.isVip != null) status.isVip = live.isVip;
                 if (live.isMod != null) status.isMod = live.isMod;
                 if (live.isBroadcaster === true) status.isBroadcaster = true;
@@ -3574,7 +3584,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                 if (fr.isVip === true || fr.isVip === false) status.isVip = !!fr.isVip;
                 if (fr.isMod === true || fr.isMod === false) status.isMod = !!fr.isMod;
                 if (fr.isBroadcaster === true) status.isBroadcaster = true;
-                debugLog('mod-roles-fiber', { login: fr.userLogin, isVip: fr.isVip, isMod: fr.isMod, isBroadcaster: fr.isBroadcaster });
+                debugLogOnce('mod-roles-fiber', { login: fr.userLogin, isVip: fr.isVip, isMod: fr.isMod, isBroadcaster: fr.isBroadcaster });
             }
             // Самый последний резерв — бейджи на текущем сообщении в DOM (alt
             // содержит «VIP»/«Moderator»/«Broadcaster»). Это «снимок» на момент
@@ -3593,7 +3603,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                 if (bVip === true && status.isVip == null) status.isVip = true;
                 if (bMod === true && status.isMod == null) status.isMod = true;
                 if (bBroad === true) status.isBroadcaster = true;
-                if (bVip || bMod || bBroad) debugLog('mod-roles-badges', { vip: bVip, mod: bMod, broadcast: bBroad });
+                if (bVip || bMod || bBroad) debugLogOnce('mod-roles-badges', { vip: bVip, mod: bMod, broadcast: bBroad });
             }
             // Взаимоисключение мода и VIP (само снятие выполняет Twitch).
             if (status.isBroadcaster !== true) {
@@ -3673,7 +3683,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         }
         // Viewer-карточка — авторитет по ролям: применяем и перечитанную после клика.
         if (viewerCard && status.isBroadcaster !== true) {
-            debugLog('mod-roles-live', viewerCard);
+            debugLogOnce('mod-roles-live', viewerCard);
             if (viewerCard.isVip != null) status.isVip = viewerCard.isVip;
             if (viewerCard.isMod != null) status.isMod = viewerCard.isMod;
             if (viewerCard.isBroadcaster === true) status.isBroadcaster = true;
@@ -3693,7 +3703,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                 localRec.expiresAt ? new Date(localRec.expiresAt).getTime() : null
             );
         }
-        debugLog('mod-modview-resp', mv);
+        debugLogOnce('mod-modview-resp', mv);
         if (mv && !cardStale) {
             // ModView-карточка открыта и читается — Twitch сам знает актуальный статус:
             // применяем и «да», и «нет», а устаревшую запись своего действия чистим.
@@ -3743,7 +3753,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         if (blocks.success && blocks.data?.data) {
             status.isBlocked = !!blocks.data.data.some((u) => String(u.user_id) === String(userId));
         }
-        debugLog('mod-status', { userId, status });
+        debugLogOnce('mod-status', { userId, status });
         return status;
     }
 
@@ -3961,7 +3971,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         setMenuBusy(true);
         setMenuStatus('Выполняется…');
         const res = await actionFn();
-        debugLog('mod-action-res', { label, userId: modMenuState && modMenuState.userId, login: modUserLogin(), res });
+        debugLogOnce('mod-action-res', { label, userId: modMenuState && modMenuState.userId, login: modUserLogin(), res });
         if (!modMenuEl) return;
         setMenuBusy(false);
         if (res.success) {
@@ -4045,7 +4055,7 @@ const announceText = content.querySelector('#tmod-announce-text');
             renderModMenuTimeout();
             renderModMenuBan();
             clampModMenuPosition();
-            debugLog('mod-status-cache', { cacheKey });
+            debugLogOnce('mod-status-cache', { cacheKey });
             return;
         }
         const status = await fetchModStatus(snap.userId, snap);
