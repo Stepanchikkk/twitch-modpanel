@@ -4105,23 +4105,25 @@ const announceText = content.querySelector('#tmod-announce-text');
             return out.trim();
         };
         // «Без ограничений» не показываем: пустая строка статуса — просто
-        // зарезервированное место, никакой лишней информации.
-        if (s.isTimedOut !== true || !s.banExpiresAt) {
+        // зарезервированное место, никакой лишней информации. Если срок не удалось
+        // вычислить (карточка не отдала длительность) — плашку всё равно показываем,
+        // но без отсчёта: чипс уже говорит «Отстранён», а кнопка должна быть доступна.
+        if (s.isTimedOut !== true) {
             row.hidden = true;
             return;
         }
-        const expires = new Date(s.banExpiresAt).getTime();
+        const expires = s.banExpiresAt ? new Date(s.banExpiresAt).getTime() : null;
         const created = s.banCreatedAt ? new Date(s.banCreatedAt).getTime() : null;
         const render = () => {
             if (!modMenuEl || !row) return;
-            const remain = expires - Date.now();
-            if (remain <= 0) {
+            const remain = expires !== null ? expires - Date.now() : null;
+            if (remain !== null && remain <= 0) {
                 row.hidden = true;
                 if (modTimeoutTimer) { clearInterval(modTimeoutTimer); modTimeoutTimer = null; }
                 refreshModMenuStatus();
                 return;
             }
-            const given = created ? fmt(expires - created) : '?';
+            const given = created && expires !== null ? fmt(expires - created) : '?';
             const by = s.banCreatedBy ? ` От: ${s.banCreatedBy}` : '';
             const ago = created ? ` • ${timeAgoMs(created)}` : '';
             // Плашка: строка статуса из карточки (с каналом и модератором) — как в
@@ -4129,13 +4131,15 @@ const announceText = content.querySelector('#tmod-announce-text');
             const plaque = s.statusText ? String(s.statusText) : '';
             info.style.color = '#ffb3b3';
             info.textContent = plaque
-                ? `${plaque}\nДо конца: ${fmt(remain)}`
-                : `Отстранён. Дано: ${given}. До конца: ${fmt(remain)}${by}${ago}`;
+                ? (expires !== null ? `${plaque}\nДо конца: ${fmt(remain)}` : plaque)
+                : (expires !== null
+                    ? `Отстранён. Дано: ${given}. До конца: ${fmt(remain)}${by}${ago}`
+                    : `Отстранён${by}${ago}`);
             row.hidden = false;
             if (btn) btn.hidden = false;
         };
         render();
-        modTimeoutTimer = setInterval(render, 1000);
+        if (expires !== null) modTimeoutTimer = setInterval(render, 1000);
     }
 
     // Статус бана (постоянный) — в секции «Бан».
@@ -4210,7 +4214,9 @@ const announceText = content.querySelector('#tmod-announce-text');
             if (lbl) lbl.textContent = 'Разбанить';
             if (modBusy) return;
             banBtn.disabled = s.isBanned === true;
-            unbanBtn.disabled = s.isBanned === false;
+            // «Разбанить» (DELETE /bans) снимает и бан, и таймаут — поэтому она
+            // доступна и когда юзер просто затаймаутен, но не забанен.
+            unbanBtn.disabled = s.isBanned !== true && s.isTimedOut !== true;
         }
     }
 
