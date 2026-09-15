@@ -2781,6 +2781,16 @@ const announceText = content.querySelector('#tmod-announce-text');
         if (res.success) {
             await modLocalRemove(userId, ctx.broadcasterId, 'ban');
             await modLocalRemove(userId, ctx.broadcasterId, 'timeout');
+            // Своё снятие бана/таймаута через панель: карточка Twitch (mv) при закрытом
+            // меню не перечитается мгновенно, Helix-статус для модератора не доступен
+            // (401), а свежая локальная запись уже удалена — поэтому снимаем плашки
+            // прямо в состоянии, чтобы «Забанен/Отстранён» исчезла сразу.
+            if (modMenuState?.userId && String(modMenuState.userId) === String(userId) && modMenuEl) {
+                const s = modMenuState.status = modMenuState.status || {};
+                s.isBanned = false; s.isTimedOut = false;
+                s.banExpiresAt = null; s.banCreatedAt = null; s.banCreatedBy = null; s.statusText = null;
+                renderModMenuBan(); renderModMenuTimeout();
+            }
         }
         return res;
     }
@@ -3549,6 +3559,10 @@ const announceText = content.querySelector('#tmod-announce-text');
                     await modLocalRemove(userId, statusChannelId, 'timeout');
                 }
             }
+            // Своё снятие действия через панель (сессионный флаг). Если карточка закрыта
+            // и не прочиталась — Twitch не отдаст «нет», а локальная запись уже удалена,
+            // поэтому к старому кэшу «бан = да» вернуться нельзя: юзер может открыть
+            // меню повторно и увидеть устаревшую плашку.
         }
         // Роли: для стримера Helix уже дал точные значения (isBroadcasterViewer=true);
         // модератору — только открытая карточка юзера (+ свои сохранённые действия).
@@ -3694,8 +3708,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                 status.isBanned = true; status.banExpiresAt = null; status.banCreatedAt = localRec.createdAt;
             } else {
                 status.isTimedOut = true; status.banExpiresAt = localRec.expiresAt; status.banCreatedAt = localRec.createdAt;
-            }
-            // Действие выдано через саму панель — источник известен (мы).
+            }            // Действие выдано через саму панель — источник известен (мы).
             status.banCreatedBy = modUserLogin() || null;
             status.statusText = localStatusText(
                 localRec.kind,
@@ -4181,6 +4194,11 @@ const announceText = content.querySelector('#tmod-announce-text');
             row.hidden = true;
             return;
         }
+        debugLog('mod-ban-render', {
+            isBanned: s.isBanned, statusText: s.statusText, banCreatedBy: s.banCreatedBy,
+            banCreatedAt: s.banCreatedAt, banExpiresAt: s.banExpiresAt, isTimedOut: s.isTimedOut,
+            userId: modMenuState?.userId, login: modMenuState?.login
+        });
         row.hidden = false;
         // Плашка из карточки (как в секции таймаута): «Забанен на <канал> • от <мод> • N назад».
         if (s.statusText) {
