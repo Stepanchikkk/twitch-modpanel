@@ -3448,7 +3448,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                                 const dur = fmtDurShort(new Date(b.expires_at).getTime() - new Date(b.created_at).getTime());
                                 status.statusText = `Отстранён на ${dur} на ${channel} • от ${mod} • ${ago}`;
                             } else {
-                                status.statusText = `Забанён на ${channel} • от ${mod} • ${ago}`;
+                                status.statusText = `Забанен на ${channel} • от ${mod} • ${ago}`;
                             }
                         }
                     }
@@ -3798,12 +3798,12 @@ const announceText = content.querySelector('#tmod-announce-text');
     }
     // Краткое причастие по глаголу, оставшемуся в строке карточки: в карточке
     // пишется инфинитив («Забанить на …», «Отстранить на …»), а в плашке нужна
-    // краткая пассивная форма («Забанён на …», «Отстранён на …»).
+    // краткая пассивная форма («Забанен на …», «Отстранён на …»).
     function passiveVerb(text) {
         const t = String(text || '').trim();
         const first = t.split(/\s+/)[0] || '';
         const l = first.toLowerCase();
-        if (l === 'забанить' || l === 'забанит') return 'Забанён' + t.slice(first.length);
+        if (l === 'забанить' || l === 'забанит') return 'Забанен' + t.slice(first.length);
         if (l === 'отстранить' || l === 'отстранит') return 'Отстранён' + t.slice(first.length);
         return t;
     }
@@ -3820,7 +3820,7 @@ const announceText = content.querySelector('#tmod-announce-text');
     function localStatusText(kind, createdAtMs, expiresAtMs) {
         const me = modUserLogin() || 'вы';
         const chan = getChannelName() || 'канал';
-        if (kind === 'ban') return `Забанён на ${chan} • от ${me} • ${timeAgoMs(createdAtMs)}`;
+        if (kind === 'ban') return `Забанен на ${chan} • от ${me} • ${timeAgoMs(createdAtMs)}`;
         const dur = expiresAtMs ? fmtDurShort(expiresAtMs - createdAtMs) : '';
         return `Отстранён на ${dur} на ${chan} • от ${me} • ${timeAgoMs(createdAtMs)}`;
     }
@@ -4077,7 +4077,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         const s = modMenuState?.status || {};
         const chips = [];
         if (s.isTimedOut === true) chips.push(['timedout', 'Отстранён']);
-        if (s.isBanned === true) chips.push(['banned', 'Забанён']);
+        if (s.isBanned === true) chips.push(['banned', 'Забанен']);
         if (s.isBlocked === true) chips.push(['blocked', 'В блоке']);
         host.innerHTML = chips.map(([cls, label]) => `<span class="mm-chip ${cls}">${label}</span>`).join('');
     }
@@ -4156,7 +4156,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         } else {
             const by = s.banCreatedBy ? ` От: ${s.banCreatedBy}` : '';
             const agob = s.banCreatedAt ? ` • ${timeAgoMs(new Date(s.banCreatedAt).getTime())}` : '';
-            info.textContent = `Забанён (постоянный бан)${by}${agob}`;
+            info.textContent = `Забанен (постоянный бан)${by}${agob}`;
         }
         info.style.color = '#ff6b6b';
     }
