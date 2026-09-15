@@ -3177,7 +3177,7 @@ const announceText = content.querySelector('#tmod-announce-text');
             const seg = txt.slice(lineMatch.index, Math.min(txt.length, lineMatch.index + 200));
             const mFrom = seg.match(/\u2022\s*от\s+([a-z0-9_]{2,30})/i);
             if (mFrom) out.banCreatedBy = mFrom[1];
-            const mAgo = seg.match(/(\d+)\s+(секунд[аы]?|минут[аы]?|мин\.?|час[ао]в?)\s+назад/i);
+            const mAgo = seg.match(/(\d+)\s+(секунд[аыу]?|минут[аыу]?|мин\.?|час[ао]в?)\s+назад/i);
             if (mAgo) {
                 const agoSec = toSec(parseInt(mAgo[1], 10), mAgo[2]);
                 if (agoSec > 0) out.banCreatedAt = new Date(Date.now() - agoSec * 1000).toISOString();
@@ -3200,8 +3200,8 @@ const announceText = content.querySelector('#tmod-announce-text');
         // от <мод> • N минут/секунд назад». Точного времени старта тут нет — оцениваем
         // по «N … назад» от момента чтения.
         if (exp == null && hasTimeout) {
-            const durM = txt.match(/(?:отстранить|отстран[её]н)[^\u2022]{0,80}?на\s+(\d+)\s+(секунд[аы]?|минут[аы]?|мин\.?|час[ао]в?)/i);
-            const agoM = txt.match(/(\d+)\s+(секунд[аы]?|минут[аы]?|мин\.?|час[ао]в?)\s+назад/i);
+            const durM = txt.match(/(?:отстранить|отстран[её]н)[^\u2022]{0,80}?на\s+(\d+)\s+(секунд[аыу]?|минут[аыу]?|мин\.?|час[ао]в?)/i);
+            const agoM = txt.match(/(\d+)\s+(секунд[аыу]?|минут[аыу]?|мин\.?|час[ао]в?)\s+назад/i);
             if (durM && agoM) {
                 const durSec = toSec(parseInt(durM[1], 10), durM[2]);
                 const agoSec = toSec(parseInt(agoM[1], 10), agoM[2]);
@@ -3676,7 +3676,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                 if (mv.isBanned) {
                     status.isBanned = true;
                     status.banExpiresAt = null;
-                    status.banCreatedAt = null;
+                    status.banCreatedAt = mv.banCreatedAt || null;
                     status.banCreatedBy = mv.banCreatedBy || null;
                 } else {
                     status.isBanned = false;
