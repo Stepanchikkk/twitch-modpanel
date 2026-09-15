@@ -3663,8 +3663,8 @@ const announceText = content.querySelector('#tmod-announce-text');
                 if (mv.isTimedOut) {
                     status.isTimedOut = true;
                     status.banExpiresAt = mv.banExpiresAt;
-                    status.banCreatedAt = mv.banCreatedAt;
-                    status.banCreatedBy = mv.banCreatedBy || null;
+                    status.banCreatedAt = status.banCreatedAt || mv.banCreatedAt;
+                    status.banCreatedBy = mv.banCreatedBy || status.banCreatedBy;
                 } else {
                     status.isTimedOut = false;
                     status.banExpiresAt = null;
@@ -3676,8 +3676,8 @@ const announceText = content.querySelector('#tmod-announce-text');
                 if (mv.isBanned) {
                     status.isBanned = true;
                     status.banExpiresAt = null;
-                    status.banCreatedAt = mv.banCreatedAt || null;
-                    status.banCreatedBy = mv.banCreatedBy || null;
+                    status.banCreatedAt = status.banCreatedAt || mv.banCreatedAt || null;
+                    status.banCreatedBy = mv.banCreatedBy || status.banCreatedBy || null;
                 } else {
                     status.isBanned = false;
                     status.banExpiresAt = null;
