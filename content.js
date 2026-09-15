@@ -383,6 +383,7 @@
     // ============================================================================
 
     async function getCurrentUserId(token) {
+        if (currentUserIdCache) return currentUserIdCache;
         const response = await apiRequest('https://api.twitch.tv/helix/users', {
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -392,13 +393,16 @@
         if (response.error) return null;
         try {
             const data = JSON.parse(response.text);
-            return data.data[0]?.id || null;
+            const id = data.data[0]?.id || null;
+            if (id) currentUserIdCache = id; // id текущего юзера неизменен в течение сессии
+            return id;
         } catch (e) {
             return null;
         }
     }
 
     async function getChannelId(channelName, token) {
+        if (channelIdCache[channelName]) return channelIdCache[channelName];
         const response = await apiRequest(`https://api.twitch.tv/helix/users?login=${channelName}`, {
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -408,7 +412,9 @@
         if (response.error) return null;
         try {
             const data = JSON.parse(response.text);
-            return data.data[0]?.id || null;
+            const id = data.data[0]?.id || null;
+            if (id) channelIdCache[channelName] = id; // id канала не меняется между открытиями
+            return id;
         } catch (e) {
             return null;
         }
@@ -3205,6 +3211,9 @@ const announceText = content.querySelector('#tmod-announce-text');
     // TTL сессии роли, назначенной/снятой через саму панель. Учитывается только
     // когда роль не подтверждена карточкой: свежий результат своего действия точен,
     // но «навсегда» он не живёт.
+    // TTL кэша статуса юзера: в пределах него повторное открытие меню рендерит сразу
+    // (фон. обновление доводит точность), после — перечитываем заново.
+    const MOD_STATUS_CACHE_TTL_MS = 25000;
 
     const CHAT_MESSAGE_SELECTORS = [
         '[data-test-selector="chat-line-message"]',
@@ -3293,25 +3302,115 @@ const announceText = content.querySelector('#tmod-announce-text');
         let isBroadcasterViewer = false;
         let chattersPresent = null;
         let chattersCapped = false;
+        const targetLogin = snapLocal.userLogin;
+        let cardStale = false;
+        const readViewerCard = () => readRolesFromUserCardDom(targetLogin, snapLocal.userName);
+        const readMvCard = () => readModViewStatus(userId, targetLogin, snapLocal.userName);
+        let viewerCard = readViewerCard();
+        let mv = readMvCard();
+
+        // Чтение карточки юзера: открыть кликом по нику, полилять до «живого» контента
+        // (бейджи/кнопки/текст), дочитать ленивую секцию бана/таймаута, закрыть. Запускаем
+        // параллельно с Helix-цепочкой — первый клик по юзеру не ждёт лишние ~1.5с.
+        // Возвращает { mv, viewerCard } либо null (не открылась / токен устарел).
+        let cardTask = null;
+        if (targetLogin && !isBroadcasterViewer && !viewerCard && !mv) cardTask = readUserCardFor();
+
+        async function readUserCardFor() {
+            if (!targetLogin || cardToken !== modMenuFetchToken) return null;
+            setCardHiddenUI(true);
+            modCardReadBusy = true;
+            let mvOut = null, viewerOut = null;
+            try {
+                const opened = await openModViewCardFor(targetLogin, snapLocal.msgEl);
+                debugLog('mod-open-card', { opened, login: targetLogin });
+                if (!opened || cardToken !== modMenuFetchToken) return null;
+                let seen = 0, sawCard = 0;
+                for (let t = 0; t < 14 && cardToken === modMenuFetchToken; t++) {
+                    await cardSleep(270);
+                    let card = null;
+                    try { card = findOpenUserCard(targetLogin, snapLocal.userName); } catch (e) {}
+                    if (card) {
+                        if (!sawCard) sawCard = Date.now();
+                        let imgs = 0, btns = 0;
+                        try { imgs = card.querySelectorAll('img').length; } catch (e) {}
+                        try { btns = card.querySelectorAll('button').length; } catch (e) {}
+                        const textLen = (card.textContent || '').length;
+                        const ready = imgs > 1 || textLen > 200 || btns > 2;
+                        if (ready) {
+                            if (!seen) {
+                                seen = Date.now();
+                                // Секция бана/таймаута догружается лениво — только у карточек
+                                // с признаками мод-панели. Обычному зрителю её нет: если нет
+                                // признаков мод-секции и в карточке, ждать нечего.
+                                const txt = (card.textContent || '').toLowerCase();
+                                const modLike = btns >= 5
+                                    || /разбанить|прервать отстранение|снять временную|забанен на|отстран[её]н на/i.test(txt);
+                                if (!modLike) break;
+                                continue; // ждём ленивую догрузку статуса
+                            }
+                            if (Date.now() - seen > 650) break; // стабилизировалась
+                        } else if (imgs >= 1 && Date.now() - sawCard > 900) {
+                            // Контент-панель так и не появилась (обычная карточка зрителя) —
+                            // читаем роли, ждать нечего.
+                            break;
+                        }
+                    } else if (!sawCard && t >= 4) {
+                        // ~1.1с карточки нет (пустая болванка/не открылась) — фолбэки готовы.
+                        break;
+                    }
+                }
+                if (cardToken !== modMenuFetchToken) return null;
+                mvOut = readMvCard();
+                viewerOut = readViewerCard();
+                return { mv: mvOut, viewerCard: viewerOut };
+            } finally {
+                const closed = await closeUserCard();
+                // Свой сеанс чтения кончился — не мешаем скроллу закрывать меню. Если
+                // меню уже переключилось на другого юзера, флаг оставляем на нём.
+                if (cardToken === modMenuFetchToken) modCardReadBusy = false;
+                setCardHiddenUI(false);
+                debugLog('mod-card-read', { login: targetLogin, mv: mvOut, viewerCard: viewerOut, stale: cardStale, closed });
+            }
+        }
+
+        // Локальный архив: таймауты/баны, выданные через саму панель. Helix-чтение
+        // модератору недоступно (401), поэтому свой недавний таймаут знаем локально.
+        // Эти записи — НЕ истина в последней инстанции: их перебивает открытая
+        // ModView-карточка, а список чатеров опровергает устаревший бан (забаненный
+        // физически не может находиться в чате).
+        const local = await getModLocalRecords().catch(() => []);
+        // Нужен ли chatters вообще: есть ли у юзера своя запись бан/таймаут.
+        const hasLocalBanRec = local.some(
+            (r) => String(r.userId) === String(userId) && (r.kind === 'ban' || r.kind === 'timeout')
+        );
+
         if (channel) {
-            const [broadcasterId, me] = await Promise.all([getChannelId(channel, token), getCurrentUserId(token)]);
+            if (!channelIdCache[channel]) {
+                const [bid, mid] = await Promise.all([getChannelId(channel, token), getCurrentUserId(token)]);
+                channelIdCache[channel] = bid;
+                if (mid) currentUserIdCache = mid;
+            }
+            const broadcasterId = channelIdCache[channel] || null;
+            const me = currentUserIdCache || null;
             if (broadcasterId) {
                 statusChannelId = broadcasterId;
                 debugLog('mod-ctx', { channel, broadcasterId, me });
-                const banned = await helixCall(`https://api.twitch.tv/helix/moderation/banned?broadcaster_id=${broadcasterId}&user_id=${userId}`);
-                debugLog('mod-banned-resp', { ok: banned.success, status: banned.status, error: banned.error });
-                if (banned.success) {
-                    const b = banned.data?.data?.[0] || null;
-                    // expires_at установлен → таймаут; null → перманентный бан.
-                    status.isBanned = !!b && !b.expires_at;
-                    status.isTimedOut = !!b && !!b.expires_at;
-                    status.banExpiresAt = b ? (b.expires_at || null) : null;
-                    status.banCreatedAt = b ? (b.created_at || null) : null;
-                }
                 const isBroadcaster = me && String(me) === String(broadcasterId);
                 isBroadcasterViewer = isBroadcaster;
                 if (isBroadcaster) {
-                    // Стримеру Helix отдаёт VIP/модов напрямую.
+                    // Стримеру Helix отдаёт бан/таймауты напрямую (moderation/banned),
+                    // + VIP/модов.
+                    const banned = await helixCall(`https://api.twitch.tv/helix/moderation/banned?broadcaster_id=${broadcasterId}&user_id=${userId}`);
+                    debugLog('mod-banned-resp', { ok: banned.success, status: banned.status, error: banned.error });
+                    if (banned.success) {
+                        const b = banned.data?.data?.[0] || null;
+                        // expires_at установлен → таймаут; null → перманентный бан.
+                        status.isBanned = !!b && !b.expires_at;
+                        status.isTimedOut = !!b && !!b.expires_at;
+                        status.banExpiresAt = b ? (b.expires_at || null) : null;
+                        status.banCreatedAt = b ? (b.created_at || null) : null;
+                    }
                     const vips = await helixCall(`https://api.twitch.tv/helix/channels/vips?broadcaster_id=${broadcasterId}&user_id=${userId}`);
                     debugLog('mod-vips-resp', { ok: vips.success, status: vips.status, error: vips.error });
                     if (vips.success) status.isVip = !!(vips.data?.data?.length);
@@ -3319,35 +3418,35 @@ const announceText = content.querySelector('#tmod-announce-text');
                     debugLog('mod-mods-resp', { ok: mods.success, status: mods.status, error: mods.error });
                     if (mods.success) status.isMod = !!(mods.data?.data?.length);
                 } else {
-                    // Модератору vips/moderators (401). Chatters ролей НЕ содержит (документировано:
-                    // поля is_vip/is_moderator в ответе отсутствуют, всегда undefined) —
-                    // присваивать статусы из него нельзя: !!undefined = false испортил бы
-                    // определение роли молчащему, но присутствующему в чате юзеру.
-                    // Внимание: затаймаутенный юзер остаётся в списке чатеров (соединение
-                    // живо), поэтому присутствие в чате НЕ означает «не в бане/таймауте».
-                    const chatters = await helixCall(`https://api.twitch.tv/helix/chat/chatters?broadcaster_id=${broadcasterId}&moderator_id=${me}&first=1000`);
-                    chattersCapped = !!(chatters.data && chatters.data.total > (chatters.data.data || []).length);
-                    chattersPresent = Array.isArray(chatters.data && chatters.data.data)
-                        ? !!chatters.data.data.find((u) => String(u.user_id) === String(userId))
-                        : null;
-                    debugLog('mod-chatters-resp', {
-                        ok: chatters.success,
-                        status: chatters.status,
-                        error: chatters.error,
-                        count: chatters.data?.data?.length,
-                        total: chatters.data?.total,
-                        present: chattersPresent,
-                        capped: chattersCapped
-                    });
+                    // Модератору vips/moderators и moderation/banned недоступны (401 —
+                    // нет прав/скоупов): бан/таймаут читаем из карточки Mod View и
+                    // локальных записей, поэтому отдельный запрос не делаем.
+                    // Chatters ролей НЕ содержит (документировано: поля is_vip/is_moderator
+                    // отсутствуют) — присваивать статусы из него нельзя. Нужен он только
+                    // чтобы опровергнуть устаревшую локальную запись бан/таймаута
+                    // (забаненный физически не может находиться в чате), поэтому зовём
+                    // его только если запись есть.
+                    if (hasLocalBanRec) {
+                        const chatters = await helixCall(`https://api.twitch.tv/helix/chat/chatters?broadcaster_id=${broadcasterId}&moderator_id=${me}&first=1000`);
+                        chattersCapped = !!(chatters.data && chatters.data.total > (chatters.data.data || []).length);
+                        chattersPresent = Array.isArray(chatters.data && chatters.data.data)
+                            ? !!chatters.data.data.find((u) => String(u.user_id) === String(userId))
+                            : null;
+                        debugLog('mod-chatters-resp', {
+                            ok: chatters.success,
+                            status: chatters.status,
+                            error: chatters.error,
+                            count: chatters.data?.data?.length,
+                            total: chatters.data?.total,
+                            present: chattersPresent,
+                            capped: chattersCapped
+                        });
+                    }
                 }
             }
         }
-        // Локальный архив: таймауты/баны, выданные через саму панель. Helix-чтение
-        // модератору недоступно (401), поэтому свой недавний таймаут знаем локально.
-        // Эти записи — НЕ истина в последней инстанции: их перебивает открытая
-        // ModView-карточка, а список чатеров опровергает устаревший бан (забаненный
-        // физически не может находиться в чате).
-        const local = await getModLocalRecords().catch(() => []);
+        // Локальная запись именно этого юзера и канала (если канал уже определён):
+        // фильтруем чужие каналы и чужие записи.
         const localRec = local.find(
             (r) => r.userId === String(userId)
                 && (!statusChannelId || String(r.channel) === String(statusChannelId))
@@ -3387,7 +3486,6 @@ const announceText = content.querySelector('#tmod-announce-text');
         // модератору — только открытая карточка юзера (+ свои сохранённые действия).
         // Источники из бейджей сообщений убраны: они «запечены» при отправке и врут
         // после смены ролей.
-        const targetLogin = snapLocal.userLogin;
         if (!isBroadcasterViewer && status.isBroadcaster !== true && targetLogin) {
             // Живой источник ролей — открытая карточка юзера. Всё прочее уступает ей.
             const live = readRolesFromUserCardDom(targetLogin, snapLocal.userName);
@@ -3474,17 +3572,8 @@ const announceText = content.querySelector('#tmod-announce-text');
             else if (status.isVip === true) status.isMod = false;
         }
         // Карточки юзера: клик по нику открывает viewer-карточку (бейджи ролей) в обычном
-        // чате либо панель Mod View (текущий таймаут/бан). Если нужных данных в статусе
-        // ещё нет — открываем карточку сами кликом по нику и читаем обе уже после того,
-        // как она появилась. Это чинит и «роль не считывается» (клик даёт карточку, а не
-        // ждёт, пока юзер сам её откроет).
-        const readViewerCard = () => readRolesFromUserCardDom(targetLogin, snapLocal.userName);
-        const readMvCard = () => readModViewStatus(userId, targetLogin, snapLocal.userName);
-        let viewerCard = readViewerCard();
-        let mv = readMvCard();
-        // Карточка отдала статус, противоречащий свежей локальной записи нашего же
-        // действия (см. ниже) — тогда её результат не применяем, а берём запись.
-        let cardStale = false;
+        // чате либо панель Mod View (текущий таймаут/бан). Карточка уже читается
+        // параллельно (cardTask); здесь дожидаемся её и применяем результат.
         const needCard = Boolean(targetLogin && !isBroadcasterViewer
             && (
                 (status.isVip == null || status.isMod == null)
@@ -3492,83 +3581,36 @@ const announceText = content.querySelector('#tmod-announce-text');
             )
             && !viewerCard && !mv);
         if (needCard) {
-            // Карточка рендерится и досылает «Комментарии модераторов» не мгновенно
-            // (Twitch кеширует секцию на пару секунд). Свежая локальная запись своего
-            // действия — «судья»: если первый проход карточки конфликтует с ней,
-            // переоткрываем карточку и берём стабильный результат.
+            // Свежая локальная запись своего действия — «судья»: если карточка отдала
+            // старое (например, до смены бан→таймаут) и конфликтует с ней, переоткрываем.
             const freshLocal = localRec && ((localRec.kind === 'ban' && !localRec.expiresAt)
                 || (localRec.kind === 'timeout' && localRec.expiresAt > Date.now()));
-            setCardHiddenUI(true);
-            modCardReadBusy = true;
-            try {
-                for (let attempt = 0; attempt < 2 && cardToken === modMenuFetchToken; attempt++) {
-                    const opened = await openModViewCardFor(targetLogin, snapLocal.msgEl);
-                    debugLog('mod-open-card', { opened, login: targetLogin, attempt });
-                    if (!opened || cardToken !== modMenuFetchToken) break;
-                    // Ждём «живого» контента карточки (бейджи/кнопки/текст), затем даём
-                    // ещё ~650мс — секция «Комментарии модераторов» (статус бана/таймаута)
-                    // догружается лениво, чуть позже бейджей ролей (видно в probe).
-                    let seen = 0, sawCard = 0;
-                    for (let t = 0; t < 14 && cardToken === modMenuFetchToken; t++) {
-                        await cardSleep(270);
-                        let card = null;
-                        try { card = findOpenUserCard(targetLogin, snapLocal.userName); } catch (e) {}
-                        if (card) {
-                            if (!sawCard) sawCard = Date.now();
-                            let imgs = 0, btns = 0;
-                            try { imgs = card.querySelectorAll('img').length; } catch (e) {}
-                            try { btns = card.querySelectorAll('button').length; } catch (e) {}
-                            const textLen = (card.textContent || '').length;
-                            const ready = imgs > 1 || textLen > 200 || btns > 2;
-                            if (ready) {
-                                if (!seen) {
-                                    seen = Date.now();
-                                    continue; // контент есть — ждём ленивую догрузку статуса
-                                }
-                                if (Date.now() - seen > 650) break; // стабилизировалась
-                            } else if (imgs >= 1 && Date.now() - sawCard > 1600) {
-                                // Карточка есть, но панель статуса в ней так и не появилась
-                                // (обычная карточка зрителя) — читаем роли, ждать нечего.
-                                break;
-                            }
-                        } else if (!sawCard && t >= 6) {
-                            // ~1.6с карточки нет (пустая болванка/не открылась) — дальше
-                            // её ждать незачем, фолбэки ролей/статуса уже готовы.
-                            break;
+            let res = null;
+            if (cardTask && cardToken === modMenuFetchToken) res = await cardTask;
+            if (res) {
+                if (res.viewerCard) viewerCard = res.viewerCard;
+                if (res.mv) mv = res.mv;
+            }
+            if (cardToken === modMenuFetchToken && freshLocal && mv) {
+                const conflict = (
+                    (localRec.kind === 'timeout' && (mv.isBanned === true || (mv.isTimedOut === false && mv.isBanned === false)))
+                    || (localRec.kind === 'ban' && mv.isBanned === false)
+                );
+                if (conflict) {
+                    cardStale = true;
+                    const res2 = await readUserCardFor();
+                    if (res2 && res2.mv) {
+                        const c2 = (
+                            (localRec.kind === 'timeout' && (res2.mv.isBanned === true || (res2.mv.isTimedOut === false && res2.mv.isBanned === false)))
+                            || (localRec.kind === 'ban' && res2.mv.isBanned === false)
+                        );
+                        if (!c2) {
+                            cardStale = false;
+                            mv = res2.mv;
+                            if (res2.viewerCard) viewerCard = res2.viewerCard;
                         }
                     }
-                    if (cardToken !== modMenuFetchToken) { mv = null; viewerCard = null; break; }
-                    mv = readMvCard();
-                    viewerCard = readViewerCard();
-                    if (!mv && !viewerCard) {
-                        await closeUserCard();
-                        break;
-                    }
-                    // Сталка: карточка отдала старое (например, до смены бан→таймаут),
-                    // а мы знаем свежий результат своего действия — переоткрываем.
-                    const conflict = freshLocal && mv && (
-                        (localRec.kind === 'timeout' && (mv.isBanned === true || (mv.isTimedOut === false && mv.isBanned === false)))
-                        || (localRec.kind === 'ban' && mv.isBanned === false)
-                    );
-                    if (conflict) {
-                        cardStale = true;
-                        if (attempt < 1) {
-                            mv = null;
-                            viewerCard = null;
-                            await closeUserCard();
-                            await cardSleep(400);
-                            continue;
-                        }
-                    }
-                    break;
                 }
-            } finally {
-                const closed = await closeUserCard();
-                // Свой сеанс чтения кончился — не мешаем скроллу закрывать меню. Если
-                // меню уже переключилось на другого юзера, флаг оставляем на нём.
-                if (cardToken === modMenuFetchToken) modCardReadBusy = false;
-                setCardHiddenUI(false);
-                debugLog('mod-card-read', { login: targetLogin, mv, viewerCard, stale: cardStale, closed });
             }
         }
         // Viewer-карточка — авторитет по ролям: применяем и перечитанную после клика.
@@ -3640,6 +3682,13 @@ const announceText = content.querySelector('#tmod-announce-text');
     let modMenuFetchToken = 0;
     // Идёт чтение карточки юзера (клики/прокрутка чата не должны закрывать меню).
     let modCardReadBusy = false;
+    // Кэш последнего статуса по юзеру (channel:userId) — мгновенный рендер повторных
+    // открытий меню, фоновое обновление доводит за ~1с.
+    let modStatusCache = {};
+    // Кэш ID канала (channelName -> id) и текущего юзера — не меняются между
+    // открытиями меню, каждый раз их заново запрашивать незачем.
+    const channelIdCache = {};
+    let currentUserIdCache = null;
     // Кэш токена для синхронной проверки в contextmenu (preventDefault должен
     // решаться синхронно, а storageGet асинхронный).
     let modTokenCache = null;
@@ -3759,6 +3808,9 @@ const announceText = content.querySelector('#tmod-announce-text');
         if (!modMenuEl) return;
         setMenuBusy(false);
         if (res.success) {
+            // Действие поменяло статус юзера — кэш статуса теперь врёт, сбрасываем,
+            // чтобы refreshModMenuStatus перечитал свежее.
+            if (modMenuState) delete modStatusCache[getChannelName() + ':' + String(modMenuState.userId)];
             setMenuStatus(res.viaChat ? `✓ ${label} — команда отправлена \`${res.viaChat}\`` : '✓ ' + label + ' — готово', 'ok');
             refreshModMenuStatus();
         } else {
@@ -3817,12 +3869,31 @@ const announceText = content.querySelector('#tmod-announce-text');
             sessionModAt: st.sessionModAt || 0
         };
         applyInstantModStatus();
+        // Кэш статуса: повторный клик по тому же юзеру в пределах TTL рендерит сразу,
+        // без Helix-цепочки и чтения карточки (данные ещё свежие). По истечении TTL
+        // выполняется полноценный перечитывающий фетч ниже — после него кэш обновляется.
+        const cacheKey = getChannelName() + ':' + String(snap.userId);
+        const cached = modStatusCache[cacheKey];
+        if (cached && cached.at > Date.now() - MOD_STATUS_CACHE_TTL_MS && String(cached.userId) === String(snap.userId)) {
+            modMenuState.status = cached.status;
+            modCardReadBusy = false;
+            renderModMenuChips();
+            renderModMenuToggles();
+            renderModMenuTimeout();
+            renderModMenuBan();
+            clampModMenuPosition();
+            debugLog('mod-status-cache', { cacheKey });
+            return;
+        }
         const status = await fetchModStatus(snap.userId, snap);
         // Меню за это время могло закрыться или переключиться на другого юзера —
         // тогда результат этого фетча не применяем (иначе «путается» между юзерами).
         if (!modMenuEl || !modMenuState || token !== modMenuFetchToken) return;
         if (String(modMenuState.userId) !== String(snap.userId)) return;
         modMenuState.status = status;
+        // Запоминаем для мгновенного рендера повторного клика; заодно фетч свежий —
+        // кэш становится актуальным источником.
+        modStatusCache[cacheKey] = { at: Date.now(), userId: String(snap.userId), status };
         modCardReadBusy = false;
         renderModMenuChips();
         renderModMenuToggles();
@@ -4543,7 +4614,11 @@ const announceText = content.querySelector('#tmod-announce-text');
         let lastPath = window.location.pathname;
         setInterval(() => {
             if (window.location.pathname !== lastPath) {
+                const prevPath = lastPath;
                 lastPath = window.location.pathname;
+                // Кэши статусов юзеров и ID канала релевантны старому каналу — сбрасываем.
+                modStatusCache = {};
+                delete channelIdCache[prevPath];
                 const btnWrapper = document.getElementById('tmod-btn-wrapper');
                 if (btnWrapper) btnWrapper.remove();
                 if (panelOpen && panelElement) { panelElement.remove(); panelOpen = false; }
