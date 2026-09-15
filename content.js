@@ -2868,19 +2868,6 @@ const announceText = content.querySelector('#tmod-announce-text');
         } catch (e) { return false; }
     }
 
-    // Открыта ли карточка (по реальной видимости, не считая собственный tmod-hide-card).
-    function cardStillOpen() {
-        let open = false;
-        let style = null;
-        try { style = document.getElementById(TMOD_HIDE_CARD_ID); } catch (e) {}
-        if (style) style.remove();
-        try { open = cardEls().some(isCardVisible); } catch (e) {}
-        if (style && !document.getElementById(TMOD_HIDE_CARD_ID)) {
-            try { (document.head || document.documentElement).appendChild(style); } catch (e) {}
-        }
-        return open;
-    }
-
     const cardSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
     // Синхронный «полный набор» событий над элементом (pointer + мышь, down..up). Без
@@ -2914,42 +2901,50 @@ const announceText = content.querySelector('#tmod-announce-text');
         }
     }
 
+    // «Открыта карточка с содержимым»: видимый узел с реальным текстом (больше, чем
+    // у пустой болванки). Пустой шелл карточки закрытым не считаем — в нём нет ни
+    // данных, ни кнопки закрытия, он юзеру не мешает (и probe это подтверждает).
+    function cardOpenWithContent() {
+        let style = null;
+        try { style = document.getElementById(TMOD_HIDE_CARD_ID); } catch (e) {}
+        if (style) style.remove();
+        let open = false;
+        try {
+            open = cardEls().some((el) => isCardVisible(el) && (el.textContent || '').trim().length > 5);
+        } catch (e) {}
+        if (style && !document.getElementById(TMOD_HIDE_CARD_ID)) {
+            try { (document.head || document.documentElement).appendChild(style); } catch (e) {}
+        }
+        return open;
+    }
+
     // Закрывает открытую карточку юзера (по нашему же клику она открылась). Проверка
-    // «закрылась» — по видимости, а не по наличию узла в DOM: при закрытии React не
+    // «закрылась» — по содержимому, а не по наличию узла в DOM: при закрытии React не
     // всегда размонтирует карточку, часто просто прячет/чистит её.
     async function closeUserCard() {
-        // (1) Крестик/«Скрыть» внутри карточки.
-        for (const card of cardEls().reverse()) {
+        // (1) Крестик/«Скрыть» внутри карточки — до двух нажатий (как в probe).
+        for (let attempt = 0; attempt < 2; attempt++) {
             let btn = null;
-            try {
-                btn = Array.from(card.querySelectorAll('button')).find((b) => {
-                    const l = (b.getAttribute('aria-label') || '').trim();
-                    return /^(Скрыть|Hide|Close)$/i.test(l) || (b.textContent || '').trim() === 'Скрыть';
-                });
-            } catch (e) {}
-            if (!btn) continue;
+            for (const card of cardEls().reverse()) {
+                try {
+                    btn = Array.from(card.querySelectorAll('button')).find((b) => {
+                        const l = (b.getAttribute('aria-label') || '').trim();
+                        return /^(Скрыть|Hide|Close)$/i.test(l) || (b.textContent || '').trim() === 'Скрыть';
+                    });
+                } catch (e) {}
+                if (btn) break;
+            }
+            if (!btn) break;
             const r = btn.getBoundingClientRect();
             synthFire(btn, r.left + r.width / 2, r.top + r.height / 2, true);
             await cardSleep(350);
-            if (!cardStillOpen()) return true;
+            if (!cardOpenWithContent()) return true;
         }
-        // (2) Escape.
-        for (const type of ['keydown', 'keyup']) {
-            try {
-                document.dispatchEvent(new KeyboardEvent(type, {
-                    key: 'Escape', code: 'Escape', keyCode: 27, which: 27,
-                    bubbles: true, cancelable: true, composed: true
-                }));
-            } catch (e) {}
-        }
-        await cardSleep(350);
-        if (!cardStillOpen()) return true;
-        // (3) Клик по «фону» слева от карточки (некоторые карточки закрываются по
-        // клику мимо). Последний резерв — если и это не сработает, карточку видно
-        // юзеру, и он закроет её вручную (X/Escape).
+        // (2) Клик по «фону» слева от карточки (некоторые закрываются по клику мимо).
         try {
-            const card = cardEls()[cardEls().length - 1];
-            if (card) {
+            const els = cardEls();
+            if (els.length) {
+                const card = els[els.length - 1];
                 const r = card.getBoundingClientRect();
                 const x = Math.max(30, r.left - 150);
                 const y = Math.max(30, r.top + Math.min(120, Math.max(0, r.height) / 2));
@@ -2957,10 +2952,24 @@ const announceText = content.querySelector('#tmod-announce-text');
                 if (el) {
                     synthFire(el, x, y, true);
                     await cardSleep(350);
-                    if (!cardStillOpen()) return true;
+                    if (!cardOpenWithContent()) return true;
                 }
             }
         } catch (e) {}
+        // (3) Escape — только если наше mod-меню не открыто: синтетический Escape
+        // закрывает и его, и выглядело бы как «самозакрытие» меню.
+        if (!modMenuEl) {
+            for (const type of ['keydown', 'keyup']) {
+                try {
+                    document.dispatchEvent(new KeyboardEvent(type, {
+                        key: 'Escape', code: 'Escape', keyCode: 27, which: 27,
+                        bubbles: true, cancelable: true, composed: true
+                    }));
+                } catch (e) {}
+            }
+            await cardSleep(350);
+            if (!cardOpenWithContent()) return true;
+        }
         return false;
     }
 
@@ -2971,7 +2980,7 @@ const announceText = content.querySelector('#tmod-announce-text');
     // навигацией на канал (его глушит ниже отдельный гард по tmodSyntheticClick).
     // Сообщение, из которого открыто меню, виртуализация чата могла уже пересоздать —
     // ищем свежую копию ника в живом DOM (только в чате, карточки канала не трогаем).
-    async function openModViewCardFor(login) {
+    async function openModViewCardFor(login, msgEl) {
         const lg = sanitizeLogin(login);
         if (!lg) return false;
         const findTarget = () => {
@@ -2994,9 +3003,21 @@ const announceText = content.querySelector('#tmod-announce-text');
             try { return last.querySelector('[data-a-target="chat-line-username"]') || last; } catch (e) { return last; }
         };
         let target = null;
-        const msgEl = (modMenuState && modMenuState.msgEl) || null;
-        if (msgEl) {
-            try { target = msgEl.querySelector('[data-a-target="chat-line-username"]') || msgEl; } catch (e) {}
+        if (msgEl && msgEl.isConnected) {
+            // Так же, как в findTarget: самый глубокий текстовый span с ником.
+            // Клик по самому <a> карточку не открывает (гасится гардом навигации) —
+            // в probe рабочей целью был именно спановый ник.
+            let spans = [];
+            try { spans = Array.from(msgEl.querySelectorAll('span')); } catch (e) {}
+            for (let i = spans.length - 1; i >= 0 && !target; i--) {
+                const s = spans[i];
+                if (!s.tagName || s.tagName === 'A') continue;
+                if (String(s.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase() === lg) target = s;
+            }
+            if (!target) {
+                try { target = msgEl.querySelector('[data-a-target="chat-line-username"]') || msgEl; } catch (e) {}
+            }
+            if (target && !target.isConnected) target = null;
         }
         if (!target) target = findTarget();
         if (!target) return false;
@@ -3255,7 +3276,15 @@ const announceText = content.querySelector('#tmod-announce-text');
     // Статус бана/таймаута: для модератора точный ответ даёт GQL userBanInfo
     // (то, что рисует карточка Mod View); роли через GQL не берём — ненадёжны
     // (не различают мод/не-мод, вип/не-вип), их источник — карточка/фiber/записи.
-    async function fetchModStatus(userId) {
+    async function fetchModStatus(userId, snap) {
+        // Снапшот состояния меню, зафиксированный при вызове (refreshModMenuStatus).
+        // fetchModStatus живёт дольше меню и не должен читать глобальный modMenuState:
+        // юзер за это время мог открыть меню на другом юзере — иначе данные «смешиваются».
+        const snapLocal = snap || {};
+        // Токен сеанса чтения: когда юзер открывает меню на другом юзере, refresh
+        // увеличивает modMenuFetchToken — этот вызов должен завершиться с фолбэками,
+        // а не читать/закрывать карточки нового меню.
+        const cardToken = modMenuFetchToken;
         const channel = getChannelName();
         const token = await getToken();
         if (!token) return { isBanned: null, isTimedOut: null, isVip: null, isMod: null, isBlocked: null, banExpiresAt: null, banCreatedAt: null };
@@ -3358,10 +3387,10 @@ const announceText = content.querySelector('#tmod-announce-text');
         // модератору — только открытая карточка юзера (+ свои сохранённые действия).
         // Источники из бейджей сообщений убраны: они «запечены» при отправке и врут
         // после смены ролей.
-        const targetLogin = modMenuState && modMenuState.userLogin;
+        const targetLogin = snapLocal.userLogin;
         if (!isBroadcasterViewer && status.isBroadcaster !== true && targetLogin) {
             // Живой источник ролей — открытая карточка юзера. Всё прочее уступает ей.
-            const live = readRolesFromUserCardDom(targetLogin, modMenuState && modMenuState.userName);
+            const live = readRolesFromUserCardDom(targetLogin, snapLocal.userName);
             if (live) {
                 debugLog('mod-roles-live', live);
                 if (live.isVip != null) status.isVip = live.isVip;
@@ -3383,7 +3412,7 @@ const announceText = content.querySelector('#tmod-announce-text');
             // Резерв: живые флаги ролей из Fiber-объекта сообщения (Твитч обновляет его в
             // рантайме). Закешированы при открытии меню — тот же check, из которого
             // берётся userId; это не статичный бейдж, а текущий user-объект.
-            const fr = modMenuState && modMenuState.fiberRoles;
+            const fr = snapLocal.fiberRoles;
             if ((status.isVip == null || status.isMod == null)
                 && fr && fr.userLogin && String(fr.userLogin).toLowerCase() === String(targetLogin).toLowerCase()) {
                 if (fr.isVip === true || fr.isVip === false) status.isVip = !!fr.isVip;
@@ -3395,11 +3424,11 @@ const announceText = content.querySelector('#tmod-announce-text');
             // содержит «VIP»/«Moderator»/«Broadcaster»). Это «снимок» на момент
             // отправки, поэтому не перетирает карточку/живой fiber-флаг — только
             // заполняет пустоту, когда ничего живого нет.
-            if ((status.isVip == null || status.isMod == null) && modMenuState && modMenuState.badges && modMenuState.badges.length) {
+            if ((status.isVip == null || status.isMod == null) && snapLocal.badges && snapLocal.badges.length) {
                 let bVip = null;
                 let bMod = null;
                 let bBroad = null;
-                for (const b of modMenuState.badges) {
+                for (const b of snapLocal.badges) {
                     const t = (b.alt || '').toLowerCase();
                     if (t.indexOf('vip') !== -1 || t.indexOf('вип') !== -1) bVip = true;
                     else if (t === 'mod' || t.indexOf('moderator') !== -1 || t === 'мод' || t.indexOf('модератор') !== -1) bMod = true;
@@ -3416,7 +3445,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                 else if (status.isVip === true) status.isMod = false;
             }
         }
-        const ms2 = modMenuState || {};
+        const ms2 = snapLocal;
         // Роли, назначенные/снятые через панель: результат своего действия точен, пока
         // свеж (TTL). Само снятие другой роли не выполняем и не записываем — Twitch сам.
         const now = Date.now();
@@ -3449,8 +3478,8 @@ const announceText = content.querySelector('#tmod-announce-text');
         // ещё нет — открываем карточку сами кликом по нику и читаем обе уже после того,
         // как она появилась. Это чинит и «роль не считывается» (клик даёт карточку, а не
         // ждёт, пока юзер сам её откроет).
-        const readViewerCard = () => readRolesFromUserCardDom(targetLogin, modMenuState && modMenuState.userName);
-        const readMvCard = () => readModViewStatus(userId, targetLogin, modMenuState && modMenuState.userName);
+        const readViewerCard = () => readRolesFromUserCardDom(targetLogin, snapLocal.userName);
+        const readMvCard = () => readModViewStatus(userId, targetLogin, snapLocal.userName);
         let viewerCard = readViewerCard();
         let mv = readMvCard();
         // Карточка отдала статус, противоречащий свежей локальной записи нашего же
@@ -3470,29 +3499,47 @@ const announceText = content.querySelector('#tmod-announce-text');
             const freshLocal = localRec && ((localRec.kind === 'ban' && !localRec.expiresAt)
                 || (localRec.kind === 'timeout' && localRec.expiresAt > Date.now()));
             setCardHiddenUI(true);
+            modCardReadBusy = true;
             try {
-                for (let attempt = 0; attempt < 3; attempt++) {
-                    const opened = await openModViewCardFor(targetLogin);
+                for (let attempt = 0; attempt < 2 && cardToken === modMenuFetchToken; attempt++) {
+                    const opened = await openModViewCardFor(targetLogin, snapLocal.msgEl);
                     debugLog('mod-open-card', { opened, login: targetLogin, attempt });
-                    if (!opened) break;
-                    for (let t = 0; t < 12; t++) {
-                        await cardSleep(350);
+                    if (!opened || cardToken !== modMenuFetchToken) break;
+                    // Ждём «живого» контента карточки (бейджи/кнопки/текст), затем даём
+                    // ещё ~650мс — секция «Комментарии модераторов» (статус бана/таймаута)
+                    // догружается лениво, чуть позже бейджей ролей (видно в probe).
+                    let seen = 0, sawCard = 0;
+                    for (let t = 0; t < 14 && cardToken === modMenuFetchToken; t++) {
+                        await cardSleep(270);
                         let card = null;
-                        try { card = findOpenUserCard(targetLogin, modMenuState && modMenuState.userName); } catch (e) {}
+                        try { card = findOpenUserCard(targetLogin, snapLocal.userName); } catch (e) {}
                         if (card) {
+                            if (!sawCard) sawCard = Date.now();
                             let imgs = 0, btns = 0;
                             try { imgs = card.querySelectorAll('img').length; } catch (e) {}
                             try { btns = card.querySelectorAll('button').length; } catch (e) {}
                             const textLen = (card.textContent || '').length;
-                            // Пустая болванка карточки ролей/статуса не даёт — ждём
-                            // появления «живого» контента (до ~4.2с).
-                            if (imgs > 1 || textLen > 200 || btns > 2) {
-                                mv = readMvCard();
-                                viewerCard = readViewerCard();
+                            const ready = imgs > 1 || textLen > 200 || btns > 2;
+                            if (ready) {
+                                if (!seen) {
+                                    seen = Date.now();
+                                    continue; // контент есть — ждём ленивую догрузку статуса
+                                }
+                                if (Date.now() - seen > 650) break; // стабилизировалась
+                            } else if (imgs >= 1 && Date.now() - sawCard > 1600) {
+                                // Карточка есть, но панель статуса в ней так и не появилась
+                                // (обычная карточка зрителя) — читаем роли, ждать нечего.
                                 break;
                             }
+                        } else if (!sawCard && t >= 6) {
+                            // ~1.6с карточки нет (пустая болванка/не открылась) — дальше
+                            // её ждать незачем, фолбэки ролей/статуса уже готовы.
+                            break;
                         }
                     }
+                    if (cardToken !== modMenuFetchToken) { mv = null; viewerCard = null; break; }
+                    mv = readMvCard();
+                    viewerCard = readViewerCard();
                     if (!mv && !viewerCard) {
                         await closeUserCard();
                         break;
@@ -3505,7 +3552,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                     );
                     if (conflict) {
                         cardStale = true;
-                        if (attempt < 2) {
+                        if (attempt < 1) {
                             mv = null;
                             viewerCard = null;
                             await closeUserCard();
@@ -3517,6 +3564,9 @@ const announceText = content.querySelector('#tmod-announce-text');
                 }
             } finally {
                 const closed = await closeUserCard();
+                // Свой сеанс чтения кончился — не мешаем скроллу закрывать меню. Если
+                // меню уже переключилось на другого юзера, флаг оставляем на нём.
+                if (cardToken === modMenuFetchToken) modCardReadBusy = false;
                 setCardHiddenUI(false);
                 debugLog('mod-card-read', { login: targetLogin, mv, viewerCard, stale: cardStale, closed });
             }
@@ -3585,6 +3635,11 @@ const announceText = content.querySelector('#tmod-announce-text');
     // (до гарда) уводил навигацией на карточку канала в сайдбаре.
     let tmodSyntheticClick = false;
     let modBusy = false;
+    // Токен актуального фетча статуса меню: открытие меню на другом юзере инкрементит
+    // его — старый fetch заканчивается с фолбэками и не трогает чужие карточки.
+    let modMenuFetchToken = 0;
+    // Идёт чтение карточки юзера (клики/прокрутка чата не должны закрывать меню).
+    let modCardReadBusy = false;
     // Кэш токена для синхронной проверки в contextmenu (preventDefault должен
     // решаться синхронно, а storageGet асинхронный).
     let modTokenCache = null;
@@ -3747,10 +3802,28 @@ const announceText = content.querySelector('#tmod-announce-text');
 
     async function refreshModMenuStatus() {
         if (!modMenuEl || !modMenuState || !modMenuState.userId) return;
+        const token = ++modMenuFetchToken;
+        const st = modMenuState;
+        const snap = {
+            userId: st.userId,
+            userLogin: st.userLogin,
+            userName: st.userName,
+            msgEl: st.msgEl,
+            badges: st.badges || [],
+            fiberRoles: st.fiberRoles || null,
+            sessionVip: (st.sessionVip === true || st.sessionVip === false) ? st.sessionVip : null,
+            sessionVipAt: st.sessionVipAt || 0,
+            sessionMod: (st.sessionMod === true || st.sessionMod === false) ? st.sessionMod : null,
+            sessionModAt: st.sessionModAt || 0
+        };
         applyInstantModStatus();
-        const status = await fetchModStatus(modMenuState.userId);
-        if (!modMenuEl || !modMenuState) return;
+        const status = await fetchModStatus(snap.userId, snap);
+        // Меню за это время могло закрыться или переключиться на другого юзера —
+        // тогда результат этого фетча не применяем (иначе «путается» между юзерами).
+        if (!modMenuEl || !modMenuState || token !== modMenuFetchToken) return;
+        if (String(modMenuState.userId) !== String(snap.userId)) return;
         modMenuState.status = status;
+        modCardReadBusy = false;
         renderModMenuChips();
         renderModMenuToggles();
         renderModMenuTimeout();
@@ -4412,7 +4485,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         // прокрутка не должна закрывать меню.
         let modMenuScrollBase = window.scrollY;
         window.addEventListener('scroll', () => {
-            if (!modMenuEl) return;
+            if (!modMenuEl || modCardReadBusy) return;
             if (Math.abs(window.scrollY - modMenuScrollBase) > 2) closeModMenu();
             modMenuScrollBase = window.scrollY;
         }, true);
