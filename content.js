@@ -271,19 +271,28 @@
     async function storageGet(key) {
         if (IS_EXTENSION) {
             return new Promise((resolve) => {
-                chrome.storage.local.get([key], (result) => resolve(result[key] ?? null));
+                try {
+                    if (!chrome.runtime || !chrome.runtime.id) return resolve(null);
+                    chrome.storage.local.get([key], (result) => {
+                        if (chrome.runtime.lastError) return resolve(null);
+                        resolve(result[key] ?? null);
+                    });
+                } catch (e) { resolve(null); }
             });
         }
-        return GM_getValue(key, null);
+        try { return GM_getValue(key, null); } catch (e) { return null; }
     }
 
     async function storageSet(key, value) {
         if (IS_EXTENSION) {
             return new Promise((resolve) => {
-                chrome.storage.local.set({ [key]: value }, resolve);
+                try {
+                    if (!chrome.runtime || !chrome.runtime.id) return resolve();
+                    chrome.storage.local.set({ [key]: value }, () => { void chrome.runtime.lastError; resolve(); });
+                } catch (e) { resolve(); }
             });
         }
-        GM_setValue(key, value);
+        try { GM_setValue(key, value); } catch (e) {}
     }
 
     /**
@@ -2878,13 +2887,42 @@ const announceText = content.querySelector('#tmod-announce-text');
     // Пока читаем карточку, прячем её от глаз юзера (она всё равно рендерится и грузит
     // данные — просто не рисуется). visibility, а не display: layout не меняется.
     const TMOD_HIDE_CARD_ID = 'tmod-hide-card';
+    const TMOD_CARD_READ_DATA_KEY = 'data-tmod-card-read';
     let cardHideObserver = null;
+    let cardHideSession = 0;
+
+    function unhideCards() {
+        try {
+            const style = document.getElementById(TMOD_HIDE_CARD_ID);
+            if (style) style.remove();
+            document.querySelectorAll('[' + TMOD_CARD_READ_DATA_KEY + ']').forEach((el) => {
+                try {
+                    el.style.visibility = el.getAttribute('data-tmod-prev-vis') || '';
+                    el.style.opacity = el.getAttribute('data-tmod-prev-op') || '';
+                    el.style.pointerEvents = el.getAttribute('data-tmod-prev-pe') || '';
+                    el.removeAttribute(TMOD_CARD_READ_DATA_KEY);
+                    el.removeAttribute('data-tmod-prev-vis');
+                    el.removeAttribute('data-tmod-prev-op');
+                    el.removeAttribute('data-tmod-prev-pe');
+                } catch (e) {}
+            });
+            document.querySelectorAll(VIEWER_CARD_SELECTORS.join(', ')).forEach((el) => {
+                try {
+                    if (el.style.visibility === 'hidden') el.style.visibility = '';
+                    if (el.style.opacity === '0') el.style.opacity = '';
+                    if (el.style.pointerEvents === 'none') el.style.pointerEvents = '';
+                } catch (e) {}
+            });
+        } catch (e) {}
+    }
+
     function setCardHiddenUI(hidden) {
         try {
-            let style = document.getElementById(TMOD_HIDE_CARD_ID);
-            const selector = VIEWER_CARD_SELECTORS.join(', ');
-            const hideStyle = 'visibility: hidden !important; opacity: 0 !important; pointer-events: none !important;';
             if (hidden) {
+                cardHideSession = Date.now();
+                let style = document.getElementById(TMOD_HIDE_CARD_ID);
+                const selector = VIEWER_CARD_SELECTORS.join(', ');
+                const hideStyle = 'visibility: hidden !important; opacity: 0 !important; pointer-events: none !important;';
                 if (!style) {
                     style = document.createElement('style');
                     style.id = TMOD_HIDE_CARD_ID;
@@ -2893,25 +2931,38 @@ const announceText = content.querySelector('#tmod-announce-text');
                 }
                 if (!cardHideObserver) {
                     cardHideObserver = new MutationObserver(() => {
+                        if (!cardHideSession) return;
                         try {
                             document.querySelectorAll(selector).forEach((el) => {
+                                try {
+                                    if (!el.getAttribute(TMOD_CARD_READ_DATA_KEY)) {
+                                        el.setAttribute('data-tmod-prev-vis', el.style.visibility || '');
+                                        el.setAttribute('data-tmod-prev-op', el.style.opacity || '');
+                                        el.setAttribute('data-tmod-prev-pe', el.style.pointerEvents || '');
+                                        el.setAttribute(TMOD_CARD_READ_DATA_KEY, '1');
+                                    }
+                                } catch (e2) {}
                                 if (el.style.visibility !== 'hidden') {
                                     el.style.cssText += '; ' + hideStyle;
                                 }
                             });
                         } catch (e) {}
                     });
-                    cardHideObserver.observe(document.documentElement, { childList: true, subtree: true });
+                    cardHideObserver.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
                 }
             } else {
-                if (style) style.remove();
-                if (cardHideObserver) {
-                    cardHideObserver.disconnect();
-                    cardHideObserver = null;
-                }
+                cardHideSession = 0;
+                if (cardHideObserver) { cardHideObserver.disconnect(); cardHideObserver = null; }
+                unhideCards();
             }
         } catch (e) {}
     }
+
+    document.addEventListener('pointerdown', (e) => {
+        try {
+            if (cardHideSession && e.isTrusted) setCardHiddenUI(false);
+        } catch (e2) {}
+    }, true);
 
     function cardEls() {
         try { return Array.from(document.querySelectorAll(VIEWER_CARD_SELECTORS.join(', '))); } catch (e) { return []; }
