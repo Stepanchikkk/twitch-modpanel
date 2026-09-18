@@ -2,7 +2,7 @@
 // @name            Twitch ModPanel
 // @namespace       TMP
 // @description     Панель модератора для Twitch
-// @version         0.1.3.0
+// @version         0.1.4.0
 // @author          Twitch ModPanel Team
 //
 // @grant           GM_getValue
