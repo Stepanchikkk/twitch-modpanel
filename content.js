@@ -94,7 +94,7 @@
     // (в консоли страницы: localStorage.setItem('TMOD_DEBUG','1')),
     // потому что консоль не видит переменные контент-скрипта/песочницы TM.
     const PAGE_WINDOW = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
-    // Дебаг-флаг читается Ж�ВЬЁМ при каждом вызове (а не кэшируется при старте),
+    // Дебаг-флаг читается ЖИВЬЁМ при каждом вызове (а не кэшируется при старте),
     // поэтому переключить его можно в любой момент без перезагрузки страницы:
     //   localStorage.setItem('TMOD_DEBUG','1')  — обычный (повторы debugLogOnce глушатся);
     //   localStorage.setItem('TMOD_DEBUG','2')  — полный: пишется каждое событие, без
@@ -339,7 +339,7 @@
         }
     }
 
-    // �нжект twitch-api.js нужен только расширению: контент-скрипт живёт
+    // Инжект twitch-api.js нужен только расширению: контент-скрипт живёт
     // в изолированном мире и достаёт до React Fiber через postMessage-мост.
     function injectTwitchAPI() {
         const script = document.createElement('script');
@@ -1370,7 +1370,7 @@
         makeConfirm(content.querySelector('#tmod-sett-clear-history'), () => {
             const channel = window.location.pathname.slice(1);
             storageSet('tmod_history_' + channel, null).then(() => {
-                setStatus('�стория анонсов очищена', true);
+                setStatus('История анонсов очищена', true);
             });
         });
     }
@@ -1926,7 +1926,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                     <input type="text" id="tmod-stream-title" maxlength="140" placeholder="Название трансляции" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
                 </div>
                 <div style="margin-bottom: 4px; position: relative;">
-                    <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 4px;">Категория / �гра</label>
+                    <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 4px;">Категория / Игра</label>
                     <input type="text" id="tmod-stream-category" placeholder="Поиск категории..." autocomplete="off" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
                     <div id="tmod-cat-results" style="position: absolute; top: 100%; left: 0; right: 0; background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 0 0 4px 4px; display: none; z-index: 10; max-height: 250px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #3a3a3d transparent;"></div>
                 </div>
@@ -2108,7 +2108,7 @@ const announceText = content.querySelector('#tmod-announce-text');
             <div id="tmod-so-loading" style="text-align: center; color: #adadb8; padding: 20px;">Загрузка зрителей...</div>
             <div id="tmod-so-form" style="display: none;">
                 <div style="margin-bottom: 10px; display: flex; gap: 6px;">
-                    <input type="text" id="tmod-so-manual" placeholder="�мя пользователя..." autocomplete="off" style="flex: 1; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
+                    <input type="text" id="tmod-so-manual" placeholder="Имя пользователя..." autocomplete="off" style="flex: 1; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
                     <button id="tmod-so-send-manual" style="background: #9146FF; color: white; border: none; border-radius: 4px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;">Отметить</button>
                 </div>
                 <div style="border-top: 1px solid #26262c; padding-top: 8px; margin-bottom: 8px;">
@@ -2476,7 +2476,7 @@ const announceText = content.querySelector('#tmod-announce-text');
     // Меню модерации (ПКМ по сообщению в чате)
     // ============================================================================
 
-    // �щет объект юзера рекурсивно по поддереву фибера (предки + дети + сиблинги).
+    // Ищет объект юзера рекурсивно по поддереву фибера (предки + дети + сиблинги).
     function isUserObj(o) {
         return !!(o && typeof o === 'object' && o.id != null &&
             (typeof o.login === 'string' || typeof o.displayName === 'string' || typeof o.userName === 'string'));
@@ -3651,7 +3651,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         }
         // Роли: для стримера Helix уже дал точные значения (isBroadcasterViewer=true);
         // модератору — только открытая карточка юзера (+ свои сохранённые действия).
-        // �сточники из бейджей сообщений убраны: они «запечены» при отправке и врут
+        // Источники из бейджей сообщений убраны: они «запечены» при отправке и врут
         // после смены ролей.
         if (!isBroadcasterViewer && status.isBroadcaster !== true && targetLogin) {
             // Живой источник ролей — открытая карточка юзера. Всё прочее уступает ей.
@@ -3866,7 +3866,7 @@ const announceText = content.querySelector('#tmod-announce-text');
     // Токен актуального фетча статуса панели: открытие меню на другом юзере инкрементит
     // его — старый fetch заканчивается с фолбэками и не трогает чужие карточки.
     let panelMenuFetchToken = 0;
-    // �дёт чтение карточки юзера (клики/прокрутка чата не должны закрывать меню).
+    // Идёт чтение карточки юзера (клики/прокрутка чата не должны закрывать меню).
     let panelCardReadBusy = false;
     // Кэш последнего статуса по юзеру (channel:userId) — мгновенный рендер повторных
     // открытий меню, фоновое обновление доводит за ~1с. Персистентный слой:
@@ -4374,7 +4374,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         [60, '1м'], [300, '5м'], [600, '10м'], [1800, '30м'], [3600, '1ч'], [86400, '24ч']
     ];
 
-    // �конки (SVG в стиле Twitch), fill: currentColor — наследуют цвет кнопки.
+    // Иконки (SVG в стиле Twitch), fill: currentColor — наследуют цвет кнопки.
     const MOD_ICONS = {
         delete:   '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10 2h4v2h7v2H3V4h7V2ZM5 8h2v12h10V8h2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8Z"/><path d="M11 8h2v10h-2V8Z"/></svg>',
         warn:     '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M13.226 2.72a1.404 1.404 0 0 0-2.452 0L2.192 17.84c-.545.96.136 2.16 1.226 2.16h17.164c1.09 0 1.771-1.2 1.226-2.16L13.226 2.72ZM13 7h-2v7h2V7Zm0 9h-2v2h2v-2Z" clip-rule="evenodd"/></svg>',
