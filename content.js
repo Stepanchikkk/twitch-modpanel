@@ -2155,28 +2155,6 @@ const announceText = content.querySelector('#tmod-announce-text');
             } catch { return []; }
         }
 
-        async function sendShoutout(recipientLogin) {
-            const token = await getToken();
-            if (!token) return { error: 'Нет токена' };
-            const broadcasterId = await getChannelId(channelName, token);
-            if (!broadcasterId) return { error: 'Ошибка ID канала' };
-            const userId = await getCurrentUserId(token);
-            if (!userId) return { error: 'Ошибка ID пользователя' };
-            const userResp = await apiRequest(`https://api.twitch.tv/helix/users?login=${encodeURIComponent(recipientLogin)}`, {
-                headers: { 'Authorization': `Bearer ${token}`, 'Client-Id': CLIENT_ID }
-            });
-            if (userResp.error || !userResp.ok) return { error: 'Пользователь не найден' };
-            let recipientId;
-            try { recipientId = JSON.parse(userResp.text).data[0].id; } catch { return { error: 'Ошибка ID получателя' }; }
-            const resp = await apiRequest(`https://api.twitch.tv/helix/chat/shoutouts?from_broadcaster_id=${broadcasterId}&to_broadcaster_id=${recipientId}&moderator_id=${userId}`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}`, 'Client-Id': CLIENT_ID }
-            });
-            if (resp.status === 204 || (resp.ok && !resp.error)) return { success: true };
-            try { const e = JSON.parse(resp.text); return { error: e.message || e.error || ('HTTP ' + resp.status) }; }
-            catch { return { error: 'HTTP ' + resp.status }; }
-        }
-
         loadChatters().then(chatters => {
             const loadingDiv = content.querySelector('#tmod-so-loading');
             const formDiv = content.querySelector('#tmod-so-form');
@@ -2715,6 +2693,24 @@ const announceText = content.querySelector('#tmod-announce-text');
         const moderatorId = await getCurrentUserId(token);
         if (!broadcasterId || !moderatorId) return null;
         return { broadcasterId, moderatorId };
+    }
+
+    async function sendShoutout(recipientLogin) {
+        const login = sanitizeLogin(recipientLogin);
+        if (!login) return { error: 'Пустой логин' };
+        const ctx = await getModeratorContext();
+        if (!ctx) return { error: 'Нет токена или не удалось определить канал' };
+        debugLog('shoutout-ctx', ctx, 'login', login);
+        const userResp = await helixCall('https://api.twitch.tv/helix/users?login=' + encodeURIComponent(login));
+        debugLog('shoutout-user', userResp.status, userResp.error, userResp.data && userResp.data.data);
+        if (!userResp.success || !userResp.data || !userResp.data.data || !userResp.data.data[0]) {
+            return { error: 'Пользователь не найден' };
+        }
+        const recipientId = userResp.data.data[0].id;
+        const resp = await helixCall(`https://api.twitch.tv/helix/chat/shoutouts?from_broadcaster_id=${ctx.broadcasterId}&to_broadcaster_id=${recipientId}&moderator_id=${ctx.moderatorId}`, { method: 'POST' });
+        debugLog('shoutout-resp', resp.status, resp.error);
+        if (resp.success) return { success: true };
+        return { error: resp.error || 'Ошибка шаутаута' };
     }
 
     function sanitizeLogin(value) {
@@ -4787,6 +4783,85 @@ closePanelMenu();
         }, true);
     }
 
+    function initRaidShoutout() {
+        let raidSoObserver = null;
+        let raidSoContainer = null;
+
+        function loginFromNotice(el) {
+            const link = el.querySelector('a[href^="/"]');
+            if (link) {
+                const m = (link.getAttribute('href') || '').match(/^\/([a-zA-Z0-9_]+)/);
+                if (m) return m[1];
+            }
+            const strong = el.querySelector('strong');
+            if (strong) {
+                const login = sanitizeLogin(strong.textContent);
+                if (login) return login;
+            }
+            return null;
+        }
+
+        function processNotice(el) {
+            if (!el || el.dataset.tmodSoDone) return;
+            el.dataset.tmodSoDone = '1';
+            if (!/рейд|raid/i.test(el.textContent || '')) return;
+            const login = loginFromNotice(el);
+            if (!login || el.querySelector('.tmod-raid-so-btn')) return;
+            const btn = document.createElement('button');
+            btn.className = 'tmod-raid-so-btn';
+            btn.textContent = 'Отметить';
+            btn.style.cssText = 'display: inline-flex; align-items: center; background: #9146FF; color: #fff; border: none; border-radius: 9000px; padding: 4px 12px; font-size: 12px; font-weight: 600; cursor: pointer; vertical-align: middle;';
+            btn.onclick = async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (btn.disabled) return;
+                btn.disabled = true;
+                const prev = btn.textContent;
+                btn.textContent = '...';
+                try {
+                    const res = await sendShoutout(login);
+                    debugLog('shoutout', login, res);
+                    if (res.success) {
+                        btn.textContent = 'Отмечен';
+                    } else {
+                        btn.textContent = prev;
+                        btn.disabled = false;
+                        panelToast('Не удалось отметить пользователя (' + login + '): ' + (res.error || 'неизвестная ошибка'));
+                    }
+                } catch (err) {
+                    btn.textContent = prev;
+                    btn.disabled = false;
+                    debugLog('shoutout-error', err && err.message);
+                    panelToast('Шаутаут: исключение ' + (err && err.message || err));
+                }
+            };
+            el.appendChild(btn);
+        }
+
+        function scan(root) {
+            if (!root || root.nodeType !== 1) return;
+            if (root.matches && root.matches('[data-test-selector="user-notice-line"]')) processNotice(root);
+            if (root.querySelectorAll) root.querySelectorAll('[data-test-selector="user-notice-line"]').forEach(processNotice);
+        }
+
+        function attach() {
+            const container = document.querySelector('section[data-test-selector="chat-room-component-layout"]') || document.body;
+            if (container === raidSoContainer && raidSoObserver) return;
+            if (raidSoObserver) raidSoObserver.disconnect();
+            raidSoContainer = container;
+            raidSoObserver = new MutationObserver((mutations) => {
+                for (const m of mutations) {
+                    for (const n of m.addedNodes) scan(n);
+                }
+            });
+            raidSoObserver.observe(container, { childList: true, subtree: true });
+            scan(container);
+        }
+
+        attach();
+        setInterval(() => { if (!raidSoContainer || !raidSoContainer.isConnected) attach(); }, 5000);
+    }
+
     function initModerationMenu() {
         getPanelSettings().then((s) => { tmodContextMenuEnabled = s.contextMenu !== false; });
         getToken().then((t) => {
@@ -4998,6 +5073,7 @@ closePanelMenu();
     }
     watchChannelChanges();
     initModerationMenu();
+    initRaidShoutout();
     initChatAutofocus();
     // Персистентный кэш статусов в память — к первому ПКМ-клику почти наверняка готов.
         loadPanelStatusCache();
