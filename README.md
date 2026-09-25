@@ -2,6 +2,14 @@
 
 Панель модератора для Twitch — быстрый доступ к инструментам управления стримом без переключения на Mod View.
 
+##  Быстрая установка
+
+| Вариант | Ссылка |
+|---------|--------|
+|  **Chrome Web Store** | **[Установить из магазина](https://chromewebstore.google.com/detail/khjgongmgnbnlbfebmbkplbnilijeiic)** |
+|  **Tampermonkey** | **[Установить скрипт](https://raw.githubusercontent.com/Stepanchikkk/twitch-modpanel/main/twitch-modpanel.user.js)** |
+|  **Chrome Extension (вручную)** | **[Скачать архив](https://github.com/Stepanchikkk/twitch-modpanel/releases/latest)** |
+
 <p align="center">
   <img src="screenshots/08-panel.png" alt="Панель модератора" width="80%">
   
