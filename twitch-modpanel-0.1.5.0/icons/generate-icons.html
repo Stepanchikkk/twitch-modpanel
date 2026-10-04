@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Генератор иконок Twitch ModPanel</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0e0e10;
+            color: #efeff1;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 { color: #9146FF; }
+        .icons {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin: 40px 0;
+        }
+        .icon-box {
+            background: #18181b;
+            border: 1px solid #3a3a3d;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+        }
+        .icon-box img {
+            image-rendering: pixelated;
+        }
+        .icon-box p {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #adadb8;
+        }
+        button {
+            background: #9146FF;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            margin: 10px;
+        }
+        button:hover { background: #772ce8; }
+        #download-all {
+            background: #00ff00;
+            color: #000;
+        }
+        #download-all:hover { background: #00cc00; }
+    </style>
+</head>
+<body>
+    <h1>🛡️ Twitch ModPanel — Иконки</h1>
+    <p>Нажми кнопку чтобы скачать иконки нужного размера</p>
+    
+    <div>
+        <button onclick="downloadPNG(16)">16x16</button>
+        <button onclick="downloadPNG(32)">32x32</button>
+        <button onclick="downloadPNG(48)">48x48</button>
+        <button onclick="downloadPNG(128)">128x128</button>
+    </div>
+    
+    <div class="icons">
+        <div class="icon-box">
+            <img id="icon-16" src="" alt="16x16">
+            <p>16×16 px</p>
+        </div>
+        <div class="icon-box">
+            <img id="icon-32" src="" alt="32x32">
+            <p>32×32 px</p>
+        </div>
+        <div class="icon-box">
+            <img id="icon-48" src="" alt="48x48">
+            <p>48×48 px</p>
+        </div>
+        <div class="icon-box">
+            <img id="icon-128" src="" alt="128x128">
+            <p>128×128 px</p>
+        </div>
+    </div>
+    
+    <button id="download-all" onclick="downloadAll()">📦 Скачать все (ZIP)</button>
+    
+    <script>
+        const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="shieldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#bf94ff;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#9146FF;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <path d="M64 8 L108 24 L108 68 C108 96 88 116 64 120 C40 116 20 96 20 68 L20 24 Z" 
+        fill="url(#shieldGradient)" 
+        stroke="#772ce8" 
+        stroke-width="4"/>
+  <path d="M44 52 L44 88 L52 88 L52 64 L64 76 L76 64 L76 88 L84 88 L84 52 L76 52 L64 66 L52 52 Z" 
+        fill="#ffffff"/>
+  <path d="M64 16 L96 28 L96 40 L64 28 L32 40 L32 28 Z" 
+        fill="#ffffff" 
+        opacity="0.2"/>
+</svg>`;
+
+        const sizes = [16, 32, 48, 128];
+        const canvases = {};
+        
+        // Рисуем иконки
+        sizes.forEach(size => {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            const img = new Image();
+            
+            img.onload = () => {
+                ctx.drawImage(img, 0, 0, size, size);
+                const dataUrl = canvas.toDataURL('image/png');
+                document.getElementById(`icon-${size}`).src = dataUrl;
+                canvases[size] = canvas;
+            };
+            
+            img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgContent)));
+        });
+        
+        function downloadPNG(size) {
+            const link = document.createElement('a');
+            link.download = `icon${size}.png`;
+            link.href = canvases[size].toDataURL('image/png');
+            link.click();
+        }
+        
+        function downloadAll() {
+            sizes.forEach((size, i) => {
+                setTimeout(() => downloadPNG(size), i * 200);
+            });
+        }
+    </script>
+</body>
+</html>

@@ -2190,7 +2190,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                         const login = item.dataset.login;
                         item.style.opacity = '0.5';
                         item.style.pointerEvents = 'none';
-                        statusDiv.textContent = 'Отправка отметки...';
+                        statusDiv.textContent = 'Отправка шаутаута...';
                         statusDiv.style.color = '#adadb8';
                         const result = await sendShoutout(login);
                         if (result.success) {
@@ -2214,7 +2214,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                 if (!login) return;
                 const statusDiv = content.querySelector('#tmod-so-status');
                 manualBtn.disabled = true;
-                statusDiv.textContent = 'Отправка отметки...';
+                statusDiv.textContent = 'Отправка шаутаута...';
                 statusDiv.style.color = '#adadb8';
                 const result = await sendShoutout(login);
                 if (result.success) {
@@ -4345,11 +4345,8 @@ const announceText = content.querySelector('#tmod-announce-text');
         }
         if (blockBtn) {
             const lbl = blockBtn.querySelector('.mm-lbl');
-            if (lbl) lbl.textContent = 'Заблокировать';
-            blockBtn.disabled = s.isBlocked === true;
+            if (lbl) lbl.textContent = s.isBlocked === true ? 'Разблокировать' : 'Заблокировать';
         }
-        const unblockBtn = panelMenuEl.querySelector('[data-action="unblock"]');
-        if (unblockBtn) unblockBtn.disabled = s.isBlocked !== true;
         if (banBtn && unbanBtn) {
             const lbl = unbanBtn.querySelector('.mm-lbl');
             if (lbl) lbl.textContent = 'Разбанить';
@@ -4370,40 +4367,8 @@ const announceText = content.querySelector('#tmod-announce-text');
     }
 
     const MOD_TIMEOUT_PRESETS = [
-        [60, '1м'], [300, '5м'], [600, '10м'], [1800, '30м'], [3600, '1ч'], [86400, '24ч'], [604800, '7д']
+        [60, '1м'], [300, '5м'], [600, '10м'], [1800, '30м'], [3600, '1ч'], [86400, '24ч']
     ];
-
-    // Парсит срок из строки: с/м/ч/д, можно комбинировать («1ч30м», «2д12ч»).
-    // Без единицы число трактуется как минуты. Возвращает секунды или null.
-    function parseTimeoutDuration(raw) {
-        const str = String(raw || '').trim().toLowerCase();
-        if (!str) return null;
-        const units = { 'с': 1, 's': 1, 'м': 60, 'm': 60, 'ч': 3600, 'h': 3600, 'д': 86400, 'd': 86400 };
-        const re = /(\d+(?:[.,]\d+)?)\s*([a-zа-яё]*)/gi;
-        let total = 0;
-        let matched = false;
-        let m;
-        let lastIndex = 0;
-        while ((m = re.exec(str)) !== null) {
-            if (m.index !== lastIndex) {
-                const gap = str.slice(lastIndex, m.index).trim();
-                if (gap) return null;
-            }
-            lastIndex = re.lastIndex;
-            const num = parseFloat(m[1].replace(',', '.'));
-            const u = (m[2] || '').toLowerCase();
-            if (!u) {
-                total += num * 60;
-            } else if (units[u] != null) {
-                total += num * units[u];
-            } else {
-                return null;
-            }
-            matched = true;
-        }
-        if (!matched || lastIndex !== str.length) return null;
-        return total > 0 ? total : null;
-    }
 
     // Иконки (SVG в стиле Twitch), fill: currentColor — наследуют цвет кнопки.
     const MOD_ICONS = {
@@ -4413,8 +4378,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         ban:      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M1 12C1 5.925 5.925 1 12 1s11 4.925 11 11-4.925 11-11 11S1 18.075 1 12Zm11 9A9 9 0 0 1 4.968 6.382l12.65 12.65A8.962 8.962 0 0 1 12 21Zm7.032-3.382a9 9 0 0 0-12.65-12.65l12.65 12.65Z" clip-rule="evenodd"/></svg>',
         mod:      '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M3 7a5 5 0 1 1 6 4.9v.1a1 1 0 0 0 1 1h1a3 3 0 0 1 3 3v6h-2v-6a1 1 0 0 0-1-1h-1a2.99 2.99 0 0 1-2-.764A2.99 2.99 0 0 1 6 15H5a1 1 0 0 0-1 1v6H2v-6a3 3 0 0 1 3-3h1a1 1 0 0 0 1-1v-.1A5.002 5.002 0 0 1 3 7Zm5 3a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z" clip-rule="evenodd"/><path d="m18 8 4 4-4 4-1.5-1.5L18 13h-4v-2h4l-1.5-1.5L18 8Z"/></svg>',
         unmod:    '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M3 7a5 5 0 1 1 6 4.9v.1a1 1 0 0 0 1 1h1a3 3 0 0 1 3 3v6h-2v-6a1 1 0 0 0-1-1h-1a2.99 2.99 0 0 1-2-.764A2.99 2.99 0 0 1 6 15H5a1 1 0 0 0-1 1v6H2v-6a3 3 0 0 1 3-3h1a1 1 0 0 0 1-1v-.1A5.002 5.002 0 0 1 3 7Zm5 3a3 3 0 1 1 0-6 3 3 0 0 1 0 6Z" clip-rule="evenodd"/><path d="M17.5 6.5 16 8l2 2-2 2 1.5 1.5 2-2 2 2L23 12l-2-2 2-2-1.5-1.5-2 2-2-2Z"/></svg>',
-        vip:      '<svg viewBox="8 8 48 36" fill="currentColor" aria-hidden="true"><path d="M10 18 18 10h28l8 8-22 24L10 18z"/></svg>',
-        shoutout: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="m13 17 9 5V2l-9 5H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h3v5h2v-5h4Zm7-11.601-6 3.333v6.536l6 3.333V5.399ZM4 9h8v6H4V9Z"/></svg>'
+        vip:      '<svg viewBox="8 8 48 36" fill="currentColor" aria-hidden="true"><path d="M10 18 18 10h28l8 8-22 24L10 18z"/></svg>'
     };
 
     function showPanelMenu(data, msgEl) {
@@ -4537,10 +4501,9 @@ const announceText = content.querySelector('#tmod-announce-text');
                 <div class="mm-section">Таймаут</div>
                 <div class="mm-row">${presetsHtml}</div>
                 <div class="mm-row">
-                    <input class="mm-input mm-duration" type="text" placeholder="Напр. 10м, 1ч30м, 2д" style="flex:1;">
+                    <input class="mm-input" type="number" min="1" max="20160" placeholder="Минуты" style="flex:1;">
                     <button class="mm-btn" data-action="timeout-custom"><span class="mm-lbl">Ок</span></button>
                 </div>
-                <div style="font-size:11px;opacity:.65;margin:-2px 0 6px;line-height:1.35;">Формат: число + единица — с, м, ч, д (можно комбинировать: 1ч30м, 2д12ч). Без единицы — минуты.</div>
                 <div class="mm-timeout-row" hidden>
                     <div class="mm-timeout-info"></div>
                     <button class="mm-btn wide" data-action="untimeout"><span class="mm-ic">${MOD_ICONS.timeout}</span><span class="mm-lbl">Прервать отстранение</span></button>
@@ -4561,9 +4524,9 @@ const announceText = content.querySelector('#tmod-announce-text');
                     <button class="mm-btn" data-action="mod"><span class="mm-ic">${MOD_ICONS.mod}</span><span class="mm-lbl">Сделать модератором</span></button>
                 </div>
 
-                <div class="mm-section">Отметить (shoutout)</div>
+                <div class="mm-section">Блокировка (личная)</div>
                 <div class="mm-row">
-                    <button class="mm-btn" data-action="shoutout"><span class="mm-ic">${MOD_ICONS.shoutout}</span><span class="mm-lbl">Отметить</span></button>
+                    <button class="mm-btn" data-action="block"><span class="mm-ic">${MOD_ICONS.ban}</span><span class="mm-lbl">Заблокировать</span></button>
                 </div>
             </div>
             <div class="mm-status"></div>
@@ -4689,7 +4652,7 @@ const announceText = content.querySelector('#tmod-announce-text');
 
         const reasonInput = menu.querySelector('.mm-input[type="text"]');
         menu.querySelectorAll('.mm-btn[data-action]').forEach((btn) => {
-            btn.addEventListener('click', (e) => {
+            btn.addEventListener('click', () => {
                 const action = btn.dataset.action;
                 const s = panelMenuState;
                 if (!s || !s.userId) return;
@@ -4713,11 +4676,11 @@ closePanelMenu();
                         break;
                     }
                     case 'timeout-custom': {
-                        const txtInput = menu.querySelector('.mm-duration');
-                        const secs = parseTimeoutDuration(txtInput && txtInput.value);
-                        if (!secs) { setMenuStatus('Укажите срок (напр. 10м, 1ч30м, 2д)', 'err'); return; }
-                        const sec = Math.max(60, Math.min(1209600, Math.round(secs)));
-                        runPanelAction(`Таймаут ${txtInput.value.trim()}`, () => actionTimeout(s.userId, sec, reason));
+                        const numInput = menu.querySelector('.mm-input[type="number"]');
+                        const val = parseFloat(numInput && numInput.value);
+                        if (!val || val < 1) { setMenuStatus('Укажите минуты (1–20160)', 'err'); return; }
+                        const sec = Math.max(60, Math.min(1209600, Math.round(val) * 60));
+                        runPanelAction(`Таймаут ${Math.round(val)} мин`, () => actionTimeout(s.userId, sec, reason));
                         break;
                     }
                     case 'ban':
@@ -4759,60 +4722,12 @@ closePanelMenu();
                             });
                         }
                         break;
-                    case 'shoutout': {
-                        e.stopPropagation();
-                        if (panelBusy) return;
-                        const st = panelMenuState;
-                        if (!st) return;
-                        const login = sanitizeLogin(st.userLogin || st.userName);
-                        if (!login) { setMenuStatus('Не удалось определить логин', 'err'); return; }
-                        const doSend = async () => {
-                            btn.disabled = true;
-                            const prevText = btn._soPrevText || btn.textContent;
-                            if (!btn._soPrevText) btn._soPrevText = btn.textContent;
-                            btn.textContent = '...';
-                            try {
-                                const res = await sendShoutout(login);
-                                debugLog('menu-shoutout', login, res);
-                                if (res.success) {
-                                    btn.textContent = 'Отмечен';
-                                    setMenuStatus('Пользователь отмечен', 'ok');
-                                    setTimeout(() => {
-                                        if (btn.isConnected) {
-                                            btn.textContent = btn._soPrevText || prevText;
-                                            delete btn._soPrevText;
-                                            btn.disabled = false;
-                                        }
-                                    }, 3000);
-                                } else {
-                                    btn.textContent = btn._soPrevText || prevText;
-                                    delete btn._soPrevText;
-                                    btn.disabled = false;
-                                    setMenuStatus('Не удалось отметить: ' + (res.error || 'ошибка'), 'err');
-                                }
-                            } catch (err) {
-                                btn.textContent = btn._soPrevText || prevText;
-                                delete btn._soPrevText;
-                                btn.disabled = false;
-                                debugLog('menu-shoutout-err', err && err.message);
-                                setMenuStatus('Не удалось отметить: ' + (err && err.message || err), 'err');
-                            }
-                        };
-                        if (btn.dataset.shoutoutConfirmed === '1') {
-                            doSend();
-                        } else {
-                            btn.dataset.shoutoutConfirmed = '1';
-                            if (!btn._soPrevText) btn._soPrevText = btn.textContent;
-                            btn.textContent = 'Подтвердить?';
-                            setMenuStatus('Подтвердите отправку шаутаута', '');
-                        }
-                        break;
-                    }
                     case 'block':
-                        runPanelAction('Заблокировать', () => actionBlock(s.userId, false));
-                        break;
-                    case 'unblock':
-                        runPanelAction('Разблокировать', () => actionBlock(s.userId, true));
+                        if (s.status.isBlocked === true) {
+                            runPanelAction('Разблокировать', () => actionBlock(s.userId, true));
+                        } else {
+                            runPanelAction('Заблокировать', () => actionBlock(s.userId, false));
+                        }
                         break;
                 }
             });
@@ -4823,29 +4738,6 @@ closePanelMenu();
         renderPanelMenuTimeout();
         renderPanelMenuBan();
         refreshPanelMenuStatus();
-    }
-
-    function closePanelMenu() {
-        if (!panelMenuEl) return;
-        // Сбрасываем подтверждение шаутаута при закрытии меню
-        const soBtn = panelMenuEl.querySelector('[data-action="shoutout"]');
-        if (soBtn) {
-            delete soBtn.dataset.shoutoutConfirmed;
-            if (soBtn._soPrevText) {
-                soBtn.textContent = soBtn._soPrevText;
-                delete soBtn._soPrevText;
-            } else {
-                const lbl = soBtn.querySelector('.mm-lbl');
-                if (lbl && lbl.textContent === 'Подтвердить?') {
-                    lbl.textContent = 'Отметить';
-                } else if (soBtn.textContent === 'Подтвердить?') {
-                    soBtn.textContent = 'Отметить';
-                }
-            }
-        }
-        try { panelMenuEl.remove(); } catch (e) {}
-        panelMenuEl = null;
-        panelMenuState = null;
     }
 
     function initChatAutofocus() {
