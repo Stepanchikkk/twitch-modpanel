@@ -2939,78 +2939,46 @@ const announceText = content.querySelector('#tmod-announce-text');
         '.chat-room__viewer-card',
         '[class*="viewer-card"]',
         '[data-a-target="mod-view-user-details"]',
-        '[data-test-selector="mod-view-user-details"]'
+        '[data-test-selector="mod-view-user-details"]',
+        '[role="dialog"]'
     ];
 
     // Пока читаем карточку, прячем её от глаз юзера (она всё равно рендерится и грузит
-    // данные — просто не рисуется). visibility, а не display: layout не меняется.
+    // данные — просто не рисуется). Скрытие — класс на <body> + одно CSS-правило (как в
+    // Twitch_Badges_Extension): правило матчит карточку в момент её появления, поэтому
+    // React не успевает показать её ни на кадр. Inline-стили/observer не нужны.
     const TMOD_HIDE_CARD_ID = 'tmod-hide-card';
-    const TMOD_CARD_READ_DATA_KEY = 'data-tmod-card-read';
-    let cardHideObserver = null;
+    const TMOD_HIDE_CARD_CLASS = 'tmod-card-hidden';
     let cardHideSession = 0;
+
+    function ensureHideStyle() {
+        if (document.getElementById(TMOD_HIDE_CARD_ID)) return;
+        try {
+            const style = document.createElement('style');
+            style.id = TMOD_HIDE_CARD_ID;
+            style.textContent = '.' + TMOD_HIDE_CARD_CLASS + ' :is(' + VIEWER_CARD_SELECTORS.join(', ') + ') {'
+                + ' visibility: hidden !important; opacity: 0 !important; pointer-events: none !important;'
+                + ' transition: none !important; animation: none !important; }';
+            (document.head || document.documentElement).appendChild(style);
+        } catch (e) {}
+    }
 
     function unhideCards() {
         try {
+            if (document.body) document.body.classList.remove(TMOD_HIDE_CARD_CLASS);
             const style = document.getElementById(TMOD_HIDE_CARD_ID);
             if (style) style.remove();
-            document.querySelectorAll('[' + TMOD_CARD_READ_DATA_KEY + ']').forEach((el) => {
-                try {
-                    el.style.visibility = el.getAttribute('data-tmod-prev-vis') || '';
-                    el.style.opacity = el.getAttribute('data-tmod-prev-op') || '';
-                    el.style.pointerEvents = el.getAttribute('data-tmod-prev-pe') || '';
-                    el.removeAttribute(TMOD_CARD_READ_DATA_KEY);
-                    el.removeAttribute('data-tmod-prev-vis');
-                    el.removeAttribute('data-tmod-prev-op');
-                    el.removeAttribute('data-tmod-prev-pe');
-                } catch (e) {}
-            });
-            document.querySelectorAll(VIEWER_CARD_SELECTORS.join(', ')).forEach((el) => {
-                try {
-                    if (el.style.visibility === 'hidden') el.style.visibility = '';
-                    if (el.style.opacity === '0') el.style.opacity = '';
-                    if (el.style.pointerEvents === 'none') el.style.pointerEvents = '';
-                } catch (e) {}
-            });
         } catch (e) {}
     }
 
     function setCardHiddenUI(hidden) {
         try {
             if (hidden) {
+                ensureHideStyle();
+                if (document.body) document.body.classList.add(TMOD_HIDE_CARD_CLASS);
                 cardHideSession = Date.now();
-                let style = document.getElementById(TMOD_HIDE_CARD_ID);
-                const selector = VIEWER_CARD_SELECTORS.join(', ');
-                const hideStyle = 'visibility: hidden !important; opacity: 0 !important; pointer-events: none !important;';
-                if (!style) {
-                    style = document.createElement('style');
-                    style.id = TMOD_HIDE_CARD_ID;
-                    style.textContent = selector + ' { ' + hideStyle + ' }';
-                    (document.head || document.documentElement).appendChild(style);
-                }
-                if (!cardHideObserver) {
-                    cardHideObserver = new MutationObserver(() => {
-                        if (!cardHideSession) return;
-                        try {
-                            document.querySelectorAll(selector).forEach((el) => {
-                                try {
-                                    if (!el.getAttribute(TMOD_CARD_READ_DATA_KEY)) {
-                                        el.setAttribute('data-tmod-prev-vis', el.style.visibility || '');
-                                        el.setAttribute('data-tmod-prev-op', el.style.opacity || '');
-                                        el.setAttribute('data-tmod-prev-pe', el.style.pointerEvents || '');
-                                        el.setAttribute(TMOD_CARD_READ_DATA_KEY, '1');
-                                    }
-                                } catch (e2) {}
-                                if (el.style.visibility !== 'hidden') {
-                                    el.style.cssText += '; ' + hideStyle;
-                                }
-                            });
-                        } catch (e) {}
-                    });
-                    cardHideObserver.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
-                }
             } else {
                 cardHideSession = 0;
-                if (cardHideObserver) { cardHideObserver.disconnect(); cardHideObserver = null; }
                 unhideCards();
             }
         } catch (e) {}
@@ -3018,7 +2986,7 @@ const announceText = content.querySelector('#tmod-announce-text');
 
     document.addEventListener('pointerdown', (e) => {
         try {
-            if (cardHideSession && e.isTrusted) setCardHiddenUI(false);
+            if (cardHideSession && e.isTrusted && !panelCardReadBusy) setCardHiddenUI(false);
         } catch (e2) {}
     }, true);
 
@@ -4953,6 +4921,8 @@ closePanelMenu();
         }, true);
     }
 
+    let raidShoutoutRefresh = null;
+
     function initRaidShoutout() {
         let raidSoObserver = null;
         let raidSoContainer = null;
@@ -4973,7 +4943,7 @@ closePanelMenu();
 
         function processNotice(el) {
             if (!el || el.dataset.tmodSoDone) return;
-            el.dataset.tmodSoDone = '1';
+            if (moderatorResolved === false && !tmodShowAlways) return;
             if (!/рейд|raid/i.test(el.textContent || '')) return;
             const login = loginFromNotice(el);
             if (!login || el.querySelector('.tmod-raid-so-btn')) return;
@@ -5013,6 +4983,19 @@ closePanelMenu();
             if (root.matches && root.matches('[data-test-selector="user-notice-line"]')) processNotice(root);
             if (root.querySelectorAll) root.querySelectorAll('[data-test-selector="user-notice-line"]').forEach(processNotice);
         }
+
+        raidShoutoutRefresh = function () {
+            if (moderatorResolved === false && !tmodShowAlways) {
+                document.querySelectorAll('.tmod-raid-so-btn').forEach((b) => {
+                    const el = b.closest('[data-test-selector="user-notice-line"]');
+                    if (el) delete el.dataset.tmodSoDone;
+                    b.remove();
+                });
+                return;
+            }
+            const container = raidSoContainer || document.querySelector('section[data-test-selector="chat-room-component-layout"]') || document.body;
+            scan(container);
+        };
 
         function attach() {
             const container = document.querySelector('section[data-test-selector="chat-room-component-layout"]') || document.body;
@@ -5169,6 +5152,7 @@ closePanelMenu();
         } else {
             injectButton();
         }
+        if (raidShoutoutRefresh) raidShoutoutRefresh();
     }
 
     function injectButton() {
