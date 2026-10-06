@@ -84,6 +84,39 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
         .hidden { display: none; }
+        .tt-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            background: #18181b;
+            border: 1px solid #3a3a3d;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 8px;
+        }
+        .tt-row:first-child { margin-top: 0; }
+        .tt-title { font-size: 14px; color: #efeff1; font-weight: 600; }
+        .tt-sub { font-size: 12px; color: #adadb8; margin-top: 3px; }
+        .tt-track {
+            width: 36px; height: 20px; background: #3a3a3d; border-radius: 10px;
+            position: relative; cursor: pointer; transition: background 0.25s; flex-shrink: 0;
+        }
+        .tt-track.on { background: #00f593; }
+        .tt-thumb {
+            width: 16px; height: 16px; background: #fff; border-radius: 50%;
+            position: absolute; top: 2px; left: 2px; transition: transform 0.25s;
+        }
+        .tt-track.on .tt-thumb { transform: translateX(16px); }
+        .tt-section { font-size: 12px; color: #adadb8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin: 18px 0 8px; }
+        .tt-back {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: none; border: none; color: #adadb8; cursor: pointer;
+            font-size: 13px; font-family: inherit; padding: 0; margin-bottom: 12px;
+        }
+        .tt-back:hover { color: #efeff1; }
+        .tt-status { margin-top: 12px; font-size: 13px; text-align: center; }
+        #settingsView { padding: 16px; }
     </style>
 </head>
 <body>
@@ -113,7 +146,43 @@
         </button>
 
         <p id="userInfo" class="user hidden"></p>
+
+        <button id="openSettings" class="btn secondary">
+            <svg style="vertical-align:-3px;margin-right:6px;" width="15" height="15" viewBox="0 0 24 24" fill="#efeff1"><path d="M19.14 12.94a7.49 7.49 0 0 0 .06-.94 7.49 7.49 0 0 0-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.03 7.03 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.13.56-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.81 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.62-.06.94 0 .32.02.63.06.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.3.6.22l2.39-.96c.5.38 1.04.7 1.63.94l.36 2.54c.04.24.25.42.5.42h3.84c.25 0 .46-.18.5-.42l.36-2.54c.59-.24 1.13-.56 1.63-.94l2.39.96c.22.08.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2Z"/></svg>Настройки
+        </button>
     </main>
+
+    <div id="settingsView" class="hidden">
+        <button id="backFromSettings" class="tt-back">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>Назад
+        </button>
+
+        <h3 style="margin:0 0 4px;font-size:15px;">Настройки</h3>
+
+        <div class="tt-row">
+            <div>
+                <div class="tt-title">Меню действий модератора</div>
+                <div class="tt-sub">Показывать меню при нажатии ПКМ по сообщению</div>
+            </div>
+            <div class="tt-track" id="sett-ctxmenu"><div class="tt-thumb"></div></div>
+        </div>
+        <div class="tt-row">
+            <div>
+                <div class="tt-title">Автофокус чата</div>
+                <div class="tt-sub">Автоматически фокусировать поле ввода</div>
+            </div>
+            <div class="tt-track" id="sett-autofocus"><div class="tt-thumb"></div></div>
+        </div>
+        <div class="tt-row">
+            <div>
+                <div class="tt-title">Всегда показывать панель</div>
+                <div class="tt-sub">Кнопка видна на всех каналах</div>
+            </div>
+            <div class="tt-track" id="sett-showalways"><div class="tt-thumb"></div></div>
+        </div>
+
+        <div id="settStatus" class="tt-status hidden"></div>
+    </div>
 
     <script src="popup.js" type="module"></script>
 </body>

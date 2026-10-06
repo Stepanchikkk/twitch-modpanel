@@ -56,6 +56,12 @@
     let tmodContextMenuEnabled = true;
     // Автофокус чата: печать в любом месте страницы переводит фокус в чат (как в мессенджерах).
     let tmodChatAutofocus = true;
+    // Всегда показывать панель: кнопка и ПКМ-меню даже там, где пользователь не модератор.
+    let tmodShowAlways = false;
+    // Резолв модераторства на текущем канале: true/false/null(неизвестно). Читается
+    // синхронно в contextmenu-обработчике, где preventDefault обязан быть синхронным.
+    let moderatorResolved = null;
+    let tmodSettingsLoaded = false;
 
     function getPanelSettings() {
         return storageGet('tmod_settings').then((raw) => {
@@ -1290,6 +1296,13 @@
                 </div>
                 <div class="tmod-tt-track" id="tmod-sett-autofocus"><div class="tmod-tt-thumb"></div></div>
             </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #18181b; border: 1px solid #3a3a3d; border-radius: 8px; padding: 12px; margin-top: 8px;">
+                <div>
+                    <div style="font-size: 14px; color: #efeff1; font-weight: 600;">Всегда показывать панель</div>
+                    <div style="font-size: 12px; color: #adadb8; margin-top: 3px;">Показывать кнопку и меню по ПКМ даже там, где вы не модератор</div>
+                </div>
+                <div class="tmod-tt-track" id="tmod-sett-showalways"><div class="tmod-tt-thumb"></div></div>
+            </div>
             <div style="${sectionStyle}">Аккаунт</div>
             <button id="tmod-sett-logout" data-label="Выйти из аккаунта" style="${dangerBtnStyle}">Выйти из аккаунта</button>
             <div style="${sectionStyle}">Сброс данных</div>
@@ -1350,6 +1363,24 @@
             tmodChatAutofocus = next;
             getPanelSettings().then((s) => {
                 s.chatAutofocus = next;
+                savePanelSettings(s);
+            });
+        };
+
+        const showAlwaysTrack = content.querySelector('#tmod-sett-showalways');
+        getPanelSettings().then((s) => {
+            const on = s.showAlways === true;
+            tmodShowAlways = on;
+            tmodSettingsLoaded = true;
+            showAlwaysTrack.classList.toggle('on', on);
+        });
+        showAlwaysTrack.onclick = () => {
+            const next = !showAlwaysTrack.classList.contains('on');
+            showAlwaysTrack.classList.toggle('on', next);
+            tmodShowAlways = next;
+            applyModerationVisibility();
+            getPanelSettings().then((s) => {
+                s.showAlways = next;
                 savePanelSettings(s);
             });
         };
@@ -2693,6 +2724,37 @@ const announceText = content.querySelector('#tmod-announce-text');
         const moderatorId = await getCurrentUserId(token);
         if (!broadcasterId || !moderatorId) return null;
         return { broadcasterId, moderatorId };
+    }
+
+    // Проверка: модератор ли текущий пользователь на текущем канале.
+    // true/false/null(неизвестно из-за сети). Кэш по каналу, сброс при смене канала.
+    let modHereCache = { channel: null, value: null };
+    function resetModHereCache() { modHereCache = { channel: null, value: null }; }
+    async function amIModeratorHere() {
+        const channel = getChannelName();
+        if (modHereCache.channel === channel && modHereCache.value !== null) return modHereCache.value;
+        const ctx = await getModeratorContext();
+        if (!ctx) return null;
+        if (String(ctx.moderatorId) === String(ctx.broadcasterId)) {
+            modHereCache = { channel, value: true };
+            return true;
+        }
+        let cursor = '';
+        try {
+            do {
+                const url = 'https://api.twitch.tv/helix/moderation/channels?user_id=' + ctx.moderatorId + '&first=100' + (cursor ? '&after=' + encodeURIComponent(cursor) : '');
+                const resp = await helixCall(url);
+                if (!resp.success) return null;
+                const list = (resp.data && resp.data.data) || [];
+                if (list.some((c) => String(c.broadcaster_id) === String(ctx.broadcasterId))) {
+                    modHereCache = { channel, value: true };
+                    return true;
+                }
+                cursor = (resp.data && resp.data.pagination && resp.data.pagination.cursor) || '';
+            } while (cursor);
+        } catch (e) { return null; }
+        modHereCache = { channel, value: false };
+        return false;
     }
 
     async function sendShoutout(recipientLogin) {
@@ -4985,6 +5047,7 @@ closePanelMenu();
 
         document.addEventListener('contextmenu', (e) => {
             if (!tmodContextMenuEnabled) return;
+            if (!tmodShowAlways && moderatorResolved === false) return;
             if (panelMenuEl && !e.target.closest('#tmod-mod-menu')) closePanelMenu();
             if (!isChatContext()) { console.log('[ModPanel] contextmenu: not a chat context'); return; }
             if (e.target.closest('#tmod-mod-menu')) return;
@@ -5099,8 +5162,19 @@ closePanelMenu();
     // Кнопка под чатом
     // ============================================================================
 
+    function applyModerationVisibility() {
+        const wrapper = document.getElementById('tmod-btn-wrapper');
+        if (moderatorResolved === false && !tmodShowAlways) {
+            if (wrapper) wrapper.remove();
+        } else {
+            injectButton();
+        }
+    }
+
     function injectButton() {
         if (!isStreamPage()) return;
+        if (!tmodSettingsLoaded) return;
+        if (moderatorResolved === false && !tmodShowAlways) return;
         const chatInput = document.querySelector('[data-a-target="chat-input"]') || document.querySelector('.chat-input');
         if (!chatInput) { setTimeout(injectButton, 1000); return; }
         if (document.getElementById('tmod-btn')) return;
@@ -5153,12 +5227,14 @@ closePanelMenu();
                 // каналов не перепутаются и при возврате на канал рендерятся мгновенно,
                 // поэтому хранилище не сбрасываем. Кэш ID канала — наоборот, одноразовый.
                 delete channelIdCache[prevPath];
+                resetModHereCache();
+                moderatorResolved = null;
+                amIModeratorHere().then((v) => { moderatorResolved = v; applyModerationVisibility(); });
                 const btnWrapper = document.getElementById('tmod-btn-wrapper');
                 if (btnWrapper) btnWrapper.remove();
                 if (panelOpen && panelElement) { panelElement.remove(); panelOpen = false; }
                 closePanelMenu();
                 if (isStreamPage()) {
-                    setTimeout(injectButton, 500);
                     warmAccentCache();
                     setTimeout(getChannelAccentColor, 3000);
                     setTimeout(getChannelAccentColor, 12000);
@@ -5181,6 +5257,8 @@ closePanelMenu();
     }
     watchChannelChanges();
     initModerationMenu();
+    getPanelSettings().then((s) => { tmodShowAlways = s.showAlways === true; tmodSettingsLoaded = true; applyModerationVisibility(); });
+    amIModeratorHere().then((v) => { moderatorResolved = v; applyModerationVisibility(); });
     initRaidShoutout();
     initChatAutofocus();
     // Персистентный кэш статусов в память — к первому ПКМ-клику почти наверняка готов.

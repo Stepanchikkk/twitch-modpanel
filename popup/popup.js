@@ -8,6 +8,11 @@ const loggedInEl = document.getElementById('loggedIn');
 const loginBtn = document.getElementById('loginBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 const userInfoEl = document.getElementById('userInfo');
+const mainEl = document.querySelector('main');
+const settingsViewEl = document.getElementById('settingsView');
+const openSettingsBtn = document.getElementById('openSettings');
+const backFromSettingsBtn = document.getElementById('backFromSettings');
+const settStatusEl = document.getElementById('settStatus');
 
 // Проверка токена
 async function checkAuth() {
@@ -86,9 +91,59 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({});
 });
 
+// ---- Настройки панели (tmod_settings) ----
+async function getSettings() {
+    return new Promise((resolve) => {
+        chrome.storage.local.get(['tmod_settings'], (r) => {
+            try { resolve(r.tmod_settings ? JSON.parse(r.tmod_settings) : {}); } catch { resolve({}); }
+        });
+    });
+}
+async function saveSettings(s) {
+    return new Promise((resolve) => {
+        chrome.storage.local.set({ tmod_settings: JSON.stringify(s) }, resolve);
+    });
+}
+
+function bindToggle(id, key, invert) {
+    const track = document.getElementById(id);
+    getSettings().then((s) => {
+        const on = invert ? s[key] !== false : s[key] === true;
+        track.classList.toggle('on', on);
+    });
+    track.addEventListener('click', async () => {
+        const next = !track.classList.contains('on');
+        track.classList.toggle('on', next);
+        const s = await getSettings();
+        s[key] = invert ? next : next;
+        await saveSettings(s);
+    });
+}
+
+function showSettingsStatus(msg, ok) {
+    settStatusEl.textContent = msg;
+    settStatusEl.style.color = ok ? '#00ff00' : '#ff6b6b';
+    settStatusEl.classList.remove('hidden');
+}
+
+function openSettings() {
+    mainEl.classList.add('hidden');
+    settingsViewEl.classList.remove('hidden');
+    settStatusEl.classList.add('hidden');
+    bindToggle('sett-ctxmenu', 'contextMenu', true);
+    bindToggle('sett-autofocus', 'chatAutofocus', true);
+    bindToggle('sett-showalways', 'showAlways', false);
+}
+function closeSettings() {
+    settingsViewEl.classList.add('hidden');
+    mainEl.classList.remove('hidden');
+}
+
 // Обработчики
 loginBtn.addEventListener('click', login);
 logoutBtn.addEventListener('click', logout);
+openSettingsBtn.addEventListener('click', openSettings);
+backFromSettingsBtn.addEventListener('click', closeSettings);
 
 // Инициализация
 updateUI();
