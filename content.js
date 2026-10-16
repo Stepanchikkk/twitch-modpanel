@@ -39,6 +39,10 @@
         'channel:manage:broadcast',
         'moderator:manage:shoutouts',
         'moderator:read:chatters',
+        // Фолловер (дата фоллова) и заявки на разбан: без этих прав фичи молча не работают.
+        'moderator:read:followers',
+        'moderator:read:unban_requests',
+        'moderator:manage:unban_requests',
         'moderator:read:shield_mode',
         'channel:manage:raids',
         'channel:manage:vips',
@@ -70,6 +74,16 @@
     }
     function savePanelSettings(s) {
         return storageSet('tmod_settings', JSON.stringify(s));
+    }
+    // Последовательная запись настроек: три тумблера пишут один и тот же объект, и при
+    // быстром втором клике оба чтения брали один снимок — одно изменение терялось.
+    let panelSettingsWriteChain = Promise.resolve();
+    function updatePanelSettings(patch) {
+        panelSettingsWriteChain = panelSettingsWriteChain
+            .then(() => getPanelSettings())
+            .then((s) => savePanelSettings(Object.assign(s || {}, patch)))
+            .catch(() => {});
+        return panelSettingsWriteChain;
     }
 
     const ICON_OK = '<svg style="vertical-align:-2px;margin-right:4px;" width="13" height="13" viewBox="0 0 24 24" fill="#00ff00"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>';
@@ -540,7 +554,7 @@
                 slowMode: settings.slow_mode,
                 slowModeWaitTime: settings.slow_mode_wait_time,
                 followerMode: settings.follower_mode,
-                followerModeWaitTime: settings.follower_mode_wait_time,
+                followerModeWaitTime: settings.follower_mode_duration,
                 subscriberMode: settings.subscriber_mode,
                 emoteMode: settings.emote_mode,
                 shieldMode
@@ -568,7 +582,13 @@
         }
         if (settings.followerMode !== undefined) {
             body.follower_mode = settings.followerMode;
-            body.follower_mode_wait_time = settings.followerModeWaitTime || 0;
+            // Поля follower_mode_wait_time у Helix НЕ существует: длительность
+            // называется follower_mode_duration и измеряется в МИНУТАХ (0-180,
+            // 0 = «любой фолловер»). Отправляем его только если длительность реально
+            // задана — иначе включение тумблера сбрасывало бы настройку канала в 0.
+            if (settings.followerModeWaitTime != null) {
+                body.follower_mode_duration = Math.max(0, Math.min(180, Math.round(settings.followerModeWaitTime)));
+            }
         }
         if (settings.subscriberMode !== undefined) {
             body.subscriber_mode = settings.subscriberMode;
@@ -665,6 +685,9 @@
     async function startOAuthUserscript() {
         return new Promise((resolve) => {
             const redirectUri = 'https://stepanchikkk.github.io/twitch-modpanel/';
+            // Список прав должен совпадать с REQUIRED_SCOPES (26-50): именно он решает,
+            // достаточен ли токен (ensureScopesFresh). Дубли и лишние права убраны —
+            // user:write:chat панель не использует (сообщения уходят через поле ввода).
             const scopes = [
                 'moderation:read',
                 'moderator:manage:announcements',
@@ -675,15 +698,15 @@
                 'channel:manage:predictions',
                 'channel:read:redemptions',
                 'channel:manage:redemptions',
-                'channel:read:redemptions',
-                'channel:manage:redemptions',
                 'user:read:moderated_channels',
                 'chat:read',
                 'chat:edit',
-                'user:write:chat',
                 'channel:manage:broadcast',
                 'moderator:manage:shoutouts',
                 'moderator:read:chatters',
+                'moderator:read:followers',
+                'moderator:read:unban_requests',
+                'moderator:manage:unban_requests',
                 'moderator:read:shield_mode',
                 'channel:manage:raids',
                 'channel:manage:vips',
@@ -714,6 +737,10 @@
             let checkCount = 0;
 
             const messageHandler = (event) => {
+                // Токен принимаем только от страницы-колбэка авторизации. Без этой
+                // проверки любое окно/фрейм могло подсунуть панели свой
+                // TMOD_OAUTH_SUCCESS и переключить её на чужой аккаунт.
+                if (event.origin !== 'https://stepanchikkk.github.io') return;
                 if (event.data?.type === 'TMOD_OAUTH_SUCCESS' && !completed) {
                     completed = true;
                     window.removeEventListener('message', messageHandler);
@@ -783,9 +810,25 @@
     // Утилиты
     // ============================================================================
 
+    // Служебные односегментные пути Twitch (/directory, /videos, /settings ...).
+    // Раньше isStreamPage() считала их каналом: уходил лишний запрос за ID «канала
+    // directory», а кнопка пыталась вставиться в страницу без чата. Список намеренно
+    // узкий — только те пути, которые у Twitch точно заняты своими страницами
+    // (канал с таким логином создать нельзя), чтобы случайно не отключить панель
+    // на настоящем канале.
+    const TMOD_RESERVED_PATHS = new Set([
+        'directory', 'videos', 'settings', 'subscriptions', 'downloads', 'jobs', 'turbo',
+        'wallet', 'drops', 'friends', 'inventory', 'search', 'following', 'creatorcamp', 'activate'
+    ]);
+
+    function isChannelPath(p) {
+        const m = /^\/([a-zA-Z0-9_]+)$/.exec(p);
+        return !!m && !TMOD_RESERVED_PATHS.has(m[1].toLowerCase());
+    }
+
     function isStreamPage() {
         const p = window.location.pathname;
-        return /^\/[a-zA-Z0-9_]+$/.test(p) || /^\/moderator\/[a-zA-Z0-9_]+$/.test(p);
+        return isChannelPath(p) || /^\/moderator\/[a-zA-Z0-9_]+$/.test(p);
     }
 
     // Где есть чат с сообщениями: страница канала, полностраничный чат,
@@ -1007,11 +1050,14 @@
         function handleDragEnd() {
             if (!isDragging) return;
             isDragging = false;
+            document.removeEventListener('mousemove', handleDragMove);
+            document.removeEventListener('mouseup', handleDragEnd);
+            // Панель могли закрыть прямо во время перетаскивания: у отсоединённого узла
+            // rect нулевой, и сохранённая позиция уводила панель за пределы экрана.
+            if (!panel.isConnected) return;
             header.style.cursor = 'move';
             const rect = panel.getBoundingClientRect();
             panelPosition = { right: window.innerWidth - rect.right, bottom: window.innerHeight - rect.bottom };
-            document.removeEventListener('mousemove', handleDragMove);
-            document.removeEventListener('mouseup', handleDragEnd);
         }
 
         panel.querySelector('#tmod-panel-close').addEventListener('click', () => { panel.remove(); panelOpen = false; panelPosition = null; });
@@ -1112,12 +1158,7 @@
                         }
                         if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
                     } else if (dragState.fromHidden && inGrid) {
-                        if (dragState.placeholder) dragState.placeholder.remove();
-                        const ph = document.createElement('div');
-                        ph.className = 'tmod-drag-placeholder';
-                        ph.style.cssText = 'width:100%;height:100%;border:2px dashed #9146FF;border-radius:8px;background:rgba(145,70,255,0.1);pointer-events:none;box-sizing:border-box;';
-                        wrapper.parentNode.insertBefore(ph, wrapper);
-                        dragState.placeholder = ph;
+                        if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
                         const toIdx = tileOrder.indexOf(target.dataset.feature);
                         const fromIdx = tileOrder.indexOf(dragState.feature);
                         if (fromIdx !== -1) {
@@ -1127,13 +1168,22 @@
                             tileOrder.splice(toIdx, 0, dragState.feature);
                         }
                         renderTiles();
-                    } else if (dragState.fromHidden && !target && over.closest('#tmod-tiles-grid')) {
-                        if (dragState.placeholder) dragState.placeholder.remove();
+                        // Плейсхолдер вставляем ПОСЛЕ перерисовки: renderTiles() перезаписывает
+                        // grid.innerHTML и стирал только что вставленный индикатор, поэтому при
+                        // перетаскивании из скрытых точки сброса не было видно вообще.
                         const ph = document.createElement('div');
                         ph.className = 'tmod-drag-placeholder';
                         ph.style.cssText = 'width:100%;height:100%;border:2px dashed #9146FF;border-radius:8px;background:rgba(145,70,255,0.1);pointer-events:none;box-sizing:border-box;';
-                        grid.appendChild(ph);
-                        dragState.placeholder = ph;
+                        const wrapEl = (() => {
+                            const b = grid.querySelector('.tmod-feature-btn[data-feature="' + target.dataset.feature + '"]');
+                            return b ? b.closest('.tmod-tile-wrapper') : null;
+                        })();
+                        if (wrapEl && wrapEl.parentNode) {
+                            wrapEl.parentNode.insertBefore(ph, wrapEl);
+                            dragState.placeholder = ph;
+                        }
+                    } else if (dragState.fromHidden && !target && over.closest('#tmod-tiles-grid')) {
+                        if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
                         if (tileOrder.includes(dragState.feature)) {
                             tileOrder = tileOrder.filter(f => f !== dragState.feature);
                             tileOrder.push(dragState.feature);
@@ -1141,6 +1191,12 @@
                             tileOrder.push(dragState.feature);
                         }
                         renderTiles();
+                        // См. выше: индикатор добавляем уже после перерисовки сетки.
+                        const ph = document.createElement('div');
+                        ph.className = 'tmod-drag-placeholder';
+                        ph.style.cssText = 'width:100%;height:100%;border:2px dashed #9146FF;border-radius:8px;background:rgba(145,70,255,0.1);pointer-events:none;box-sizing:border-box;';
+                        grid.appendChild(ph);
+                        dragState.placeholder = ph;
                     } else {
                         if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
                     }
@@ -1180,6 +1236,13 @@
             }
             renderTiles();
             renderHidden();
+            // Раскладка сохраняется сразу: раньше saveTilesConfig() вызывался только при
+            // выходе из режима пиксилем, поэтому свёрнутая плитка терялась, если панель
+            // закрыть крестиком (или перейти по каналу).
+            saveTilesConfig();
+            // Без этого каждый драг тайла оставлял на document вечный mousemove,
+            // который держал в памяти DOM уже закрытой панели.
+            document.removeEventListener('mousemove', moveTileDrag);
             dragState = null;
         }
 
@@ -1190,6 +1253,9 @@
             editBtn.style.color = editing ? '#9146FF' : '#adadb8';
         }
         editBtn.addEventListener('click', () => {
+            // В разделах (настройки чата, стрим и т.д.) сетки плиток уже нет: раньше
+            // кнопка делала вид, что переключила режим, и правила отсоединённый DOM.
+            if (!grid.isConnected) return;
             tileEditing = !tileEditing;
             panel.classList.toggle('tmod-edit-mode', tileEditing);
             hiddenZone.style.display = tileEditing ? 'block' : 'none';
@@ -1233,6 +1299,7 @@
                 tileHidden = tileHidden.filter(x => x !== f);
                 if (!tileOrder.includes(f)) tileOrder.push(f);
                 renderTiles(); renderHidden();
+                saveTilesConfig();
                 return;
             }
             const remBtn = e.target.closest('.tmod-tile-remove');
@@ -1240,6 +1307,7 @@
                 const f = remBtn.dataset.feature;
                 if (!tileHidden.includes(f)) tileHidden.push(f);
                 renderTiles(); renderHidden();
+                saveTilesConfig();
                 return;
             }
         });
@@ -1345,10 +1413,7 @@
             const next = !track.classList.contains('on');
             track.classList.toggle('on', next);
             tmodContextMenuEnabled = next;
-            getPanelSettings().then((s) => {
-                s.contextMenu = next;
-                savePanelSettings(s);
-            });
+            updatePanelSettings({ contextMenu: next });
         };
 
         const autoTrack = content.querySelector('#tmod-sett-autofocus');
@@ -1361,10 +1426,7 @@
             const next = !autoTrack.classList.contains('on');
             autoTrack.classList.toggle('on', next);
             tmodChatAutofocus = next;
-            getPanelSettings().then((s) => {
-                s.chatAutofocus = next;
-                savePanelSettings(s);
-            });
+            updatePanelSettings({ chatAutofocus: next });
         };
 
         const showAlwaysTrack = content.querySelector('#tmod-sett-showalways');
@@ -1379,10 +1441,7 @@
             showAlwaysTrack.classList.toggle('on', next);
             tmodShowAlways = next;
             applyModerationVisibility();
-            getPanelSettings().then((s) => {
-                s.showAlways = next;
-                savePanelSettings(s);
-            });
+            updatePanelSettings({ showAlways: next });
         };
 
         makeConfirm(content.querySelector('#tmod-sett-logout'), async () => {
@@ -1399,7 +1458,7 @@
         });
 
         makeConfirm(content.querySelector('#tmod-sett-clear-history'), () => {
-            const channel = window.location.pathname.slice(1);
+            const channel = getChannelName();
             storageSet('tmod_history_' + channel, null).then(() => {
                 setStatus('История анонсов очищена', true);
             });
@@ -1407,7 +1466,7 @@
     }
 
     function showAnnounceSection(panel) {
-        const channelName = window.location.pathname.slice(1);
+        const channelName = getChannelName();
         warmAccentCache();
         const content = panel.querySelector('#tmod-panel-content');
         if (!content) return;
@@ -1442,12 +1501,14 @@
             });
         }
 
-function renderHistory() {
+        let renderedHistory = [];
+        function renderHistory() {
             return loadHistory().then(history => {
+                renderedHistory = Array.isArray(history) ? history : [];
                 if (!history.length) return '';
                 const arrowSvg = `<svg width="16" height="16" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="m14.207 5 1.414 1.414-5.793 5.793L15.621 18l-1.414 1.414L7 12.207 14.207 5Z" fill="currentColor"></path></svg>`;
                 const arrowBtn = (cls, rotated) => `
-                    <button type="button" class="tmod-history-nav ${cls}" aria-label="${rotated ? 'Предыдущие' : 'Следующие'} анонсы"
+                    <button type="button" class="tmod-history-nav ${cls}" aria-label="${rotated ? 'Следующие' : 'Предыдущие'} анонсы"
                         style="flex: 0 0 auto; max-width: 0; height: 28px; border-radius: 999px; background: #18181b; border: 1px solid #3a3a3d; color: #efeff1; cursor: pointer; display: flex; align-items: center; justify-content: center; opacity: 0; overflow: hidden; pointer-events: none; transition: max-width 0.2s ease, opacity 0.2s ease;">
                         <span style="display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex: 0 0 28px;">
                         ${rotated ? `<svg width="16" height="16" viewBox="0 0 24 24" focusable="false" aria-hidden="true" style="transform: rotate(180deg);"><path d="m14.207 5 1.414 1.414-5.793 5.793L15.621 18l-1.414 1.414L7 12.207 14.207 5Z" fill="currentColor"></path></svg>` : `<svg width="16" height="16" viewBox="0 0 24 24" focusable="false" aria-hidden="true"><path d="m14.207 5 1.414 1.414-5.793 5.793L15.621 18l-1.414 1.414L7 12.207 14.207 5Z" fill="currentColor"></path></svg>`}
@@ -1464,10 +1525,10 @@ return `
                                     : (ANNOUNCE_COLORS.find(c => c.value === h.color)?.stripe || '#9147ff');
                                 const fullText = h.text;
                                 return `
-                                    <button type="button" class="tmod-history-item" data-index="${i}" title="${fullText}"
+                                    <button type="button" class="tmod-history-item" data-index="${i}" title="${escapeHtml(fullText)}"
                                         style="flex: 0 0 auto; padding: 5px 10px; border-radius: 999px; color: #efeff1; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100px; min-width: 0; display: inline-flex; align-items: center; gap: 8px; border: 1px solid #3a3a3d; background: #18181b;">
                                         <span style="flex: 0 0 auto; width: 10px; height: 10px; border-radius: 999px; ${stripe.includes('gradient(') ? `background-image: ${stripe};` : `background-color: ${stripe};`}"></span>
-                                        <span style="overflow: hidden; text-overflow: ellipsis; max-width: 100%;">${h.text.slice(0, 45)}</span>
+                                        <span style="overflow: hidden; text-overflow: ellipsis; max-width: 100%;">${escapeHtml(h.text.slice(0, 45))}</span>
                                     </button>
                                 `;
                             }).join('')}
@@ -1525,21 +1586,22 @@ return `
                     const item = e.target.closest('.tmod-history-item');
                     if (item) {
                         const idx = parseInt(item.dataset.index, 10);
-                        loadHistory().then(history => {
-                            const entry = history[idx];
-                            if (entry) {
-                                const textarea = content.querySelector('#tmod-announce-text');
-                                if (textarea) {
-                                    textarea.value = entry.text;
-                                    textarea.focus();
-                                }
-                                if (entry.color && ANNOUNCE_COLORS.some(c => c.value === entry.color)) {
-                                    selected.value = entry.color;
-                                    updateButton();
-                                    renderOptions();
-                                }
+                        // Берём тот же массив, что отрисован: перечитывание из хранилища
+                        // давало сдвиг индексов, если запись успела добавиться — новая
+                        // кладётся в начало (unshift), и открывался соседний анонс.
+                        const entry = renderedHistory[idx];
+                        if (entry) {
+                            const textarea = content.querySelector('#tmod-announce-text');
+                            if (textarea) {
+                                textarea.value = entry.text;
+                                textarea.focus();
                             }
-                        });
+                            if (entry.color && ANNOUNCE_COLORS.some(c => c.value === entry.color)) {
+                                selected.value = entry.color;
+                                updateButton();
+                                renderOptions();
+                            }
+                        }
                     }
                     const nav = e.target.closest('.tmod-history-nav');
                     if (nav && nav.style.maxWidth !== '0') {
@@ -1646,20 +1708,37 @@ return `
 const announceText = content.querySelector('#tmod-announce-text');
         const announceStatusDiv = content.querySelector('#tmod-announce-status');
 
+        // Защита от повторной отправки: сама кнопка не блокируется, а Enter в textarea
+        // обрабатывается отдельным слушателем — без флага второй клик или удержание Enter
+        // отправляли второй POST в /chat/announcements (и попадали в кулдаун Twitch).
+        let announceSending = false;
         async function doSendAnnounce() {
+            if (announceSending) return;
             const text = announceText.value.trim();
             const color = selected.value;
             if (!text) { announceStatusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">Введите текст</span>'; return; }
             if (text.length > 500) { announceStatusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">Текст слишком длинный</span>'; return; }
+            announceSending = true;
             announceStatusDiv.innerHTML = ICON_OK + '<span style="color:#adadb8;">Отправка...</span>';
-            const result = await sendAnnouncement(channelName, text, color);
-            if (result.success) {
-                announceStatusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Анонс отправлен!</span>';
-                addToHistory(text, color);
-                if (color === 'primary') learnAccentFromChat();
-                setTimeout(() => { panel.remove(); createPanel(); }, 1500);
+            try {
+                const result = await sendAnnouncement(channelName, text, color);
+                if (result.success) {
+                    announceStatusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Анонс отправлен!</span>';
+                    addToHistory(text, color);
+                    if (color === 'primary') learnAccentFromChat();
+                    // Возврат к плиткам только если панель ещё открыта и мы всё ещё в этом
+                    // разделе: иначе закрытая панель «воскресала» через 1.5 с, а переход в
+                    // другой раздел откатывало назад в меню плиток.
+                    setTimeout(() => {
+                        if (!panel.isConnected || !panel.querySelector('#tmod-announce-text')) return;
+                        panel.remove();
+                        createPanel();
+                    }, 1500);
+                }
+                else { announceStatusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + escapeHtml(result.error) + '</span>'; }
+            } finally {
+                announceSending = false;
             }
-            else { announceStatusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + result.error + '</span>'; }
         }
 
         content.querySelector('#tmod-send-announce').addEventListener('click', doSendAnnounce);
@@ -1672,7 +1751,7 @@ const announceText = content.querySelector('#tmod-announce-text');
     }
 
     function showChatSection(panel) {
-        const channelName = window.location.pathname.slice(1);
+        const channelName = getChannelName();
         const content = panel.querySelector('#tmod-panel-content');
         if (!content) return;
 
@@ -1766,15 +1845,22 @@ const announceText = content.querySelector('#tmod-announce-text');
         const rect = panel.getBoundingClientRect();
         if (rect.top < 0) { panel.style.bottom = Math.max(10, panelPosition.bottom + rect.top) + 'px'; }
 
+        if (tmodChatCloseDD) document.removeEventListener('click', tmodChatCloseDD);
         const closeDD = (e) => { if (!e.target.closest('.tmod-dd')) content.querySelectorAll('.tmod-dd-list.open').forEach(l => l.classList.remove('open')); };
+        tmodChatCloseDD = closeDD;
         document.addEventListener('click', closeDD);
 
-        const cleanup = () => document.removeEventListener('click', closeDD);
+        const cleanup = () => {
+            if (tmodChatCloseDD) { document.removeEventListener('click', tmodChatCloseDD); tmodChatCloseDD = null; }
+        };
         content.querySelector('#tmod-back').onclick = () => { cleanup(); panel.remove(); panelOpen = false; setTimeout(() => createPanel(), 10); };
 
         getChatSettings(channelName).then(settings => {
             const loadingDiv = content.querySelector('#tmod-chat-loading');
             const gridDiv = content.querySelector('#tmod-chat-grid');
+            // Раздел мог смениться (шестерёнка/назад), пока шёл запрос — тогда этих
+            // узлов уже нет и обращение к .style падало с TypeError.
+            if (!loadingDiv || !gridDiv) return;
             if (!settings) { loadingDiv.style.color = '#ff6b6b'; loadingDiv.textContent = 'Ошибка загрузки'; return; }
             loadingDiv.style.display = 'none';
             gridDiv.style.display = 'block';
@@ -1824,8 +1910,10 @@ const announceText = content.querySelector('#tmod-announce-text');
             let curSlow = settings.slowMode ? (settings.slowModeWaitTime || 30) : 0;
 
             function ddLabel() {
+                // Значение может быть вне списка (его поставили из дашборда — Helix
+                // допускает 3..180): показываем фактическое, а не «Выкл».
                 const o = SLOW_OPTIONS.find(o => o.value === curSlow);
-                ddVal.textContent = o ? o.label : 'Выкл';
+                ddVal.textContent = o ? o.label : (curSlow ? curSlow + ' сек' : 'Выкл');
             }
             ddLabel();
 
@@ -1913,12 +2001,16 @@ const announceText = content.querySelector('#tmod-announce-text');
             sendToChatInput(title ? '/clip "' + title + '"' : '/clip');
             const statusDiv = content.querySelector('#tmod-clip-status');
             statusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Клип создан!</span>';
-            setTimeout(() => { panel.remove(); createPanel(); }, 1500);
+            setTimeout(() => {
+                if (!panel.isConnected || !panel.querySelector('#tmod-create-clip')) return;
+                panel.remove();
+                createPanel();
+            }, 1500);
         };
     }
 
     function showStreamSection(panel) {
-        const channelName = window.location.pathname.slice(1);
+        const channelName = getChannelName();
         const content = panel.querySelector('#tmod-panel-content');
         if (!content) return;
 
@@ -1998,6 +2090,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         loadChannelData().then(ch => {
             const loadingDiv = content.querySelector('#tmod-stream-loading');
             const formDiv = content.querySelector('#tmod-stream-form');
+            if (!loadingDiv || !formDiv) return; // раздел уже сменили
             if (!ch) { loadingDiv.style.color = '#ff6b6b'; loadingDiv.textContent = 'Ошибка загрузки'; return; }
             loadingDiv.style.display = 'none';
             formDiv.style.display = 'block';
@@ -2075,11 +2168,13 @@ const announceText = content.querySelector('#tmod-announce-text');
                 }, 300);
             });
 
-            document.addEventListener('click', (e) => {
+            if (tmodStreamCloseDD) document.removeEventListener('click', tmodStreamCloseDD);
+            tmodStreamCloseDD = (e) => {
                 if (!e.target.closest('#tmod-stream-category') && !e.target.closest('#tmod-cat-results')) {
                     catResults.style.display = 'none';
                 }
-            });
+            };
+            document.addEventListener('click', tmodStreamCloseDD);
 
             content.querySelector('#tmod-stream-save').onclick = async () => {
                 const statusDiv = content.querySelector('#tmod-stream-status');
@@ -2112,10 +2207,14 @@ const announceText = content.querySelector('#tmod-announce-text');
                 if (!gqlResult.success) errors.push(gqlResult.error);
 
                 if (errors.length) {
-                    statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + errors.join('; ') + '</span>';
+                    statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + escapeHtml(errors.join('; ')) + '</span>';
                 } else {
                     statusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Сохранено!</span>';
-                    setTimeout(() => { panel.remove(); createPanel(); }, 1500);
+                    setTimeout(() => {
+                        if (!panel.isConnected || !panel.querySelector('#tmod-stream-save')) return;
+                        panel.remove();
+                        createPanel();
+                    }, 1500);
                 }
             };
         });
@@ -2126,7 +2225,7 @@ const announceText = content.querySelector('#tmod-announce-text');
     // ============================================================================
 
     function showShoutoutSection(panel) {
-        const channelName = window.location.pathname.slice(1);
+        const channelName = getChannelName();
         const content = panel.querySelector('#tmod-panel-content');
         if (!content) return;
 
@@ -2163,12 +2262,25 @@ const announceText = content.querySelector('#tmod-announce-text');
                 if (!broadcasterId) return [];
                 const userId = await getCurrentUserId(token);
                 if (!userId) return [];
-                const resp = await apiRequest(`https://api.twitch.tv/helix/chat/chatters?broadcaster_id=${broadcasterId}&moderator_id=${userId}&first=1000`, {
-                    headers: { 'Authorization': `Bearer ${token}`, 'Client-Id': CLIENT_ID }
-                });
-                if (resp.error || !resp.ok) return [];
-                const data = JSON.parse(resp.text);
-                const chatters = (data.data || []).map(c => ({ user_login: c.user_login, user_name: c.user_name, profile_image_url: '' }));
+                // Get Chatters отдаёт максимум 1000 за страницу, поэтому листаем по
+                // cursor: раньше на каналах с >1000 зрителей список молча обрезался.
+                const raw = [];
+                let cursor = '';
+                for (let page = 0; page < 10; page++) {
+                    const url = `https://api.twitch.tv/helix/chat/chatters?broadcaster_id=${broadcasterId}&moderator_id=${userId}&first=1000`
+                        + (cursor ? '&after=' + encodeURIComponent(cursor) : '');
+                    const resp = await apiRequest(url, {
+                        headers: { 'Authorization': `Bearer ${token}`, 'Client-Id': CLIENT_ID }
+                    });
+                    if (resp.error || !resp.ok) break; // уже полученные страницы оставляем
+                    let pageData = null;
+                    try { pageData = JSON.parse(resp.text); } catch { break; }
+                    raw.push(...((pageData && pageData.data) || []));
+                    cursor = (pageData && pageData.pagination && pageData.pagination.cursor) || '';
+                    if (!cursor) break;
+                }
+                if (!raw.length) return [];
+                const chatters = raw.map(c => ({ user_login: c.user_login, user_name: c.user_name, profile_image_url: '' }));
                 const logins = chatters.map(c => c.user_login);
                 for (let i = 0; i < logins.length; i += 100) {
                     const batch = logins.slice(i, i + 100);
@@ -2191,6 +2303,7 @@ const announceText = content.querySelector('#tmod-announce-text');
             const formDiv = content.querySelector('#tmod-so-form');
             const listDiv = content.querySelector('#tmod-so-list');
             const searchInput = content.querySelector('#tmod-so-search');
+            if (!loadingDiv || !formDiv || !listDiv) return; // раздел уже сменили
 
             if (!chatters.length) {
                 loadingDiv.style.color = '#ff6b6b';
@@ -2206,8 +2319,8 @@ const announceText = content.querySelector('#tmod-announce-text');
                 listDiv.innerHTML = filtered.map(c => `
                     <div class="tmod-so-item" data-login="${c.user_login}" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid #26262c; cursor: pointer; transition: background 0.1s;">
                         <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
-                            ${c.profile_image_url ? `<img src="${c.profile_image_url}" style="width: 28px; height: 28px; border-radius: 50%; background: #26262c; flex-shrink: 0;">` : `<div style="width: 28px; height: 28px; border-radius: 50%; background: #9146FF; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 13px; font-weight: 600; color: white;">${c.user_name.charAt(0).toUpperCase()}</div>`}
-                            <span style="font-size: 13px; color: #efeff1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${c.user_name}</span>
+                            ${c.profile_image_url ? `<img src="${escapeHtml(c.profile_image_url)}" style="width: 28px; height: 28px; border-radius: 50%; background: #26262c; flex-shrink: 0;">` : `<div style="width: 28px; height: 28px; border-radius: 50%; background: #9146FF; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 13px; font-weight: 600; color: white;">${escapeHtml(String(c.user_name || '?').charAt(0).toUpperCase())}</div>`}
+                            <span style="font-size: 13px; color: #efeff1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(c.user_name)}</span>
                         </div>
                         <span style="font-size: 12px; color: #9146FF; white-space: nowrap; flex-shrink: 0;">Отметить</span>
                     </div>
@@ -2227,7 +2340,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                         if (result.success) {
                             statusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Шаутаут отправлен!</span>';
                         } else {
-                            statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + result.error + '</span>';
+                            statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + escapeHtml(result.error) + '</span>';
                         }
                         item.style.opacity = '1';
                         item.style.pointerEvents = '';
@@ -2252,7 +2365,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                     statusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Шаутаут отправлен!</span>';
                     manualInput.value = '';
                 } else {
-                    statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + result.error + '</span>';
+                    statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + escapeHtml(result.error) + '</span>';
                 }
                 manualBtn.disabled = false;
             }
@@ -2266,7 +2379,7 @@ const announceText = content.querySelector('#tmod-announce-text');
     // ============================================================================
 
     function showRaidSection(panel) {
-        const channelName = window.location.pathname.slice(1);
+        const channelName = getChannelName();
         const content = panel.querySelector('#tmod-panel-content');
         if (!content) return;
 
@@ -2301,10 +2414,14 @@ const announceText = content.querySelector('#tmod-announce-text');
         }
 
         let raidSearchTimeout = null;
+        // Номер последнего запроса: ответ на устаревший ввод не должен перерисовывать
+        // список (при быстром наборе ответы приходят не по порядку).
+        let raidSearchSeq = 0;
         raidInput.addEventListener('input', () => {
             clearTimeout(raidSearchTimeout);
             const q = parseTwitchLogin(raidInput.value);
             if (q.length < 2) { raidResults.style.display = 'none'; raidResults.innerHTML = ''; return; }
+            const seq = ++raidSearchSeq;
             raidSearchTimeout = setTimeout(async () => {
                 const token = await getToken();
                 if (!token) return;
@@ -2312,14 +2429,15 @@ const announceText = content.querySelector('#tmod-announce-text');
                     headers: { 'Authorization': `Bearer ${token}`, 'Client-Id': CLIENT_ID }
                 });
                 if (resp.error || !resp.ok) return;
+                if (seq !== raidSearchSeq) return; // это ответ на устаревший запрос
                 try {
                     const data = JSON.parse(resp.text);
                     if (!data.data || !data.data.length) { raidResults.style.display = 'none'; return; }
                     raidResults.innerHTML = data.data.reverse().map(c => {
                         const live = c.is_live ? '<span style="color:#ff4444; font-size: 11px; margin-left: 4px;">LIVE</span>' : '';
                         return `<div class="tmod-raid-item" data-login="${c.broadcaster_login}" style="padding: 6px 10px; font-size: 13px; color: #efeff1; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.1s;">
-                            <img src="${c.thumbnail_url || ''}" style="width: 28px; height: 28px; border-radius: 50%; background: #26262c; flex-shrink: 0;" onerror="this.style.display='none'">
-                            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${c.display_name}${live}</span>
+                            <img src="${escapeHtml(c.thumbnail_url || '')}" style="width: 28px; height: 28px; border-radius: 50%; background: #26262c; flex-shrink: 0;" onerror="this.style.display='none'">
+                            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(c.display_name)}${live}</span>
                         </div>`;
                     }).join('');
                     raidResults.style.display = 'block';
@@ -2334,11 +2452,13 @@ const announceText = content.querySelector('#tmod-announce-text');
                 } catch { raidResults.style.display = 'none'; }
             }, 300);
         });
-        document.addEventListener('click', (e) => {
+        if (tmodRaidCloseDD) document.removeEventListener('click', tmodRaidCloseDD);
+        tmodRaidCloseDD = (e) => {
             if (!e.target.closest('#tmod-raid-input') && !e.target.closest('#tmod-raid-results')) {
                 raidResults.style.display = 'none';
             }
-        });
+        };
+        document.addEventListener('click', tmodRaidCloseDD);
 
         async function doRaid() {
             const target = parseTwitchLogin(raidInput.value);
@@ -2361,15 +2481,20 @@ const announceText = content.querySelector('#tmod-announce-text');
             try { targetId = JSON.parse(userResp.text).data[0].id; } catch { statusDiv.innerHTML = '<span style="color:#ff6b6b;">Канал не найден</span>'; raidBtn.disabled = false; return; }
 
             statusDiv.textContent = 'Запуск рейда...';
-            const raidResp = await apiRequest(`https://api.twitch.tv/helix/raids?from_broadcaster_id=${broadcasterId}&to_broadcaster_id=${targetId}`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}`, 'Client-Id': CLIENT_ID }
-            });
-            if (raidResp.status === 200 || (raidResp.ok && !raidResp.error)) {
-                statusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Рейд запущен!</span>';
+            // Helix-рейд требует, чтобы from_broadcaster_id совпадал с владельцем токена,
+            // то есть модератору он недоступен (401). Поэтому идём тем же путём, что и
+            // delete/timeout: сначала Helix, при отказе по правам — чат-команда /raid.
+            const raidResult = await runHelixWithChatFallback(
+                () => helixCall(`https://api.twitch.tv/helix/raids?from_broadcaster_id=${broadcasterId}&to_broadcaster_id=${targetId}`, { method: 'POST' }),
+                '/raid ' + sanitizeLogin(target)
+            );
+            if (raidResult.success) {
+                // Helix только ставит рейд в очередь: подтверждает его стример (90 секунд).
+                statusDiv.innerHTML = raidResult.viaChat
+                    ? ICON_OK + '<span style="color:#00ff00;">Команда рейда отправлена в чат</span>'
+                    : ICON_OK + '<span style="color:#00ff00;">Рейд запущен! Стримеру нужно подтвердить его в течение 90 секунд</span>';
             } else {
-                try { const e = JSON.parse(raidResp.text); statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + (e.message || e.error || 'Ошибка') + '</span>'; }
-                catch { statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">Ошибка: HTTP ' + raidResp.status + '</span>'; }
+                statusDiv.innerHTML = ICON_ERR + '<span style="color:#ff6b6b;">' + escapeHtml(raidResult.error || 'Ошибка') + '</span>';
             }
             raidBtn.disabled = false;
         }
@@ -2384,41 +2509,66 @@ const announceText = content.querySelector('#tmod-announce-text');
 
     const GQL_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
 
-    async function gqlGetSessionToken(token) {
-        let gqlToken = token;
-        if (IS_EXTENSION && typeof chrome !== 'undefined' && chrome.runtime) {
-            try {
-                const resp = await chrome.runtime.sendMessage({ type: 'GET_AUTH_COOKIE' });
-                if (resp && resp.success && resp.value) gqlToken = resp.value;
-            } catch (e) { console.log('[ModPanel] cookie read failed:', e); }
-        }
-        return gqlToken;
+    // GQL-запросы идут от имени веб-клиента Twitch (GQL_CLIENT_ID) и работают только с
+    // ЕГО session-токеном — cookie auth-token. OAuth-токен панели здесь не подходит:
+    // Twitch привязывает токен к выдавшему его клиенту, поэтому запрос отклоняется.
+    // Раньше при неудачном чтении cookie молча подставлялся токен панели — запрос всё
+    // равно отклонялся, а пользователь видел невнятную английскую ошибку.
+    async function gqlGetSessionToken() {
+        if (!IS_EXTENSION || typeof chrome === 'undefined' || !chrome.runtime) return null;
+        try {
+            const resp = await chrome.runtime.sendMessage({ type: 'GET_AUTH_COOKIE' });
+            if (resp && resp.success && resp.value) return resp.value;
+        } catch (e) { console.log('[ModPanel] cookie read failed:', e); }
+        return null;
     }
 
-    async function gqlRequest(query, variables, token) {
-        const gqlToken = await gqlGetSessionToken(token);
-        const body = JSON.stringify({ query, variables });
+    async function gqlRequest(query, variables, opts) {
+        const gqlToken = await gqlGetSessionToken();
+        if (!gqlToken) {
+            return {
+                success: false,
+                error: IS_EXTENSION
+                    ? 'Нет session-токена Twitch: войдите на twitch.tv в этом браузере и обновите страницу'
+                    : 'Изменение данных трансляции работает только в расширении: в Tampermonkey нет доступа к session-токену браузера'
+            };
+        }
+        // Две формы запроса: обычная (query) и persisted (только хеш) — вторую шлёт сам
+        // клиент Twitch, и именно так мы повторяем его внутренние операции.
+        const payload = { variables: variables || {} };
+        if (opts && opts.operationName) payload.operationName = opts.operationName;
+        if (opts && opts.persistedHash) {
+            payload.extensions = { persistedQuery: { version: 1, sha256Hash: opts.persistedHash } };
+        } else {
+            payload.query = query;
+        }
+        const body = JSON.stringify(payload);
+        const headers = {
+            'Client-Id': GQL_CLIENT_ID,
+            'Authorization': 'OAuth ' + gqlToken,
+            'Content-Type': 'application/json'
+        };
+        if (opts && opts.integrity) {
+            const integ = await gqlIntegrityToken(gqlToken);
+            if (integ) {
+                headers['Client-Integrity'] = integ;
+                const dev = gqlDeviceId();
+                if (dev) headers['X-Device-Id'] = dev;
+            }
+        }
 
         let resp;
         if (IS_EXTENSION) {
             resp = await fetch('https://gql.twitch.tv/gql', {
                 method: 'POST',
-                headers: {
-                    'Client-Id': GQL_CLIENT_ID,
-                    'Authorization': 'OAuth ' + gqlToken,
-                    'Content-Type': 'application/json'
-                },
+                headers,
                 body
             }).then(async (r) => ({ status: r.status, ok: r.ok, text: await r.text() }))
               .catch((e) => ({ error: e.message }));
         } else {
             resp = await apiRequest('https://gql.twitch.tv/gql', {
                 method: 'POST',
-                headers: {
-                    'Client-Id': GQL_CLIENT_ID,
-                    'Authorization': 'OAuth ' + gqlToken,
-                    'Content-Type': 'application/json'
-                },
+                headers,
                 body
             });
         }
@@ -2435,12 +2585,339 @@ const announceText = content.querySelector('#tmod-announce-text');
         try {
             const json = JSON.parse(resp.text);
             if (json.errors && json.errors.length) {
-                return { success: false, error: json.errors[0].message };
+                const msg = String(json.errors[0].message || '');
+                // Twitch для части GQL-мутаций требует integrity-токен — переводим это
+                // в понятную подсказку, а не показываем сырой текст.
+                if (/integrity/i.test(msg)) {
+                    return { success: false, error: 'Twitch отклонил запрос (integrity check). Обновите страницу и повторите.' };
+                }
+                if (/persisted/i.test(msg)) {
+                    return { success: false, error: 'Хеш внутреннего запроса устарел (Twitch обновил клиент). Нужен свежий перехват: localStorage.TMOD_CAPTURE_GQL=1' };
+                }
+                return { success: false, error: msg };
             }
             return { success: true, data: json.data };
         } catch {
             return { success: false, error: 'Parse error' };
         }
+    }
+
+    // Хеши persisted-запросов, которыми сам Twitch рисует карточку юзера. Добыты
+    // перехватчиком из twitch-api.js (localStorage.TMOD_CAPTURE_GQL='1'), см. AGENTS.md.
+    // Текста запроса в них нет — Twitch шлёт только operationName + variables + хеш,
+    // поэтому реплей выглядит ровно как запрос самого клиента.
+    // ВНИМАНИЕ: хеши могут меняться при обновлении клиента Twitch. При ошибке
+    // PersistedQueryNotFound нужен свежий перехват (это видно по тексту ошибки).
+    // Хеши persisted-запросов, которыми сам Twitch рисует карточку юзера. Добыты
+    // перехватчиком из twitch-api.js (localStorage.TMOD_CAPTURE_GQL='1'), см. AGENTS.md.
+    // Ключ — имя операции. Текста запроса в них нет: Twitch шлёт только
+    // operationName + variables + хеш, поэтому реплей выглядит как запрос самого клиента.
+    // Это лишь запасной вариант: актуальные хеши панель подхватывает из трафика
+    // (gqlHash → localStorage.TMOD_GQL_HASH_<operationName>), поэтому смена хешей
+    // при обновлении клиента Twitch реплей не ломает.
+    const GQL_HASHES = {
+        ChatModeratorStrikeStatus: '7f50f7190a840cd9fe9a91398f34ebb690eeba7cb28bce70e4cbf7ed1d06f268',
+        UserModStatus: '511b58faf547070bc95b7d32e7b5cdedf8c289a3aeabfc3c5d3ece2de01ae06f',
+        LowTrustUserProperties: '11fcee5e092dbedb9ca1d7512a40180f9b529ad9fe2befe1c98670963d9e71fb',
+        ViewerCardModLogs: '22fdbc4c92dc269d7243a0b78e34e1eb2dc1e80d695c3189b2f358edc184294e',
+        ViewerCardModLogsComments: '58273e486b4e50dafbad9f736bc1ebcc7db935572664cb9c1e561b8e1e076dc6',
+        ViewerCardModLogsSharedComments: '12424d0ae0b1bc16d86d20627607abd163a8e978d7b3d231031dd4d60a5df1f1',
+        ViewerCardHeader: '18d1a553b18e5530fa7810d2328ca5e4353891033e1e89ecfe9c3e6e6aaf6090',
+        ViewerCard: '2c6cc05878bf2f007613fe807512546000401362a2d7d87ab20ebf259960a29e'
+    };
+
+    // Хеш операции: сначала выученный из трафика страницы (twitch-api.js пишет
+    // TMOD_GQL_HASH_<operationName>), иначе — зашитый. Так реплей не ломается, когда
+    // Twitch обновляет клиент и меняет хеши.
+    function gqlHash(operationName) {
+        try {
+            const learned = localStorage.getItem('TMOD_GQL_HASH_' + operationName);
+            if (learned && /^[0-9a-f]{64}$/i.test(learned)) return learned;
+        } catch (e) {}
+        return GQL_HASHES[operationName] || null;
+    }
+
+    // Часть внутренних операций Twitch требует integrity-токен (проверено: без него
+    // ViewerCardHeader/ViewerCard отвечают «integrity check»), поэтому берём его у
+    // самого Twitch и прикладываем ТОЛЬКО к таким операциям — рабочие модераторские
+    // запросы остаются ровно такими же, как сейчас.
+    const GQL_INTEGRITY_OPS = new Set(['ViewerCardHeader', 'ViewerCard']);
+    let gqlIntegrityCache = { token: null, expiresAt: 0 };
+
+    function gqlDeviceId() {
+        try {
+            let id = localStorage.getItem('TMOD_X_DEVICE_ID');
+            if (!id) {
+                id = (typeof crypto !== 'undefined' && crypto.randomUUID)
+                    ? crypto.randomUUID()
+                    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+                        const r = (Math.random() * 16) | 0;
+                        return (c === 'x' ? r : ((r & 0x3) | 0x8)).toString(16);
+                    });
+                localStorage.setItem('TMOD_X_DEVICE_ID', id);
+            }
+            return id;
+        } catch (e) { return null; }
+    }
+
+    async function gqlIntegrityToken(gqlToken) {
+        const now = Date.now();
+        if (gqlIntegrityCache.token && gqlIntegrityCache.expiresAt > now + 5000) return gqlIntegrityCache.token;
+        if (!IS_EXTENSION || typeof chrome === 'undefined' || !chrome.runtime) return null;
+        try {
+            const r = await fetch('https://gql.twitch.tv/integrity', {
+                method: 'POST',
+                headers: {
+                    'Client-Id': GQL_CLIENT_ID,
+                    'Authorization': 'OAuth ' + gqlToken,
+                    'X-Device-Id': gqlDeviceId() || ''
+                }
+            });
+            const j = await r.json();
+            if (!j || !j.token) { debugLog('integrity-none', j && j.error); return null; }
+            const exp = j.expiration ? new Date(j.expiration).getTime() : now + 3600000;
+            gqlIntegrityCache = { token: j.token, expiresAt: exp };
+            debugLog('integrity-ok', { expiresAt: exp });
+            return j.token;
+        } catch (e) {
+            debugLog('integrity-fail', e && e.message);
+            return null;
+        }
+    }
+
+    // Запрос по persisted-хешу: то же тело, что отправляет клиент Twitch.
+    async function gqlPersisted(operationName, hash, variables) {
+        return gqlRequest(null, variables, {
+            operationName: operationName,
+            persistedHash: hash || gqlHash(operationName),
+            integrity: GQL_INTEGRITY_OPS.has(operationName)
+        });
+    }
+
+    // Разведка внутренних запросов о юзере. Ничего не меняет в интерфейсе: складывает
+    // СЫРЫЕ ответы в window.TMOD_DEBUG_DATA (page world, см. twitch-api.js), чтобы
+    // посмотреть точную форму ответа и уже по ней писать разбор полей.
+    // Запускается только когда включена диагностика (TMOD_DEBUG или TMOD_CAPTURE_GQL).
+    async function probeUserGql(broadcasterId, userId, channelLogin, targetLogin) {
+        if (!IS_EXTENSION) return null;
+        const cid = String(broadcasterId || '');
+        const uid = String(userId || '');
+        if (!cid || !uid) return null;
+        const jobs = [
+            ['ChatModeratorStrikeStatus', { channelID: cid, targetUserID: uid }],
+            ['UserModStatus', { channelID: cid, userID: uid }],
+            ['LowTrustUserProperties', { targetUserID: uid, channelID: cid }],
+            ['ViewerCardModLogs', { channelID: cid, channelLogin: channelLogin || '', targetID: uid }],
+            ['ViewerCardModLogsComments', { channelID: cid, targetID: uid }],
+            ['ViewerCardModLogsSharedComments', { channelID: cid, targetID: uid }]
+        ];
+        if (targetLogin) {
+            // Эти две работают по ЛОГИНУ, а не по id — заодно смотрим их форму ответа,
+            // чтобы отказаться от карточки для ролей и бейджей.
+            jobs.push(['ViewerCardHeader', { targetLogin: targetLogin, channelID: cid, hasChannelID: true }]);
+            jobs.push(['ViewerCard', {
+                channelID: cid,
+                channelLogin: channelLogin || '',
+                hasChannelID: true,
+                giftRecipientLogin: targetLogin,
+                withStandardGifting: true,
+                badgeSourceChannelID: cid,
+                badgeSourceChannelLogin: channelLogin || ''
+            }]);
+        }
+        const out = {};
+        for (const [name, vars] of jobs) {
+            const res = await gqlPersisted(name, null, vars);
+            out[name] = res && res.success ? res.data : { tmodError: (res && res.error) || 'unknown' };
+        }
+        const summary = Object.keys(out).map((k) => k + '=' + (out[k] && out[k].tmodError ? 'ERR' : 'ok'));
+        debugLog('user-gql-probe', summary);
+        // Печатаем напрямую: разведка запускается и без TMOD_DEBUG (по TMOD_CAPTURE_GQL),
+        // а debugLog в этом режиме молчит — иначе результат было бы не видно.
+        try {
+            console.log('[ModPanel][gql] разведка по юзеру ' + uid + ': ' + summary.join(' | '),
+                '\nПолные ответы: copy(JSON.stringify(TMOD_DEBUG_DATA, null, 1))');
+        } catch (e) {}
+        try { window.postMessage({ type: 'TMOD_DEBUG_STORE', key: 'userGql:' + uid, value: out }, '*'); } catch (e) {}
+        return out;
+    }
+
+    // --- Страйк-статус (бан/таймаут/варн) и мод-статус напрямую, без карточки --------
+    // Форма ответа проверена на живом Twitch (см. probeUserGql):
+    //   {chatModeratorStrikeStatus:{banDetails,timeoutDetails,warningDetails,...}}
+    // null означает «нет», объект — «есть». Это те же данные, что рисует карточка
+    // Mod View, но одним запросом и без открытия карточки в чате.
+    function tmodStrikeDetails(details) {
+        // Схема вложенного объекта внутренняя, поэтому срок/время/причину/модератора
+        // вытаскиваем рекурсивно по подходящим именам ключей. Наличие самого объекта —
+        // уже достоверный статус, так что это «уточнение», а не источник правды.
+        const out = { expiresAt: null, createdAt: null, createdBy: null, reason: null, raw: details || null };
+        const seen = new Set();
+        const pick = (node, depth) => {
+            if (!node || typeof node !== 'object' || depth > 3 || seen.has(node)) return;
+            seen.add(node);
+            for (const [k, v] of Object.entries(node)) {
+                if (v == null) continue;
+                if (typeof v === 'object') { pick(v, depth + 1); continue; }
+                const key = k.toLowerCase();
+                if (!out.expiresAt && /^(expiresat|expiration|endsat|expireat|banneduntil|timeoutendsat)$/.test(key)) out.expiresAt = v;
+                else if (!out.createdAt && /^(createdat|startedat|beganat|updatedat)$/.test(key)) out.createdAt = v;
+                else if (!out.reason && /^(reason|banreason)$/.test(key)) out.reason = v;
+                else if (!out.createdBy && /^(login|displayname|name)$/.test(key)) out.createdBy = v;
+            }
+        };
+        pick(details, 0);
+        return out;
+    }
+
+    async function fetchStrikeStatus(broadcasterId, userId) {
+        if (!IS_EXTENSION) return null;
+        const res = await gqlPersisted('ChatModeratorStrikeStatus', null, {
+            channelID: String(broadcasterId),
+            targetUserID: String(userId)
+        });
+        if (!res || !res.success) { debugLog('strike-gql-fail', res && res.error); return null; }
+        const s = res.data && res.data.chatModeratorStrikeStatus;
+        if (!s) return null;
+        // Сырые детали — на склад диагностики (если она включена): по ним уточним имена
+        // полей на живом примере, вместо угадывания схемы.
+        if ((s.banDetails || s.timeoutDetails || s.warningDetails) && (tmodDebugLevel() || tmodGqlCaptureEnabled())) {
+            try {
+                window.postMessage({
+                    type: 'TMOD_DEBUG_STORE',
+                    key: 'strikeDetails:' + String(userId),
+                    value: { banDetails: s.banDetails, timeoutDetails: s.timeoutDetails, warningDetails: s.warningDetails }
+                }, '*');
+            } catch (e) {}
+        }
+        return {
+            isBanned: !!s.banDetails,
+            isTimedOut: !!s.timeoutDetails,
+            hasWarning: !!s.warningDetails,
+            ban: s.banDetails ? tmodStrikeDetails(s.banDetails) : null,
+            timeout: s.timeoutDetails ? tmodStrikeDetails(s.timeoutDetails) : null
+        };
+    }
+
+    async function fetchModStatus(broadcasterId, userId) {
+        if (!IS_EXTENSION) return null;
+        const res = await gqlPersisted('UserModStatus', null, {
+            channelID: String(broadcasterId),
+            userID: String(userId)
+        });
+        if (!res || !res.success) return null;
+        const u = res.data && res.data.user;
+        if (!u || typeof u.isModerator !== 'boolean') return null;
+        return u.isModerator;
+    }
+
+    // Low-trust свойства юзера: то, что Twitch показывает в своей карточке — мониторинг/
+    // санкции low-trust, вероятность обхода бана, «потенциальный харассер», общие баны
+    // с другими каналами. Возвращаем null, если ничего значимого нет (обычный юзер),
+    // чтобы не засорять чипсы.
+    async function fetchLowTrust(broadcasterId, userId) {
+        if (!IS_EXTENSION) return null;
+        const res = await gqlPersisted('LowTrustUserProperties', null, {
+            channelID: String(broadcasterId),
+            targetUserID: String(userId)
+        });
+        if (!res || !res.success) return null;
+        const p = res.data && res.data.lowTrustUserProperties;
+        if (!p) return null;
+        const out = {
+            treatment: (p.treatment && p.treatment.type) || null,
+            treatmentAt: (p.treatment && p.treatment.updatedAt) || null,
+            treatmentBy: (p.treatment && p.treatment.updatedBy
+                && (p.treatment.updatedBy.login || p.treatment.updatedBy.displayName)) || null,
+            banEvasion: (p.banEvasion && p.banEvasion.likelihood) || null,
+            harasser: (p.potentialHarasser && p.potentialHarasser.likelihood) || null,
+            sharedBans: Array.isArray(p.sharedBanChannels) ? p.sharedBanChannels.length : 0,
+            types: Array.isArray(p.types) ? p.types.slice(0, 6) : []
+        };
+        const notable = (out.treatment && out.treatment !== 'NONE')
+            || (out.banEvasion && out.banEvasion !== 'UNLIKELY')
+            || (out.harasser && out.harasser !== 'UNLIKELY')
+            || out.sharedBans > 0
+            || out.types.length > 0;
+        debugLogOnce('lowtrust', out);
+        return notable ? out : null;
+    }
+
+    // Профиль цели для шапки меню: аватар, возраст аккаунта и фолловер ли он.
+    // Аватар и created_at доступны любому токену (helix/users); дата фоллова требует
+    // moderator:read:followers — если права нет, дату просто не показываем.
+    async function fetchUserProfile(broadcasterId, userId) {
+        const out = { avatar: null, createdAt: null, isFollower: null, followedAt: null };
+        try {
+            const u = await helixCall(`https://api.twitch.tv/helix/users?id=${encodeURIComponent(userId)}`);
+            const d = u && u.success && u.data && u.data.data && u.data.data[0];
+            if (d) {
+                out.createdAt = d.created_at || null;
+                const img = String(d.profile_image_url || '');
+                // Только CDN Twitch: src из ответа не должен уметь указывать куда угодно.
+                if (/^https:\/\/static-cdn\.jtvnw\.net\//.test(img)) out.avatar = img;
+            }
+            const f = await helixCall(`https://api.twitch.tv/helix/channels/followers?broadcaster_id=${encodeURIComponent(broadcasterId)}&user_id=${encodeURIComponent(userId)}`);
+            if (f && f.success) {
+                const row = f.data && f.data.data && f.data.data[0];
+                out.isFollower = !!row;
+                out.followedAt = row ? (row.followed_at || null) : null;
+            }
+            debugLogOnce('profile', out);
+        } catch (e) {}
+        return out;
+    }
+
+    // --- История модерации по юзеру (внутренний ViewerCardModLogs) -------------------
+    // Форма проверена на живом API: connection'ы bans/timeouts/unbans/untimeouts/
+    // unbanrequest*/warnings/warningacknowledgements, в каждой записи
+    // { type, timestamp, localizedLabel:{ fallbackString, localizedStringFragments } }.
+    // Twitch сам отдаёт готовую локализованную фразу — просто собираем её из фрагментов.
+    function tmodModLogText(node) {
+        try {
+            const frags = node && node.localizedLabel && node.localizedLabel.localizedStringFragments;
+            if (Array.isArray(frags) && frags.length) {
+                return frags.map((f) => {
+                    const t = f && f.token;
+                    if (!t) return '';
+                    return t.text != null ? String(t.text) : (t.displayName || t.login || '');
+                }).join('').replace(/\s+/g, ' ').trim();
+            }
+            return String((node && node.localizedLabel && node.localizedLabel.fallbackString) || '');
+        } catch (e) { return ''; }
+    }
+
+    async function fetchModLogs(broadcasterId, userId) {
+        if (!IS_EXTENSION) return null;
+        const res = await gqlPersisted('ViewerCardModLogs', null, {
+            channelID: String(broadcasterId),
+            channelLogin: getChannelName() || '',
+            targetID: String(userId)
+        });
+        if (!res || !res.success) return null;
+        const v = res.data && res.data.viewerCardModLogs;
+        if (!v) return null;
+        const keys = ['bans', 'timeouts', 'unbans', 'untimeouts', 'unbanrequestcreations',
+            'unbanrequestapprovals', 'unbanrequestdenials', 'warnings', 'warningacknowledgements'];
+        const counts = {};
+        const events = [];
+        for (const key of keys) {
+            const conn = v[key];
+            if (!conn) continue;
+            const edges = Array.isArray(conn.edges) ? conn.edges : [];
+            counts[key] = typeof conn.count === 'number' ? conn.count : edges.length;
+            for (const e of edges) {
+                const node = e && e.node;
+                if (!node) continue;
+                events.push({ kind: key, type: node.type || null, at: node.timestamp || null, text: tmodModLogText(node) });
+            }
+        }
+        if (v.messages) {
+            counts.messages = typeof v.messages.count === 'number' ? v.messages.count : null;
+            counts.messagesCapped = !!(v.messages.pageInfo && v.messages.pageInfo.hasNextPage);
+        }
+        events.sort((a, b) => new Date(b.at || 0) - new Date(a.at || 0));
+        return { counts, events };
     }
 
     async function gqlUpdateBroadcastSettings(token, broadcasterUserId, opts) {
@@ -2451,16 +2928,22 @@ const announceText = content.querySelector('#tmod-announce-text');
 
         return gqlRequest(
             'mutation UpdateBroadcastSettings($input: UpdateBroadcastSettingsInput!) { updateBroadcastSettings(input: $input) { broadcastSettings { title game { id name } } } }',
-            { input },
-            token
-        );
+            { input }
+        ).then((result) => {
+            // Twitch может ответить 200 и одновременно data.updateBroadcastSettings: null,
+            // когда мутация фактически не применилась. Проверяем ТОЛЬКО явный null, чтобы
+            // не сломать разбор на незнакомой форме ответа.
+            if (result && result.success && result.data && result.data.updateBroadcastSettings === null) {
+                return { success: false, error: 'Twitch не применил изменения (мутация отклонена)' };
+            }
+            return result;
+        });
     }
 
     async function gqlSearchTags(query, token) {
         const result = await gqlRequest(
             'query SearchContentTags($query: String!) { searchContentTags(query: $query, first: 20) { edges { node { id localizedName } } } }',
-            { query },
-            token
+            { query }
         );
         if (!result.success) return [];
         try { return result.data.searchContentTags.edges.map(e => e.node); } catch { return []; }
@@ -2476,8 +2959,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                     contentType: 'STREAM',
                     tagIDs: tagIds
                 }
-            },
-            token
+            }
         );
     }
 
@@ -2542,7 +3024,10 @@ const announceText = content.querySelector('#tmod-announce-text');
         };
         const scanDown = (root) => {
             const stack = [{ f: root.child, sib: root.sibling }];
-            while (stack.length) {
+            // Условие по count обязательно: без него лимит останавливал только сбор
+            // кандидатов, а обход продолжал класть в стек всё поддерево (до 80 уровней
+            // предков) — то есть на каждый ПКМ обходилось почти всё fiber-дерево.
+            while (stack.length && count < maxNodes) {
                 const { f, sib } = stack.pop();
                 if (f) {
                     const u = check(f);
@@ -2559,7 +3044,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         };
         let cur = fiber;
         let depth = 0;
-        while (cur && depth < 80) {
+        while (cur && depth < 80 && count < maxNodes) {
             const u = check(cur);
             if (u) return u;
             const d = scanDown(cur);
@@ -2622,19 +3107,28 @@ const announceText = content.querySelector('#tmod-announce-text');
         }
 
         // Прямые поля сообщения, затем поиск по дереву (предки + дети).
-        // Fiber-юзеру доверяем, только если его логин совпал с видимым ником
-        // сообщения; иначе id не берём — резолвится по логину через Helix.
+        // Fiber-юзеру доверяем ТОЛЬКО при совпадении логина с видимым ником.
+        // Раньше проверка была «fail-open»: при нечитаемом нике (login === null)
+        // принимался ЛЮБОЙ кандидат, а searchFiberForUser обходит предков и чужие
+        // сообщения — и бан/таймаут/VIP могли уйти другому человеку. Теперь при
+        // неизвестном нике берём только прямые поля самого сообщения; если и там
+        // логина нет — возвращаем userId: null и лучше ничего не делаем.
+        const candLogin = (cand) => norm(cand && (cand.login || cand.userLogin || cand.userName || cand.displayName) || '');
         const matchesLogin = (cand) => {
-            if (!cand || !login) return true;
-            const l = norm(cand.login || cand.userLogin || cand.userName || cand.displayName || '');
-            return !l || l === norm(login);
+            if (!cand || !login) return false;
+            const l = candLogin(cand);
+            return !!l && l === norm(login);
         };
         let u = userFromMessage(m);
-        if (!matchesLogin(u)) u = null;
-        if (!u) u = searchFiberForUser(found);
-        if (!matchesLogin(u)) u = null;
-        if (!u) u = searchFiberForUser(fiber);
-        if (!matchesLogin(u)) u = null;
+        if (login) {
+            if (!matchesLogin(u)) u = null;
+            if (!u) u = searchFiberForUser(found);
+            if (!matchesLogin(u)) u = null;
+            if (!u) u = searchFiberForUser(fiber);
+            if (!matchesLogin(u)) u = null;
+        } else if (!candLogin(u)) {
+            u = null;
+        }
         u = u || {};
         const flag2 = (v) => (v === true || v === false ? !!v : null);
         const isVip = flag2(u.isVip ?? u.isVIP ?? u.vip)
@@ -2671,7 +3165,9 @@ const announceText = content.querySelector('#tmod-announce-text');
                 settled = true;
                 clearTimeout(timer);
                 window.removeEventListener('message', handler);
-                el.removeAttribute('data-tmod-probe');
+                // Снимаем метку только если она наша: при наложившихся запросах
+                // атрибут мог уже переставиться на другое сообщение.
+                if (el.getAttribute('data-tmod-probe') === nonce) el.removeAttribute('data-tmod-probe');
                 resolve(val);
             };
             const timer = setTimeout(() => finish(null), 1200);
@@ -2682,7 +3178,11 @@ const announceText = content.querySelector('#tmod-announce-text');
                 }
             };
             window.addEventListener('message', handler);
-            el.setAttribute('data-tmod-probe', '1');
+            // Метка — сам nonce. Раньше она была константой '1', а мост искал
+            // document.querySelector('[data-tmod-probe]') (первый в документе), поэтому
+            // при двух наложившихся ПКМ-кликах второй запрос получал данные ПЕРВОГО
+            // сообщения — и меню могло действовать не на того юзера.
+            el.setAttribute('data-tmod-probe', nonce);
             window.postMessage({ type: 'TMOD_GET_MSG', nonce }, '*');
         });
     }
@@ -2782,10 +3282,29 @@ const announceText = content.querySelector('#tmod-announce-text');
     // Считывает бейджи прямо с DOM-элемента сообщения (img[alt]) — живой статус
     // VIP/мод/стример без API. Alt локализован, поэтому ловим RU и EN.
     // Логин цели из текущего меню (для чат-команд).
-    function panelUserLogin() {
-        const s = panelMenuState;
+    // Логин цели меню. Принимает снапшот состояния: действия асинхронные, и к моменту
+    // сборки чат-команды глобальный panelMenuState может указывать уже на ДРУГОГО
+    // юзера (мод закрыл меню и открыл следующее) — тогда команда ушла бы не тому.
+    function panelUserLogin(state) {
+        const s = state || panelMenuState;
         return sanitizeLogin(s && s.userLogin) || sanitizeLogin((s && s.userName || '').toLowerCase());
     }
+
+    // Логин ТЕКУЩЕГО пользователя (модератора). Не путать с panelUserLogin(): тот
+    // возвращает логин ЦЕЛИ (на кого открыто меню) и нужен для чат-команд вида
+    // `/timeout <login>`. Именно из-за этой путаницы в плашке писался ник отстранённого
+    // вместо того, кто отстранил.
+    let panelActorLoginCache = null;
+    async function loadPanelActorLogin() {
+        if (panelActorLoginCache) return panelActorLoginCache;
+        try {
+            const u = await getUserInfo();
+            const l = sanitizeLogin(u && (u.login || u.display_name || u.displayName));
+            if (l) panelActorLoginCache = l;
+        } catch (e) {}
+        return panelActorLoginCache;
+    }
+    function panelActorLogin() { return panelActorLoginCache; }
 
     // Helix-запрос; если Twitch отвечает отказом по правам (401/must match) —
     // выполняем то же действие чат-командой (команды чата доступны модератору без
@@ -2816,7 +3335,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         );
     }
 
-    async function actionTimeout(userId, seconds, reason) {
+    async function actionTimeout(userId, seconds, reason, targetLogin) {
         const ctx = await getModeratorContext();
         if (!ctx) return { success: false, error: 'Не удалось определить канал' };
         if (String(userId) === String(ctx.broadcasterId)) {
@@ -2828,7 +3347,8 @@ const announceText = content.querySelector('#tmod-announce-text');
         const data = { user_id: userId };
         if (seconds) data.duration = Math.round(seconds);
         if (reason) data.reason = reason;
-        const login = panelUserLogin();
+        // Логин для чат-фолбэка — из снапшота меню на момент клика (см. panelUserLogin).
+        const login = sanitizeLogin(targetLogin) || panelUserLogin();
         const chatText = login
             ? (seconds
                 ? `/timeout ${login} ${Math.round(seconds)}${reason ? ' ' + reason : ''}`
@@ -2848,10 +3368,10 @@ const announceText = content.querySelector('#tmod-announce-text');
         return res;
     }
 
-    async function actionUnban(userId) {
+    async function actionUnban(userId, targetLogin) {
         const ctx = await getModeratorContext();
         if (!ctx) return { success: false, error: 'Не удалось определить канал' };
-        const login = panelUserLogin();
+        const login = sanitizeLogin(targetLogin) || panelUserLogin();
         const res = await runHelixWithChatFallback(
             () => helixCall(
                 `https://api.twitch.tv/helix/moderation/bans?broadcaster_id=${ctx.broadcasterId}&moderator_id=${ctx.moderatorId}&user_id=${userId}`,
@@ -2870,7 +3390,8 @@ const announceText = content.querySelector('#tmod-announce-text');
                 const s = panelMenuState.status = panelMenuState.status || {};
                 s.isBanned = false; s.isTimedOut = false;
                 s.banExpiresAt = null; s.banCreatedAt = null; s.banCreatedBy = null; s.statusText = null;
-                renderPanelMenuBan(); renderPanelMenuTimeout();
+                renderPanelMenuBan();
+        renderPanelMenuModLogs(); renderPanelMenuTimeout();
             }
         }
         return res;
@@ -2984,9 +3505,14 @@ const announceText = content.querySelector('#tmod-announce-text');
         } catch (e) {}
     }
 
+    // Пользователь сам взаимодействует с чатом. Если это происходит во время нашего
+    // чтения карточки — карточка, которая откроется, ЕГО, и прятать/закрывать её мы
+    // не имеем права. Если чтения нет — просто снимаем скрытие.
     document.addEventListener('pointerdown', (e) => {
         try {
-            if (cardHideSession && e.isTrusted && !panelCardReadBusy) setCardHiddenUI(false);
+            if (!e.isTrusted) return;
+            if (cardReadSessions > 0) { cardSessionUserTouched = true; return; }
+            if (cardHideSession) setCardHiddenUI(false);
         } catch (e2) {}
     }, true);
 
@@ -3086,7 +3612,10 @@ const announceText = content.querySelector('#tmod-announce-text');
                 const x = Math.max(30, r.left - 150);
                 const y = Math.max(30, r.top + Math.min(120, Math.max(0, r.height) / 2));
                 const el = document.elementFromPoint(x, y);
-                if (el) {
+                // Наша панель — position:fixed рядом с сообщением, и точка «клика по
+                // фону» может попасть в её кнопки: синтетический click по ним = случайное
+                // «Удалить сообщение»/«Отстранить»/«Бан». Такой шаг пропускаем.
+                if (el && !(el.closest && el.closest('#tmod-mod-menu'))) {
                     synthFire(el, x, y, true);
                     await cardSleep(350);
                     if (!cardOpenWithContent()) return true;
@@ -3121,13 +3650,17 @@ const announceText = content.querySelector('#tmod-announce-text');
         const lg = sanitizeLogin(login);
         if (!lg) return false;
         const findTarget = () => {
-            let conts = [];
+            let pool = [];
             try {
-                conts = Array.from(document.querySelectorAll('.chat-line__username-container, [class*="chat-author__display-name"]'))
-                    .filter((n) => String(n.textContent || '').toLowerCase().includes(lg));
+                const all = Array.from(document.querySelectorAll('.chat-line__username-container, [class*="chat-author__display-name"]'));
+                // Сначала точное совпадение ника и только потом «содержит»: для логина
+                // bob под «содержит» попадал и bobby, и карточка открывалась не тому.
+                const norm = (n) => String(n.textContent || '').trim().replace(/^@/, '').replace(/[\s:]+$/, '').toLowerCase();
+                const exact = all.filter((n) => norm(n) === lg);
+                pool = exact.length ? exact : all.filter((n) => String(n.textContent || '').toLowerCase().includes(lg));
             } catch (e) {}
             // Самое свежее сообщение юзера — последний контейнер с его ником.
-            const last = conts[conts.length - 1];
+            const last = pool[pool.length - 1];
             if (!last) return null;
             // Самый глубокий span, чей текст ровно логин (сам ник, обычно внутри <a>).
             let spans = [];
@@ -3449,16 +3982,41 @@ const announceText = content.querySelector('#tmod-announce-text');
         if (!card) return null;
         let imgs = [];
         try { imgs = Array.from(card.querySelectorAll('img[alt]')); } catch (e) {}
-        for (const im of imgs) {
+        // Роли читаем ТОЛЬКО с бейджей (картинки из /badges/ — тот же критерий, что в
+        // collectUserBadges). Раньше в скан попадал и аватар, чей alt — отображаемое
+        // имя: зритель с ником «Mod» или «VIP» читался как модератор/VIP, и меню
+        // предлагало неверное действие.
+        const badgeImgs = imgs.filter((im) => {
+            const src = im.currentSrc || im.getAttribute('src') || '';
+            return src.indexOf('/badges/') !== -1;
+        });
+        for (const im of badgeImgs) {
             const kind = roleKindFromAlt(im.getAttribute('alt'));
             if (kind) return { isVip: kind === 'vip', isMod: kind === 'mod', isBroadcaster: kind === 'broadcaster' };
         }
-        return imgs.length ? { isVip: false, isMod: false, isBroadcaster: false } : null;
+        // Бейджи есть, ролевых среди них нет — авторитетное «не VIP / не мод».
+        return badgeImgs.length ? { isVip: false, isMod: false, isBroadcaster: false } : null;
     }
 
-    // Статус бана/таймаута: для модератора точный ответ даёт GQL userBanInfo
-    // (то, что рисует карточка Mod View); роли через GQL не берём — ненадёжны
-    // (не различают мод/не-мод, вип/не-вип), их источник — карточка/фiber/записи.
+    // Статус бана/таймаута. ВАЖНО (проверено по докам Twitch): у Helix этого для
+    // МОДЕРАТОРА нет. GET /helix/moderation/banned требует, чтобы broadcaster_id
+    // совпадал с владельцем токена, поэтому модератор получает 401 — Twitch даёт
+    // модератору только запись (moderator:manage:banned_users), а чтение нет.
+    // Прежний комментарий здесь обещал «точный ответ через GQL userBanInfo» — это не
+    // соответствовало коду: GQL-запроса статуса бана в панели нет и не было, статус
+    // читается из DOM карточки.
+    // Что модератору РЕАЛЬНО доступно (остальное требует токена стримера):
+    //   identity + возраст аккаунта — GET /helix/users            (любой токен)
+    //   находится ли в чате сейчас  — GET /helix/chat/chatters     (moderator:read:chatters)
+    //   дата фоллова                — GET /helix/channels/followers(moderator:read:followers)
+    //   заявка на разбан            — GET /helix/moderation/unban_requests
+    //                                 (moderator:read:unban_requests, есть фильтр user_id)
+    //   свои блокировки             — GET /helix/users/blocks      (user:read:blocked_users)
+    //   статус бана/таймаута, VIP и мод-списки — только с токеном СТРИМЕРА
+    //                                 (broadcaster_id == владелец токена).
+    // Поэтому роли берём из бейджей и карточки, а бан/таймаут — из карточки.
+    // Надёжная альтернатива карточке: события чата (CLEARCHAT/CLEARMSG по IRC) —
+    // там бан/таймаут/удаление видны как факт, включая действия других модераторов.
     async function fetchPanelStatus(userId, snap) {
         // Снапшот состояния меню, зафиксированный при вызове (refreshPanelMenuStatus).
         // fetchPanelStatus живёт дольше меню и не должен читать глобальный panelMenuState:
@@ -3471,7 +4029,16 @@ const announceText = content.querySelector('#tmod-announce-text');
         const channel = getChannelName();
         const token = await getToken();
         if (!token) return { isBanned: null, isTimedOut: null, isVip: null, isMod: null, isBlocked: null, banExpiresAt: null, banCreatedAt: null };
+        await loadPanelActorLogin();
+        // Фоновые внутренние запросы (стартуют до ветвления, чтобы не тормозить основную
+        // цепочку): low-trust свойства и профиль цели для шапки меню.
+        let lowTrustPromise = null, profilePromise = null;
         const status = { isBanned: null, isTimedOut: null, isVip: null, isMod: null, isBlocked: null, banExpiresAt: null, banCreatedAt: null, banCreatedBy: null };
+        // Свежий ответ внутреннего запроса о страйке: он сделан в момент открытия меню,
+        // поэтому по бану/таймауту имеет последнее слово перед карточкой.
+        let strikeFromGql = null;
+        // История модерации запрашивается параллельно, пригодится и стримеру, и модератору.
+        let modLogsPromise = null;
         let statusChannelId = null;
         let isBroadcasterViewer = false;
         let chattersPresent = null;
@@ -3494,6 +4061,12 @@ const announceText = content.querySelector('#tmod-announce-text');
             if (!targetLogin || cardToken !== panelMenuFetchToken) return null;
             setCardHiddenUI(true);
             panelCardReadBusy = true;
+            cardReadSessions++;
+            cardSessionUserTouched = false;
+            // Диагностика: помечаем окно чтения для перехватчика GQL (twitch-api.js).
+            if (tmodGqlCaptureEnabled()) {
+                try { window.postMessage({ type: 'TMOD_GQL_CAPTURE_CTX', userId: String(userId), label: targetLogin }, '*'); } catch (e) {}
+            }
             let mvOut = null, viewerOut = null;
             try {
                 const opened = await openChatterCardFor(targetLogin, snapLocal.msgEl);
@@ -3539,12 +4112,40 @@ const announceText = content.querySelector('#tmod-announce-text');
                 viewerOut = readViewerCard();
                 return { mv: mvOut, viewerCard: viewerOut };
             } finally {
-                const closed = await closeUserCard();
-                // Свой сеанс чтения кончился — не мешаем скроллу закрывать меню. Если
-                // меню уже переключилось на другого юзера, флаг оставляем на нём.
-                if (cardToken === panelMenuFetchToken) panelCardReadBusy = false;
-                setCardHiddenUI(false);
-                debugLogOnce('mod-card-read', { login: targetLogin, mv: mvOut, viewerCard: viewerOut, stale: cardStale, closed });
+                // Закрываем карточку только если наш сеанс всё ещё актуален: иначе
+                // (мод уже открыл меню на другом юзере) закрытие убило бы ЧУЖУЮ
+                // карточку, которую новый сеанс как раз читает.
+                if (cardToken === panelMenuFetchToken) {
+                    let closed = false;
+                    // try/finally обязателен: если закрытие карточки когда-нибудь бросит,
+                    // счётчик ниже всё равно должен уменьшиться, иначе скрытие карточки
+                    // останется на экране навсегда.
+                    try { closed = await closeUserCard(); } catch (e) { closed = false; }
+                    debugLogOnce('mod-card-read', { login: targetLogin, mv: mvOut, viewerCard: viewerOut, stale: cardStale, closed });
+                }
+                // Скрытие снимает ТОЛЬКО последний активный сеанс. Раньше это делал
+                // каждый сеанс, поэтому прерванный старый сеанс «разоблачал» карточку,
+                // которую в этот момент грузил новый — её и было видно на экране.
+                cardReadSessions = Math.max(0, cardReadSessions - 1);
+                if (cardReadSessions === 0) {
+                    panelCardReadBusy = false;
+                    // Скрытие снимаем, только если карточку удалось закрыть: иначе снятие
+                    // мгновенно показало бы её пользователю — это и выглядело как «иногда
+                    // карточка открывается видимой». cardOpenWithContent() меряет видимость,
+                    // временно отключая правило скрытия.
+                    // Если пользователь сам трогал чат во время чтения — карточка его,
+                    // поэтому не закрываем и не держим спрятанной.
+                    if (!cardSessionUserTouched && cardOpenWithContent()) {
+                        setTimeout(() => {
+                            closeUserCard()
+                                .then((closed) => { if (closed) setCardHiddenUI(false); })
+                                .catch(() => {});
+                        }, 400);
+                    } else {
+                        setCardHiddenUI(false);
+                    }
+                    cardSessionUserTouched = false;
+                }
             }
         }
 
@@ -3556,7 +4157,9 @@ const announceText = content.querySelector('#tmod-announce-text');
         const local = await getPanelLocalRecords().catch(() => []);
         // Нужен ли chatters вообще: есть ли у юзера своя запись бан/таймаут.
         const hasLocalBanRec = local.some(
-            (r) => String(r.userId) === String(userId) && (r.kind === 'ban' || r.kind === 'timeout')
+            (r) => String(r.userId) === String(userId)
+                && (r.kind === 'ban' || r.kind === 'timeout')
+                && (!statusChannelId || String(r.channel) === String(statusChannelId))
         );
 
         if (channel) {
@@ -3570,8 +4173,20 @@ const announceText = content.querySelector('#tmod-announce-text');
             if (broadcasterId) {
                 statusChannelId = broadcasterId;
                 debugLogOnce('mod-ctx', { channel, broadcasterId, me });
+                // Разведка внутренних GQL-запросов о юзере — только в режиме диагностики,
+                // один раз на юзера за сессию, и ничего не меняет в интерфейсе.
+                if (tmodDebugLevel() || tmodGqlCaptureEnabled()) {
+                    const probeKey = String(broadcasterId) + ':' + String(userId);
+                    if (!tmodGqlProbedKeys.has(probeKey)) {
+                        tmodGqlProbedKeys.add(probeKey);
+                        probeUserGql(broadcasterId, userId, channel, targetLogin).catch(() => {});
+                    }
+                }
                 const isBroadcaster = me && String(me) === String(broadcasterId);
                 isBroadcasterViewer = isBroadcaster;
+                modLogsPromise = fetchModLogs(broadcasterId, userId);
+                lowTrustPromise = fetchLowTrust(broadcasterId, userId).catch(() => null);
+                profilePromise = fetchUserProfile(broadcasterId, userId).catch(() => null);
                 if (isBroadcaster) {
                     // Стримеру Helix отдаёт бан/таймауты напрямую (moderation/banned),
                     // + VIP/модов.
@@ -3603,9 +4218,35 @@ const announceText = content.querySelector('#tmod-announce-text');
                     debugLog('mod-mods-resp', { ok: mods.success, status: mods.status, error: mods.error });
                     if (mods.success) status.isMod = !!(mods.data?.data?.length);
                 } else {
-                    // Модератору vips/moderators и moderation/banned недоступны (401 —
-                    // нет прав/скоупов): бан/таймаут читаем из карточки Mod View и
-                    // локальных записей, поэтому отдельный запрос не делаем.
+                    // Модератор. Helix ему бан/таймаут не отдаёт (broadcaster_id должен
+                    // совпадать с владельцем токена), но внутренний persisted-запрос
+                    // Twitch отдаёт — проверено на живом API. Это те же данные, что
+                    // рисует карточка, только одним запросом и без открытия карточки.
+                    // Карточка остаётся фолбэком, если запрос почему-то не прошёл.
+                    const [strike, modStatus] = await Promise.all([
+                        fetchStrikeStatus(broadcasterId, userId),
+                        fetchModStatus(broadcasterId, userId)
+                    ]);
+                    if (strike) {
+                        strikeFromGql = { isBanned: strike.isBanned, isTimedOut: strike.isTimedOut, banExpiresAt: null, banCreatedAt: null, banCreatedBy: null };
+                        const det = strike.timeout || strike.ban || null;
+                        if (strike.isTimedOut && strike.timeout && strike.timeout.expiresAt) {
+                            strikeFromGql.banExpiresAt = strike.timeout.expiresAt;
+                        }
+                        if (det) {
+                            if (det.createdAt) strikeFromGql.banCreatedAt = det.createdAt;
+                            if (det.createdBy) strikeFromGql.banCreatedBy = det.createdBy;
+                            if (det.reason) strikeFromGql.reason = det.reason;
+                        }
+                        strikeFromGql.hasWarning = !!strike.hasWarning;
+                        debugLogOnce('strike-gql', {
+                            banned: strike.isBanned, timedOut: strike.isTimedOut,
+                            warn: strike.hasWarning, expires: !!strikeFromGql.banExpiresAt
+                        });
+                    }
+                    if (typeof modStatus === 'boolean' && status.isBroadcaster !== true) {
+                        status.isMod = modStatus;
+                    }
                     // Chatters ролей НЕ содержит (документировано: поля is_vip/is_moderator
                     // отсутствуют) — присваивать статусы из него нельзя. Нужен он только
                     // чтобы опровергнуть устаревшую локальную запись бан/таймаута
@@ -3632,15 +4273,36 @@ const announceText = content.querySelector('#tmod-announce-text');
         }
         // Локальная запись именно этого юзера и канала (если канал уже определён):
         // фильтруем чужие каналы и чужие записи.
-        const localRec = local.find(
+        // Берём САМУЮ СВЕЖУЮ запись. Записи добавляются в конец, а find() вернул бы
+        // старейшую: у дважды отстранённого это истёкший таймаут, и ветка ниже удаляла
+        // бы ВСЕ его таймауты, включая действующий — панель забывала свой же таймаут.
+        const cands = local.filter(
             (r) => r.userId === String(userId)
                 && (!statusChannelId || String(r.channel) === String(statusChannelId))
                 && (r.kind === 'ban' || r.kind === 'timeout')
         );
+        const localRec = cands.length
+            ? cands.slice().sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))[cands.length - 1]
+            : null;
+        // Своя СВЕЖАЯ запись (бан без срока либо ещё не истёкший таймаут). Это «судья»
+        // против ответа «страйка нет»: Twitch отдаёт timeoutDetails: null ещё мгновение
+        // после выдачи таймаута (проверено на живом API), и без этой проверки мы гасили
+        // только что поставленное действие — не было ни плашки, ни кнопки «прервать».
+        const freshLocalRec = !!(localRec && ((localRec.kind === 'ban' && !localRec.expiresAt)
+            || (localRec.kind === 'timeout' && localRec.expiresAt > Date.now())));
         if (localRec) {
             if (localRec.kind === 'ban') {
                 if (status.isBanned == null) {
-                    if (chattersPresent === true) {
+                    if (strikeFromGql && strikeFromGql.isBanned) {
+                        // Внутренний запрос Twitch прямо подтверждает бан — он сильнее
+                        // эвристики по списку чатеров (та могла «опровергнуть» бан и
+                        // заставить панель забыть собственное действие).
+                        status.isBanned = true;
+                        status.banExpiresAt = null;
+                        status.banCreatedAt = localRec.createdAt;
+                        status.banCreatedBy = panelActorLogin() || null;
+                        status.statusText = localStatusText('ban', new Date(localRec.createdAt).getTime());
+                    } else if (chattersPresent === true) {
                         // Забаненный не может быть в чате: раз он там — бан уже снят
                         // (вручную или другим модом). Устаревшую запись чистим.
                         status.isBanned = false;
@@ -3649,20 +4311,24 @@ const announceText = content.querySelector('#tmod-announce-text');
                         await panelLocalRemove(userId, statusChannelId, 'ban');
                     } else {
                         status.isBanned = true; status.banExpiresAt = null; status.banCreatedAt = localRec.createdAt;
-                        status.banCreatedBy = panelUserLogin() || null;
+                        status.banCreatedBy = panelActorLogin() || null;
                         status.statusText = localStatusText('ban', new Date(localRec.createdAt).getTime());
                     }
                 }
             } else {
                 if (localRec.expiresAt > Date.now()) {
                     if (status.isTimedOut == null) {
-                        if (chattersPresent === false && !chattersCapped) {
+                        if (chattersPresent === false && !chattersCapped
+                            && !(strikeFromGql && strikeFromGql.isTimedOut)) {
                             // Затаймаутенный остаётся в чате; если его там нет и список
-                            // не обрезан — отстранение уже снято.
+                            // не обрезан — отстранение уже снято. НО если внутренний запрос
+                            // Twitch говорит «таймаут есть», это сильнее списка чатеров:
+                            // запись не трогаем, иначе панель забывала своё же действие
+                            // и плашка с кнопкой «прервать» не появлялись.
                             await panelLocalRemove(userId, statusChannelId, 'timeout');
                         } else {
                             status.isTimedOut = true; status.banExpiresAt = localRec.expiresAt; status.banCreatedAt = localRec.createdAt;
-                            status.banCreatedBy = panelUserLogin() || null;
+                            status.banCreatedBy = panelActorLogin() || null;
                             status.statusText = localStatusText('timeout', new Date(localRec.createdAt).getTime(), new Date(localRec.expiresAt).getTime());
                         }
                     }
@@ -3696,7 +4362,9 @@ const announceText = content.querySelector('#tmod-announce-text');
                 if (String(r.userId) !== String(userId)) continue;
                 if (r.kind !== 'vip' && r.kind !== 'mod') continue;
                 if (!r.expiresAt || r.expiresAt <= recNow) continue;
-                if (statusChannelId && String(r.channel) !== String(statusChannelId)) continue;
+                // Без известного канала ролевые записи не применяем: они канало-зависимы,
+                // и «любой канал» означал бы роль, выданную на другом стриме.
+                if (!statusChannelId || String(r.channel) !== String(statusChannelId)) continue;
                 if (r.kind === 'vip' && status.isVip == null) status.isVip = r.value === true;
                 if (r.kind === 'mod' && status.isMod == null) status.isMod = r.value === true;
             }
@@ -3742,8 +4410,8 @@ const announceText = content.querySelector('#tmod-announce-text');
         const now = Date.now();
         const sessVip = ms2.sessionVip === true || ms2.sessionVip === false ? ms2.sessionVip : null;
         const sessMod = ms2.sessionMod === true || ms2.sessionMod === false ? ms2.sessionMod : null;
-        const vipOk = status.isBroadcaster !== true && sessVip != null && (ms2.sessionVipAt || 0) > now - ROLE_SESSION_TTL_MS;
-        const modOk = status.isBroadcaster !== true && sessMod != null && (ms2.sessionModAt || 0) > now - ROLE_SESSION_TTL_MS;
+        const vipOk = status.isBroadcaster !== true && sessVip != null && (ms2.sessionVipAt || 0) > now - PANEL_SESSION_TTL_MS;
+        const modOk = status.isBroadcaster !== true && sessMod != null && (ms2.sessionModAt || 0) > now - PANEL_SESSION_TTL_MS;
         if (vipOk && modOk) {
             // Если в течение TTL трогали обе роли — приоритет у более позднего действия.
             if ((ms2.sessionVipAt || 0) >= (ms2.sessionModAt || 0)) {
@@ -3773,18 +4441,23 @@ const announceText = content.querySelector('#tmod-announce-text');
                 || (status.isBanned == null || status.isTimedOut == null)
             )
             && !viewerCard && !mv);
+        // История модерации: ждём её здесь, чтобы не тормозить остальные ветки.
+        if (modLogsPromise) {
+            try {
+                const ml = await modLogsPromise;
+                if (ml && (ml.events.length || (ml.counts && ml.counts.messages))) status.modLogs = ml;
+            } catch (e) {}
+        }
         if (needCard) {
             // Свежая локальная запись своего действия — «судья»: если карточка отдала
             // старое (например, до смены бан→таймаут) и конфликтует с ней, переоткрываем.
-            const freshLocal = localRec && ((localRec.kind === 'ban' && !localRec.expiresAt)
-                || (localRec.kind === 'timeout' && localRec.expiresAt > Date.now()));
             let res = null;
             if (cardTask && cardToken === panelMenuFetchToken) res = await cardTask;
             if (res) {
                 if (res.viewerCard) viewerCard = res.viewerCard;
                 if (res.mv) mv = res.mv;
             }
-            if (cardToken === panelMenuFetchToken && freshLocal && mv) {
+            if (cardToken === panelMenuFetchToken && freshLocalRec && mv) {
                 const conflict = (
                     (localRec.kind === 'timeout' && (mv.isBanned === true || (mv.isTimedOut === false && mv.isBanned === false)))
                     || (localRec.kind === 'ban' && mv.isBanned === false)
@@ -3814,13 +4487,14 @@ const announceText = content.querySelector('#tmod-announce-text');
             if (viewerCard.isBroadcaster === true) status.isBroadcaster = true;
         }
         // После отмены сталки свежую локальную запись применяем вместо устаревшей карточки.
-        if (cardStale && freshLocal) {
+        if (cardStale && freshLocalRec) {
             if (localRec.kind === 'ban') {
                 status.isBanned = true; status.banExpiresAt = null; status.banCreatedAt = localRec.createdAt;
             } else {
                 status.isTimedOut = true; status.banExpiresAt = localRec.expiresAt; status.banCreatedAt = localRec.createdAt;
-            }            // Действие выдано через саму панель — источник известен (мы).
-            status.banCreatedBy = panelUserLogin() || null;
+            }
+            // Действие выдано через саму панель — источник известен (мы).
+            status.banCreatedBy = panelActorLogin() || null;
             status.statusText = localStatusText(
                 localRec.kind,
                 new Date(localRec.createdAt).getTime(),
@@ -3834,7 +4508,14 @@ const announceText = content.querySelector('#tmod-announce-text');
             if (mv.isTimedOut === true || mv.isTimedOut === false) {
                 if (mv.isTimedOut) {
                     status.isTimedOut = true;
-                    status.banExpiresAt = mv.banExpiresAt;
+                    // Срок: из карточки, а если она его не отдала (для коротких таймаутов
+                    // это обычное дело) — из своей свежей записи: для собственного действия
+                    // мы точно знаем, когда оно кончится. Без этого плашка оставалась
+                    // без отсчёта и висела до переоткрытия меню.
+                    const ownExpires = (freshLocalRec && localRec && localRec.kind === 'timeout' && localRec.expiresAt)
+                        ? localRec.expiresAt
+                        : null;
+                    status.banExpiresAt = mv.banExpiresAt || ownExpires || null;
                     status.banCreatedAt = status.banCreatedAt || mv.banCreatedAt;
                     status.banCreatedBy = mv.banCreatedBy || status.banCreatedBy;
                     if (mv.statusText) status.statusText = mv.statusText;
@@ -3867,6 +4548,60 @@ const announceText = content.querySelector('#tmod-announce-text');
                 await panelLocalRemove(userId, statusChannelId, 'ban').catch(() => {});
             }
         }
+        // Свежий ответ внутреннего запроса о страйке — последнее слово по бану/таймауту.
+        // Он сделан в момент открытия меню, а карточку мы могли прочитать устаревшей
+        // (или не прочитать вовсе), поэтому «отстранён/не отстранён» берём из него.
+        if (strikeFromGql) {
+            const positive = strikeFromGql.isBanned || strikeFromGql.isTimedOut;
+            if (positive || !freshLocalRec) {
+                status.isBanned = strikeFromGql.isBanned;
+                status.isTimedOut = strikeFromGql.isTimedOut;
+                status.banExpiresAt = strikeFromGql.banExpiresAt;
+                if (strikeFromGql.banCreatedAt) status.banCreatedAt = strikeFromGql.banCreatedAt;
+                if (strikeFromGql.banCreatedBy) status.banCreatedBy = strikeFromGql.banCreatedBy;
+                if (strikeFromGql.hasWarning) status.tmodHasWarning = true;
+                if (!strikeFromGql.isTimedOut && !strikeFromGql.isBanned) {
+                    status.statusText = null;
+                } else if (strikeFromGql.reason) {
+                    status.tmodReason = strikeFromGql.reason;
+                }
+            } else if (localRec) {
+                // GQL сказал «страйка нет», но своя запись ещё жива — верим записи
+                // (это ровно случай «только что выдал таймаут»).
+                if (localRec.kind === 'ban') {
+                    status.isBanned = true;
+                    status.isTimedOut = false;
+                    status.banExpiresAt = null;
+                } else {
+                    status.isTimedOut = true;
+                    status.isBanned = false;
+                    status.banExpiresAt = localRec.expiresAt;
+                }
+                status.banCreatedAt = status.banCreatedAt || localRec.createdAt;
+                status.banCreatedBy = status.banCreatedBy || panelActorLogin() || null;
+                status.statusText = localStatusText(localRec.kind, localRec.createdAt,
+                    localRec.expiresAt ? localRec.expiresAt : null);
+                debugLog('strike-gql-none-local-fresh', { kind: localRec.kind, expires: localRec.expiresAt });
+            }
+        }
+        // Страховка: если внутренний запрос вообще не ответил, но своя свежая запись
+        // жива — показываем плашку по ней. Иначе собственное действие выглядело как
+        // «ничего не произошло»: ни таймаута, ни кнопки «прервать отстранение».
+        if (!strikeFromGql && freshLocalRec && localRec) {
+            if (localRec.kind === 'ban') {
+                status.isBanned = true;
+                status.isTimedOut = false;
+                status.banExpiresAt = null;
+            } else {
+                status.isTimedOut = true;
+                status.isBanned = false;
+                status.banExpiresAt = localRec.expiresAt;
+            }
+            status.banCreatedAt = status.banCreatedAt || localRec.createdAt;
+            status.banCreatedBy = status.banCreatedBy || panelActorLogin() || null;
+            status.statusText = localStatusText(localRec.kind, localRec.createdAt,
+                localRec.expiresAt ? localRec.expiresAt : null);
+        }
         // Финальное взаимоисключение мода и VIP после всех источников (карточка
         // перечитанная последней имеет решающее слово).
         if (status.isBroadcaster !== true) {
@@ -3877,6 +4612,14 @@ const announceText = content.querySelector('#tmod-announce-text');
         if (blocks.success && blocks.data?.data) {
             status.isBlocked = !!blocks.data.data.some((u) => String(u.user_id) === String(userId));
         }
+        // Low-trust и профиль цели забираем в самом конце: если эти запросы не ответили
+        // или упали, статус всё равно уже собран.
+        try {
+            const lt = lowTrustPromise ? await lowTrustPromise : null;
+            if (lt) status.lowTrust = lt;
+            const prof = profilePromise ? await profilePromise : null;
+            if (prof) status.profile = prof;
+        } catch (e) {}
         debugLogOnce('mod-status', { userId, status });
         return status;
     }
@@ -3894,6 +4637,20 @@ const announceText = content.querySelector('#tmod-announce-text');
     let panelMenuFetchToken = 0;
     // Идёт чтение карточки юзера (клики/прокрутка чата не должны закрывать меню).
     let panelCardReadBusy = false;
+    // Сколько сеансов чтения карточки сейчас в работе (см. readUserCardFor): скрытие
+    // карточки снимает только последний завершившийся сеанс.
+    let cardReadSessions = 0;
+    // Трогал ли пользователь чат во время текущего чтения (см. слушатель pointerdown).
+    let cardSessionUserTouched = false;
+    // Кого уже разведали внутренними GQL-запросами (channel:user) — чтобы не спамить.
+    const tmodGqlProbedKeys = new Set();
+    // Обработчики «клик мимо списка», которые вешаются на document при отрисовке
+    // разделов. Раздел можно открывать повторно, поэтому предыдущий обработчик
+    // обязательно снимаем — иначе они копятся (закрытие панели через ✕ их не снимает
+    // и они держат в памяти DOM уже закрытой панели).
+    let tmodChatCloseDD = null;
+    let tmodStreamCloseDD = null;
+    let tmodRaidCloseDD = null;
     // Кэш последнего статуса по юзеру (channel:userId) — мгновенный рендер повторных
     // открытий меню, фоновое обновление доводит за ~1с. Персистентный слой:
     // загружается при старте (loadPanelStatusCache), пишется после каждого фетча
@@ -3976,9 +4733,12 @@ const announceText = content.querySelector('#tmod-announce-text');
         if (l === 'отстранить' || l === 'отстранит') return 'Отстранён' + t.slice(first.length);
         return t;
     }
-    // Длительность таймаута/бана в русском формате («10.5 мин», «1 ч»).
+    // Длительность таймаута/бана в русском формате («45 сек», «10.5 мин», «1 ч»).
+    // Раньше для всего короче минуты выходило «0 мин», а панель умеет выдавать
+    // таймаут на 1 секунду («Отстранить (1с)»).
     function fmtDurShort(ms) {
         const total = Math.max(0, Math.round(ms / 1000));
+        if (total < 60) return total + ' сек';
         const m = total / 60;
         if (m < 60) return (Math.round(m * 10) / 10) + ' мин';
         const h = total / 3600;
@@ -3987,12 +4747,233 @@ const announceText = content.querySelector('#tmod-announce-text');
     // Плашка для локальных записей (своё недавнее действие): карточка может быть
     // ещё устаревшей, поэтому строку статуса собираем сами — как читалась бы из карточки.
     function localStatusText(kind, createdAtMs, expiresAtMs) {
-        const me = panelUserLogin() || 'вы';
-        const chan = getChannelName() || 'канал';
-        if (kind === 'ban') return `Забанен на ${chan} • от ${me} • ${timeAgoMs(createdAtMs)}`;
-        const dur = expiresAtMs ? fmtDurShort(expiresAtMs - createdAtMs) : '';
-        return `Отстранён на ${dur} на ${chan} • от ${me} • ${timeAgoMs(createdAtMs)}`;
+        return strikeStatusText(kind, createdAtMs, expiresAtMs, panelActorLogin() || 'вы');
     }
+
+    // Текст плашки. Автор — тот, кто действительно сделал действие; если он неизвестен
+    // (чужое действие, событие из чата без автора) — лучше без подписи, чем с чужой.
+    function strikeStatusText(kind, createdAtMs, expiresAtMs, byLogin) {
+        const chan = getChannelName() || 'канал';
+        const by = byLogin ? ` • от ${byLogin}` : '';
+        const ago = timeAgoMs(createdAtMs);
+        if (kind === 'ban') return `Забанен на ${chan}${by} • ${ago}`;
+        const dur = expiresAtMs ? fmtDurShort(expiresAtMs - createdAtMs) : '';
+        return `Отстранён на ${dur} на ${chan}${by} • ${ago}`;
+    }
+    // --- Живые события модерации из чата (IRC over WebSocket) --------------------
+    // CLEARCHAT приходит модератору сразу после бана/таймаута — в том числе когда
+    // действие сделал ДРУГОЙ модератор. Поэтому плашка появляется в уже открытом меню,
+    // без переоткрытия. Автора в CLEARCHAT нет — по событию мы сразу перечитываем статус,
+    // а внутренний запрос Twitch отдаёт и автора, и точный срок.
+    // Выключается через localStorage.TMOD_CHAT_EVENTS = '0'.
+    const CHAT_WS_URL = 'wss://irc-ws.chat.twitch.tv:443';
+    let chatWs = null;
+    let chatWsChannel = null;
+    let chatWsRetry = 0;
+    let chatWsRetryTimer = null;
+    const chatEventRefreshAt = Object.create(null);
+    const chatEventsLog = [];   // последние события канала (отладка, будущая история)
+
+    function chatEventsDisabled() {
+        try { return localStorage.getItem('TMOD_CHAT_EVENTS') === '0'; } catch (e) { return false; }
+    }
+
+    // Разбор IRC-строки: теги, префикс, команда, параметры, трейлинг.
+    function parseIrcLine(line) {
+        const out = { tags: {}, prefix: null, command: '', params: [], trailing: '' };
+        let rest = line;
+        if (rest.charAt(0) === '@') {
+            const sp = rest.indexOf(' ');
+            if (sp === -1) return out;
+            rest.slice(1, sp).split(';').forEach((kv) => {
+                const i = kv.indexOf('=');
+                if (i > 0) {
+                    out.tags[kv.slice(0, i)] = kv.slice(i + 1)
+                        .replace(/\\s/g, ' ').replace(/\\:/g, ';').replace(/\\\\/g, '\\')
+                        .replace(/\\r/g, '\r').replace(/\\n/g, '\n');
+                }
+            });
+            rest = rest.slice(sp + 1);
+        }
+        if (rest.charAt(0) === ':') {
+            const sp = rest.indexOf(' ');
+            if (sp === -1) return out;
+            out.prefix = rest.slice(1, sp);
+            rest = rest.slice(sp + 1);
+        }
+        const ti = rest.indexOf(' :');
+        if (ti !== -1) {
+            out.trailing = rest.slice(ti + 2);
+            rest = rest.slice(0, ti);
+        }
+        const parts = rest.split(' ').filter((p) => p.length);
+        if (!parts.length) return out;
+        out.command = String(parts[0]).toUpperCase();
+        out.params = parts.slice(1);
+        return out;
+    }
+
+    async function chatEventsStart(channel) {
+        if (chatEventsDisabled()) return;
+        if (!isStreamPage()) return;
+        const chan = String(channel || '').toLowerCase();
+        if (!chan) return;
+        if (chatWs && chatWsChannel === chan && chatWs.readyState <= 1) return;
+        chatEventsStop();
+        const token = await getToken();
+        const login = await loadPanelActorLogin();
+        if (!token || !login) return;
+        chatWsChannel = chan;
+        let ws;
+        try {
+            ws = new WebSocket(CHAT_WS_URL);
+        } catch (e) {
+            debugLog('chat-ws-create-fail', e && e.message);
+            return;
+        }
+        chatWs = ws;
+        ws.onopen = () => {
+            chatWsRetry = 0;
+            try {
+                // twitch.tv/commands — для CLEARCHAT/CLEARMSG, tags — для target-user-id.
+                ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
+                ws.send('PASS oauth:' + token);
+                ws.send('NICK ' + login);
+                ws.send('JOIN #' + chan);
+            } catch (e) { debugLog('chat-ws-send-fail', e && e.message); }
+            debugLog('chat-ws-open', { channel: chan, login });
+        };
+        ws.onmessage = (ev) => {
+            String(ev.data || '').split('\r\n').forEach((line) => {
+                if (line) chatEventsHandleLine(line);
+            });
+        };
+        ws.onerror = () => debugLog('chat-ws-error', { channel: chan });
+        ws.onclose = () => {
+            // Сокет, закрытый нами осознанно (смена канала/выход), не переподключаем:
+            // иначе старый onclose поднимал соединение к уже покинутому каналу.
+            if (ws.__tmodStopped) return;
+            if (chatWs === ws) chatWs = null;
+            if (chatEventsDisabled()) return;
+            chatWsRetry = Math.min(chatWsRetry + 1, 6);
+            const delay = Math.min(1000 * Math.pow(2, chatWsRetry - 1), 30000);
+            debugLog('chat-ws-close', { retry: chatWsRetry, delay });
+            if (chatWsRetryTimer) clearTimeout(chatWsRetryTimer);
+            chatWsRetryTimer = setTimeout(() => { chatEventsStart(chatWsChannel); }, delay);
+        };
+    }
+
+    function chatEventsStop() {
+        if (chatWsRetryTimer) { clearTimeout(chatWsRetryTimer); chatWsRetryTimer = null; }
+        const ws = chatWs;
+        chatWs = null;
+        chatWsChannel = null;
+        if (ws) {
+            ws.__tmodStopped = true;
+            try { ws.close(); } catch (e) {}
+        }
+    }
+
+    function chatEventsRestart(channel) {
+        chatEventsStop();
+        chatEventsStart(channel);
+    }
+
+    function chatEventsHandleLine(line) {
+        if (line.indexOf('PING') === 0) {
+            try { if (chatWs) chatWs.send('PONG :tmi.twitch.tv'); } catch (e) {}
+            return;
+        }
+        const m = parseIrcLine(line);
+        if (!m.command) return;
+        if (m.command === 'CLEARCHAT') {
+            const userId = m.tags['target-user-id'];
+            // Без target-user-id это «очистить чат» целиком — не наш случай.
+            if (!userId) return;
+            const dur = m.tags['ban-duration'] ? Number(m.tags['ban-duration']) : 0;
+            const at = Number(m.tags['tmi-sent-ts'] || Date.now());
+            const ev = {
+                at,
+                userId: String(userId),
+                login: sanitizeLogin(m.trailing),
+                durationSec: dur > 0 ? dur : null,
+                kind: dur > 0 ? 'timeout' : 'ban'
+            };
+            chatEventsLog.push(ev);
+            if (chatEventsLog.length > 200) chatEventsLog.shift();
+            debugLog('chat-clearchat', ev);
+            onChatStrikeEvent(ev);
+            return;
+        }
+        if (m.command === 'CLEARMSG') {
+            const ev = {
+                at: Number(m.tags['tmi-sent-ts'] || Date.now()),
+                login: sanitizeLogin(m.tags['login']),
+                messageId: m.tags['target-msg-id'] || null,
+                text: m.trailing || ''
+            };
+            chatEventsLog.push(ev);
+            if (chatEventsLog.length > 200) chatEventsLog.shift();
+            debugLog('chat-clearmsg', ev);
+            return;
+        }
+        if (m.command === 'NOTICE' && /login authentication failed|improperly formatted auth/i.test(m.trailing)) {
+            console.warn('[ModPanel] IRC: авторизация в чате не прошла —', m.trailing);
+            debugLog('chat-ws-auth-fail', m.trailing);
+        }
+    }
+
+    // Действие по юзеру, чьё меню сейчас открыто: показываем плашку сразу и перечитываем
+    // статус, чтобы подставить настоящего автора и точный срок.
+    function onChatStrikeEvent(ev) {
+        const timeoutIso = ev.durationSec ? new Date(ev.at + ev.durationSec * 1000).toISOString() : null;
+        const uid = panelMenuState && panelMenuState.userId;
+        if (uid && String(uid) === String(ev.userId)) {
+            const now = Date.now();
+            const last = chatEventRefreshAt[ev.userId] || 0;
+            const s = panelMenuState.status = panelMenuState.status || {};
+            if (ev.kind === 'timeout') {
+                s.isTimedOut = true;
+                s.isBanned = false;
+                s.banExpiresAt = timeoutIso;
+            } else {
+                s.isBanned = true;
+                s.isTimedOut = false;
+                s.banExpiresAt = null;
+            }
+            s.banCreatedAt = new Date(ev.at).toISOString();
+            // Автора в CLEARCHAT нет: подпись без него, точного автора даст перезапрос.
+            s.banCreatedBy = null;
+            s.statusText = strikeStatusText(ev.kind, ev.at, ev.at + (ev.durationSec || 0) * 1000, null);
+            renderPanelMenuTimeout();
+            renderPanelMenuBan();
+            clampPanelMenuPosition();
+            if (now - last > 1500) {
+                chatEventRefreshAt[ev.userId] = now;
+                refreshPanelMenuStatus(true);
+            }
+        }
+        // Кэш статусов: следующее открытие меню на этом юзере покажет плашку мгновенно
+        // (at: 0 — чтобы свежий ответ всё равно перечитался и уточнил автора).
+        try {
+            const key = panelStatusCacheKey(ev.userId);
+            const cur = panelStatusCache[key];
+            const merged = (cur && cur.status) ? Object.assign({}, cur.status) : {};
+            if (ev.kind === 'timeout') {
+                merged.isTimedOut = true;
+                merged.isBanned = false;
+                merged.banExpiresAt = timeoutIso;
+            } else {
+                merged.isBanned = true;
+                merged.isTimedOut = false;
+                merged.banExpiresAt = null;
+            }
+            merged.banCreatedAt = new Date(ev.at).toISOString();
+            panelStatusCache[key] = { at: 0, userId: String(ev.userId), status: merged };
+            persistPanelStatusCache();
+        } catch (e) {}
+    }
+
     // Кэш ID канала (channelName -> id) и текущего юзера — не меняются между
     // открытиями меню, каждый раз их заново запрашивать незачем.
     const channelIdCache = {};
@@ -4006,25 +4987,68 @@ const announceText = content.querySelector('#tmod-announce-text');
     const TMOD_PANEL_LOCAL_KEY = 'tmod_panel_local_v1';
     let panelLocalRecordsCache = null;
 
+    // Диагностика GQL: включается вручную (localStorage.TMOD_CAPTURE_GQL = '1') и
+    // помечает окно чтения карточки, чтобы в window.TMOD_GQL_CAPTURED было видно,
+    // какими операциями Twitch рисует карточку именно этого юзера. См. twitch-api.js.
+    function tmodGqlCaptureEnabled() {
+        try { return localStorage.getItem('TMOD_CAPTURE_GQL') === '1'; } catch (e) { return false; }
+    }
+
+    // Живой отклик перехватчика GQL (twitch-api.js) — только когда сбор включён.
+    window.addEventListener('message', (event) => {
+        if (event.source !== window) return;
+        if (event.data?.type !== 'TMOD_GQL_CAPTURED_LOG') return;
+        if (!tmodGqlCaptureEnabled()) return;
+        try {
+            console.log('[ModPanel][gql] поймано:', event.data.ops,
+                '\nСкопировать всё: copy(TMOD_GQL_CAPTURED)',
+                '\nТолько операции этого юзера: TMOD_GQL_CAPTURED.filter(i => i.targetUser)');
+            debugLog('gql-captured', event.data.ops);
+        } catch (e) {}
+    });
+
+    // Хранилище архива не должно расти бесконечно: истёкшие таймауты живут сутки
+    // (чтобы успеть опровергнуть/подтвердить статус), ролевые записи — свой TTL.
+    const PANEL_LOCAL_MAX = 500;
+    function prunePanelLocalRecords(list) {
+        const now = Date.now();
+        const fresh = list.filter((r) => {
+            if (!r || typeof r !== 'object') return false;
+            if (r.kind === 'timeout') return !r.expiresAt || r.expiresAt + 24 * 60 * 60 * 1000 > now;
+            if (r.kind === 'vip' || r.kind === 'mod') return !r.expiresAt || r.expiresAt > now;
+            return true; // баны живут до снятия
+        });
+        return fresh.length > PANEL_LOCAL_MAX ? fresh.slice(fresh.length - PANEL_LOCAL_MAX) : fresh;
+    }
+
     async function getPanelLocalRecords() {
         if (panelLocalRecordsCache) return panelLocalRecordsCache;
         const raw = await storageGet(TMOD_PANEL_LOCAL_KEY);
-        panelLocalRecordsCache = Array.isArray(raw) ? raw : [];
+        panelLocalRecordsCache = prunePanelLocalRecords(Array.isArray(raw) ? raw : []);
         return panelLocalRecordsCache;
     }
 
     async function panelLocalAdd(userId, kind, expiresAt, createdAt, channel, value) {
         const list = await getPanelLocalRecords();
-        list.push({ userId: String(userId), kind: kind, expiresAt, createdAt, channel: String(channel), value: value === undefined ? undefined : value === true });
-        panelLocalRecordsCache = list;
-        await storageSet(TMOD_PANEL_LOCAL_KEY, list);
+        const rec = { userId: String(userId), kind: kind, expiresAt, createdAt, channel: String(channel), value: value === undefined ? undefined : value === true };
+        // Одна актуальная запись на юзера+канал+вид. Раньше запись просто добавлялась:
+        // повторный таймаут оставлял рядом старую, а чтение статуса брало первую
+        // подходящую — то есть истёкшую, и плашка в меню была неверной.
+        const next = list.filter((r) => !(r.userId === rec.userId && r.kind === rec.kind && String(r.channel) === rec.channel));
+        next.push(rec);
+        const pruned = prunePanelLocalRecords(next);
+        panelLocalRecordsCache = pruned;
+        await storageSet(TMOD_PANEL_LOCAL_KEY, pruned);
     }
 
     async function panelLocalRemove(userId, channel, kind) {
+        // Неизвестный канал (getChannelId вернул null) НЕ означает «любой канал»:
+        // раньше чистка по одному каналу стирала записи юзера по всем остальным.
+        if (!channel) return;
         const list = await getPanelLocalRecords();
         const next = list.filter((r) => !(
             r.userId === String(userId)
-            && (!channel || String(r.channel) === String(channel))
+            && String(r.channel) === String(channel)
             && (!kind || r.kind === kind)
         ));
         if (next.length !== list.length) {
@@ -4036,19 +5060,40 @@ const announceText = content.querySelector('#tmod-announce-text');
     // Память своих VIP/мод-действий (переживает перезагрузку страницы), TTL 2 часа.
     const PANEL_RECORD_TTL_MS = 2 * 60 * 60 * 1000;
 
+    // Одна запись на юзера+канал: роли взаимоисключающие, поэтому делаем это ОДНОЙ
+    // read-modify-write операцией. Раньше были два параллельных panelLocalRemove через
+    // Promise.all — они читали один и тот же массив и затирали результат друг друга,
+    // так что старая противоположная запись могла выжить.
+    async function panelLocalSetRole(userId, channel, kind, value) {
+        if (!channel) return;
+        const list = await getPanelLocalRecords();
+        const uid = String(userId);
+        const now = Date.now();
+        const rec = {
+            userId: uid,
+            kind: kind === 'mod' ? 'mod' : 'vip',
+            expiresAt: now + PANEL_RECORD_TTL_MS,
+            createdAt: now,
+            channel: String(channel),
+            value: value === true
+        };
+        const next = list.filter((r) => !(
+            r.userId === uid
+            && String(r.channel) === String(channel)
+            && (r.kind === 'vip' || r.kind === 'mod')
+        ));
+        next.push(rec);
+        const pruned = prunePanelLocalRecords(next);
+        panelLocalRecordsCache = pruned;
+        await storageSet(TMOD_PANEL_LOCAL_KEY, pruned);
+    }
+
     function persistPanelRoleAction(userId, kind, value) {
         const recKind = kind === 'mod' ? 'mod' : 'vip';
         getModeratorContext()
             .then((ctx) => {
                 if (!ctx) return;
-                const now = Date.now();
-                // Ролей две, но обе сразу у юзера не бывает — храним только последнее
-                // действие (другие роли Twitch снимает сам). Одна запись на юзера+канал,
-                // противоречивых пар записей больше не возникает.
-                return Promise.all([
-                    panelLocalRemove(String(userId), ctx.broadcasterId, 'mod'),
-                    panelLocalRemove(String(userId), ctx.broadcasterId, 'vip')
-                ]).then(() => panelLocalAdd(String(userId), recKind, now + PANEL_RECORD_TTL_MS, now, ctx.broadcasterId, value === true));
+                return panelLocalSetRole(String(userId), ctx.broadcasterId, recKind, value);
             })
             .catch(() => {});
     }
@@ -4070,9 +5115,32 @@ const announceText = content.querySelector('#tmod-announce-text');
         } catch (err) {}
     }
 
+    // ЕДИНСТВЕННОЕ определение closePanelMenu (раньше их было два в одном скоупе —
+    // второе затирало первое, и очистка ниже никогда не выполнялась: panelBusy
+    // оставался true, если меню закрыли во время действия, и все последующие действия
+    // молча игнорировались до перезагрузки, а 1-секундный интервал таймаута тёк).
     function closePanelMenu() {
+        if (panelMenuEl) {
+            // Сброс подтверждения шаутаута при закрытии меню
+            const soBtn = panelMenuEl.querySelector('[data-action="shoutout"]');
+            if (soBtn) {
+                delete soBtn.dataset.shoutoutConfirmed;
+                if (soBtn._soPrevText) {
+                    soBtn.textContent = soBtn._soPrevText;
+                    delete soBtn._soPrevText;
+                } else {
+                    const lbl = soBtn.querySelector('.mm-lbl');
+                    if (lbl && lbl.textContent === 'Подтвердить?') {
+                        lbl.textContent = 'Отметить';
+                    } else if (soBtn.textContent === 'Подтвердить?') {
+                        soBtn.textContent = 'Отметить';
+                    }
+                }
+            }
+            try { panelMenuEl.remove(); } catch (e) {}
+        }
+        // Очистка обязана выполняться всегда, а не только когда меню было на экране.
         if (panelTimeoutTimer) { clearInterval(panelTimeoutTimer); panelTimeoutTimer = null; }
-        if (panelMenuEl) panelMenuEl.remove();
         panelMenuEl = null;
         panelMenuState = null;
         panelBusy = false;
@@ -4189,16 +5257,40 @@ const announceText = content.querySelector('#tmod-announce-text');
             renderPanelMenuToggles();
             renderPanelMenuTimeout();
             renderPanelMenuBan();
+        renderPanelMenuModLogs();
             clampPanelMenuPosition();
             return;
         }
 
-        const status = await fetchPanelStatus(snap.userId, snap);
+        let status;
+        try {
+            status = await fetchPanelStatus(snap.userId, snap);
+        } catch (e) {
+            // Раньше падение внутри пайплайна молча оставляло меню со старым статусом —
+            // именно так «терялась» плашка только что выданного таймаута.
+            console.error('[ModPanel] fetchPanelStatus упал:', e && (e.stack || e));
+            debugLog('status-fetch-error', e && (e.message || String(e)));
+            status = panelMenuState.status || {};
+            await applyLocalStrikeFallback(status, snap.userId);
+            panelMenuState.status = status;
+            renderPanelMenuChips();
+            renderPanelMenuToggles();
+            renderPanelMenuTimeout();
+            renderPanelMenuBan();
+            renderPanelMenuModLogs();
+            clampPanelMenuPosition();
+            return;
+        }
         // Меню за это время могло закрыться или переключиться на другого юзера —
         // тогда результат этого фетча не применяем (иначе «путается» между юзерами).
         if (!panelMenuEl || !panelMenuState || token !== panelMenuFetchToken) return;
         if (String(panelMenuState.userId) !== String(snap.userId)) return;
+        await applyLocalStrikeFallback(status, snap.userId);
         panelMenuState.status = status;
+        debugLog('status-final', {
+            isBanned: status.isBanned, isTimedOut: status.isTimedOut,
+            expires: status.banExpiresAt, text: status.statusText
+        });
         // Запоминаем для мгновенного рендера повторного клика; заодно фетч свежий —
         // кэш становится актуальным источником. Write-through в хранилище.
         panelStatusCache[cacheKey] = { at: Date.now(), userId: String(snap.userId), status };
@@ -4208,6 +5300,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         renderPanelMenuToggles();
         renderPanelMenuTimeout();
         renderPanelMenuBan();
+        renderPanelMenuModLogs();
         clampPanelMenuPosition();
     }
 
@@ -4242,11 +5335,83 @@ const announceText = content.querySelector('#tmod-announce-text');
         if (s.isTimedOut === true) chips.push(['timedout', 'Отстранён']);
         if (s.isBanned === true) chips.push(['banned', 'Забанен']);
         if (s.isBlocked === true) chips.push(['blocked', 'В блоке']);
+        // Low-trust: признаки риска, которые Twitch показывает в своей карточке.
+        const lt = s.lowTrust;
+        if (lt) {
+            if (lt.banEvasion && lt.banEvasion !== 'UNLIKELY') {
+                chips.push(['lt-evasion', lt.banEvasion === 'LIKELY' ? 'вероятен обход бана' : 'возможен обход бана']);
+            }
+            if (lt.harasser && lt.harasser !== 'UNLIKELY') chips.push(['lt-harasser', 'потенциальный харассер']);
+            if (lt.sharedBans) chips.push(['lt-shared', 'общих банов: ' + lt.sharedBans]);
+            if (lt.treatment && lt.treatment !== 'NONE') {
+                chips.push(['lt-treatment', 'low-trust: ' + String(lt.treatment).toLowerCase()]);
+            }
+        }
         host.innerHTML = chips.map(([cls, label]) => `<span class="mm-chip ${cls}">${label}</span>`).join('');
+        // Шапка (аватар, возраст, фолловер) берётся из того же статуса и обновляется
+        // всегда вместе с чипсами — так её невозможно забыть перерисовать.
+        renderPanelMenuUserMeta();
+    }
+
+    // Возраст аккаунта короткой подписью.
+    function fmtAccountAge(ms) {
+        const day = 86400000;
+        const d = Math.max(0, Math.floor(ms / day));
+        if (d >= 365) {
+            const y = Math.floor(d / 365);
+            const m = Math.floor((d % 365) / 30);
+            return y + ' г' + (m ? ' ' + m + ' мес' : '');
+        }
+        if (d >= 30) return Math.floor(d / 30) + ' мес';
+        if (d >= 1) return d + ' дн';
+        return Math.max(1, Math.floor(ms / 3600000)) + ' ч';
+    }
+
+    function fmtDateShort(iso) {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        const p = (n) => String(n).padStart(2, '0');
+        return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()}`;
+    }
+
+    // Шапка меню: аватар цели, «аккаунт N», «фолловер с ДД.ММ.ГГГГ» / «не фолловер».
+    function renderPanelMenuUserMeta() {
+        if (!panelMenuEl) return;
+        const img = panelMenuEl.querySelector('.mm-avatar');
+        const meta = panelMenuEl.querySelector('.mm-meta');
+        const p = panelMenuState && panelMenuState.status && panelMenuState.status.profile;
+        if (img) {
+            if (p && p.avatar) {
+                img.src = p.avatar;
+                img.hidden = false;
+            } else {
+                img.hidden = true;
+                img.removeAttribute('src');
+            }
+        }
+        if (!meta) return;
+        const parts = [];
+        if (p && p.createdAt) {
+            const t = new Date(p.createdAt).getTime();
+            if (!isNaN(t)) parts.push('аккаунт ' + fmtAccountAge(Date.now() - t));
+        }
+        if (p && p.isFollower === true) {
+            const f = p.followedAt ? fmtDateShort(p.followedAt) : '';
+            parts.push(f ? 'фолловер с ' + f : 'фолловер');
+        } else if (p && p.isFollower === false) {
+            parts.push('не фолловер');
+        }
+        meta.textContent = parts.join(' • ');
+        meta.hidden = !parts.length;
     }
 
     // Блок статуса модерации: таймаут (с отсчётом), бан, либо «нет ограничений».
     let panelTimeoutTimer = null;
+    // Юзер, для которого мы уже сделали один дожимающий перезапрос статуса после
+    // истечения таймаута (защита от самоподдерживающегося цикла обновлений).
+    let panelExpiredRefreshUser = null;
+    // Юзер, для которого мы уже перепроверяли статус с неизвестным сроком таймаута.
+    let panelUnknownExpiryUser = null;
 
     function renderPanelMenuTimeout() {
         if (!panelMenuEl) return;
@@ -4283,7 +5448,15 @@ const announceText = content.querySelector('#tmod-announce-text');
             if (remain !== null && remain <= 0) {
                 row.hidden = true;
                 if (panelTimeoutTimer) { clearInterval(panelTimeoutTimer); panelTimeoutTimer = null; }
-                refreshPanelMenuStatus(true);
+                // Дожимающий перезапрос — не чаще одного раза на юзера. Иначе получался
+                // самоподдерживающийся цикл: render → refresh(true) → ответ снова зовёт
+                // render → снова refresh, по запросу на итерацию (и каждая итерация
+                // могла открывать скрытую карточку).
+                const uid = panelMenuState && panelMenuState.userId;
+                if (uid && panelExpiredRefreshUser !== uid) {
+                    panelExpiredRefreshUser = uid;
+                    refreshPanelMenuStatus(true);
+                }
                 return;
             }
             const given = created && expires !== null ? fmt(expires - created) : '?';
@@ -4292,17 +5465,37 @@ const announceText = content.querySelector('#tmod-announce-text');
             // Плашка: строка статуса из карточки (с каналом и модератором) — как в
             // секции бана. Если карточка не отдала текст, собираем сами.
             const plaque = s.statusText ? String(s.statusText) : '';
-            info.style.color = '#ffb3b3';
-            info.textContent = plaque
+            const base = plaque
                 ? (expires !== null ? `${plaque}\nДо конца: ${fmt(remain)}` : plaque)
                 : (expires !== null
                     ? `Отстранён. Дано: ${given}. До конца: ${fmt(remain)}${by}${ago}`
                     : `Отстранён${by}${ago}`);
+            // Причина из внутреннего запроса Twitch (то, что мод написал при наказании).
+            const withReason = (s.tmodReason && base.indexOf(s.tmodReason) === -1)
+                ? base + '\nПричина: ' + s.tmodReason
+                : base;
+            info.style.color = '#ffb3b3';
+            info.textContent = withReason;
             row.hidden = false;
             if (btn) btn.hidden = false;
         };
         render();
-        if (expires !== null) panelTimeoutTimer = setInterval(render, 1000);
+        if (expires !== null) {
+            panelTimeoutTimer = setInterval(render, 1000);
+        } else {
+            // Срок неизвестен — раньше плашка рисовалась один раз и висела до
+            // переоткрытия меню, даже если таймаут давно кончился (ровно так выглядел
+            // «пурж» на 1 секунду). Перепроверяем статус один раз на юзера.
+            const uid = panelMenuState && panelMenuState.userId;
+            if (uid && panelUnknownExpiryUser !== uid) {
+                panelUnknownExpiryUser = uid;
+                setTimeout(() => {
+                    if (!panelMenuEl) return;
+                    const st = panelMenuState && panelMenuState.status;
+                    if (st && st.isTimedOut === true && !st.banExpiresAt) refreshPanelMenuStatus(true);
+                }, 4000);
+            }
+        }
     }
 
     // Статус бана (постоянный) — в секции «Бан».
@@ -4323,14 +5516,105 @@ const announceText = content.querySelector('#tmod-announce-text');
         });
         row.hidden = false;
         // Плашка из карточки (как в секции таймаута): «Забанен на <канал> • от <мод> • N назад».
+        let banText;
         if (s.statusText) {
-            info.textContent = String(s.statusText);
+            banText = String(s.statusText);
         } else {
             const by = s.banCreatedBy ? ` От: ${s.banCreatedBy}` : '';
             const agob = s.banCreatedAt ? ` • ${timeAgoMs(new Date(s.banCreatedAt).getTime())}` : '';
-            info.textContent = `Забанен (постоянный бан)${by}${agob}`;
+            banText = `Забанен (постоянный бан)${by}${agob}`;
         }
+        if (s.tmodReason && banText.indexOf(s.tmodReason) === -1) {
+            banText += '\nПричина: ' + s.tmodReason;
+        }
+        info.textContent = banText;
         info.style.color = '#ff6b6b';
+    }
+
+    // История модерации — из внутреннего запроса Twitch (ViewerCardModLogs). Это то,
+    // чего нет ни в официальном API для модератора, ни в интерфейсе: кто, когда и на
+    // сколько отстранял и банил, включая действия других модераторов.
+    function renderPanelMenuModLogs() {
+        if (!panelMenuEl) return;
+        const row = panelMenuEl.querySelector('.mm-modlogs-row');
+        const info = panelMenuEl.querySelector('.mm-modlogs-info');
+        if (!row || !info) return;
+        const ml = panelMenuState && panelMenuState.status && panelMenuState.status.modLogs;
+        const events = (ml && Array.isArray(ml.events)) ? ml.events : [];
+        if (!events.length) { row.hidden = true; return; }
+        const LABELS = {
+            bans: 'банов', timeouts: 'таймаутов', unbans: 'разбанов', untimeouts: 'снятий таймаута',
+            unbanrequestcreations: 'заявок на разбан', unbanrequestapprovals: 'одобрено заявок',
+            unbanrequestdenials: 'отклонено заявок', warnings: 'варнов', warningacknowledgements: 'варнов принято'
+        };
+        const counts = ml.counts || {};
+        const summary = Object.keys(LABELS)
+            .filter((k) => counts[k])
+            .map((k) => counts[k] + ' ' + LABELS[k]);
+        if (counts.messages) summary.push('сообщений: ' + counts.messages + (counts.messagesCapped ? '+' : ''));
+        // Свёрнуто по умолчанию: ровно одна строка «▶ История модерации», всё остальное
+        // (сводка и события) — по клику. Стрелка вынесена в отдельный span и подсвечена,
+        // чтобы было очевидно, что строка разворачивается.
+        const open = !!(panelMenuState && panelMenuState.modLogsOpen);
+        const head = `<span class="mm-modlogs-caret">${open ? '▼' : '▶'}</span>`
+            + '<span class="mm-modlogs-title">История модерации</span>'
+            + `<span class="mm-modlogs-hint">${open ? 'свернуть' : 'развернуть'}</span>`;
+        row.title = open ? 'Свернуть историю модерации' : 'Показать историю модерации';
+        if (!open) {
+            info.innerHTML = head;
+            row.hidden = false;
+            return;
+        }
+        const summaryLine = summary.length ? summary.join(', ') : '—';
+        const lines = events.slice(0, 12).map((e) => {
+            const when = e.at ? timeAgoMs(new Date(e.at).getTime()) : '';
+            const text = String(e.text || e.type || e.kind || '');
+            // Текст приходит от Twitch (в т.ч. текст заявки на разбан, написанный юзером),
+            // поэтому экранируем — иначе он мог бы вставить разметку в меню.
+            return `<div class="mm-modlogs-item">• ${when ? escapeHtml(when) + ' — ' : ''}${escapeHtml(text)}</div>`;
+        });
+        if (events.length > lines.length) {
+            lines.push(`<div class="mm-modlogs-item">…и ещё ${events.length - lines.length}</div>`);
+        }
+        info.innerHTML = head
+            + `<div class="mm-modlogs-sum">${escapeHtml(summaryLine)}</div>`
+            + lines.join('');
+        row.hidden = false;
+    }
+
+    // Последний рубеж перед рендером: если пайплайн статуса не выставил бан/таймаут, а
+    // своя свежая запись об этом юзере есть — показываем плашку по ней. Вызывается
+    // прямо перед отрисовкой, поэтому не зависит от того, какая ветка «победила»
+    // (GQL с задержкой, карточка, список чатеров, кэш) и не может потерять своё действие.
+    async function applyLocalStrikeFallback(status, userId) {
+        if (!status || status.isTimedOut === true || status.isBanned === true) return status;
+        await loadPanelActorLogin();
+        try {
+            const list = await getPanelLocalRecords();
+            const uid = String(userId);
+            const recs = list.filter((r) => r.userId === uid && (r.kind === 'ban' || r.kind === 'timeout'));
+            if (!recs.length) return status;
+            const rec = recs[recs.length - 1];
+            const alive = rec.kind === 'ban' ? true : (rec.expiresAt > Date.now());
+            if (!alive) return status;
+            if (rec.kind === 'ban') {
+                status.isBanned = true;
+                status.isTimedOut = false;
+                status.banExpiresAt = null;
+            } else {
+                status.isTimedOut = true;
+                status.isBanned = false;
+                status.banExpiresAt = rec.expiresAt;
+            }
+            status.banCreatedAt = status.banCreatedAt || rec.createdAt;
+            status.banCreatedBy = status.banCreatedBy || panelActorLogin() || null;
+            status.statusText = localStatusText(rec.kind, rec.createdAt, rec.expiresAt || null);
+            console.log('[ModPanel] плашка из своей записи:', rec.kind, new Date(rec.expiresAt || 0).toISOString());
+            debugLog('strike-local-fallback', { kind: rec.kind, expiresAt: rec.expiresAt });
+        } catch (e) {
+            console.error('[ModPanel] локальный фолбэк статуса упал:', e);
+        }
+        return status;
     }
 
     // Держит роль (vip/mod) в памяти открытого меню после своего успешного действия.
@@ -4501,6 +5785,12 @@ const announceText = content.querySelector('#tmod-announce-text');
                 #tmod-mod-menu .mm-name { font-weight: 700; font-size: 13px; color: #fff; display: inline-flex; align-items: center; flex-wrap: wrap; min-width: 0; }
                 #tmod-mod-menu .mm-login { font-weight: 400; font-size: 11px; color: #9147ff; margin-left: 4px; }
                 #tmod-mod-menu .mm-preview { font-size: 11.5px; line-height: 1.35; color: #adadb8; margin-top: 2px; word-break: break-word; max-height: 34px; overflow: hidden; }
+                #tmod-mod-menu .mm-avatar { width: 34px; height: 34px; border-radius: 50%; flex: 0 0 34px; object-fit: cover; background: #2f2f33; }
+                #tmod-mod-menu .mm-ident { flex: 1 1 auto; min-width: 0; }
+                #tmod-mod-menu .mm-meta { font-size: 10.5px; color: #8f8f98; margin-top: 2px; }
+                #tmod-mod-menu .mm-chip.lt-evasion, #tmod-mod-menu .mm-chip.lt-harasser { background: #4a2f10; color: #ffb86b; }
+                #tmod-mod-menu .mm-chip.lt-shared { background: #3a2438; color: #e0a3e0; }
+                #tmod-mod-menu .mm-chip.lt-treatment { background: #3a1f1f; color: #ffa8a8; }
                 #tmod-mod-menu .mm-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; min-height: 20px; }
                 #tmod-mod-menu .mm-chip { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: #2f2f33; color: #adadb8; }
                 #tmod-mod-menu .mm-badges { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-right: 6px; min-width: 0; }
@@ -4526,8 +5816,10 @@ const announceText = content.querySelector('#tmod-announce-text');
                 #tmod-mod-menu [data-action="vip"] .mm-ic { flex: 0 0 16px; width: 16px; height: 16px; }
                 #tmod-mod-menu [data-action="vip"] .mm-ic svg { width: 16px; height: 16px; }
                 #tmod-mod-menu .mm-btn:hover:not(:disabled) { background: #3a3a3d; }
-                #tmod-mod-menu .mm-btn.danger { color: #ff6b6b; border-color: #5c2323; }
-                #tmod-mod-menu .mm-btn.danger:hover:not(:disabled) { background: #3a1414; }
+                /* Красная обводка «опасных» кнопок: приглушённая — заметно, но не кричит. */
+                #tmod-mod-menu .mm-btn.danger { color: #e0736f; border-color: #6b2f2f; }
+                #tmod-mod-menu .mm-btn.danger:hover:not(:disabled) { background: #2a1414; border-color: #8f3d3d; color: #ff8a86; }
+                #tmod-mod-menu .mm-btn.danger:disabled { color: #8a5a5a; border-color: #3d2a2a; }
                 #tmod-mod-menu .mm-btn.wide { flex: 1 1 100%; }
                 #tmod-mod-menu .mm-btn.preset { flex: 0 0 auto; min-height: 24px; padding: 3px 10px; border-radius: 12px; font-size: 11px; color: #bf94ff; }
                 #tmod-mod-menu .mm-btn.preset:hover:not(:disabled) { background: #9147ff; color: #fff; }
@@ -4542,11 +5834,27 @@ const announceText = content.querySelector('#tmod-announce-text');
                 #tmod-mod-menu .mm-timeout-row { margin: 6px 0 2px; padding: 6px 10px; border: 1px solid #5c2323; border-radius: 6px; background: #261414; }
                 #tmod-mod-menu .mm-timeout-info { font-size: 11.5px; color: #ffb3b3; margin-bottom: 4px; user-select: text; -webkit-user-select: text; word-break: break-word; white-space: pre-line; }
                 #tmod-mod-menu .mm-ban-row { margin: 6px 0 2px; padding: 6px 10px; border: 1px solid #3a3a3d; border-radius: 6px; background: #101014; }
+        #tmod-mod-menu .mm-modlogs-row { margin: 6px 0 2px; padding: 6px 10px; border: 1px solid #2f2f33; border-radius: 6px; background: #0e0e10; max-height: 168px; overflow-y: auto; scrollbar-width: thin; cursor: pointer; user-select: none; -webkit-user-select: none; }
+        /* При наведении подсвечиваем обводку и текст, но не фон: развёрнутая история не
+           должна «мигать» под курсором, а цвет фона совпадает с шапкой меню. */
+        #tmod-mod-menu .mm-modlogs-row:hover { border-color: #4a4a52; }
+        #tmod-mod-menu .mm-modlogs-row:hover .mm-modlogs-title { color: #fff; }
+        #tmod-mod-menu .mm-modlogs-row:hover .mm-modlogs-hint { color: #bf94ff; }
+        #tmod-mod-menu .mm-modlogs-info { font-size: 11.5px; line-height: 1.45; color: #adadb8; white-space: pre-wrap; word-break: break-word; }
+        #tmod-mod-menu .mm-modlogs-caret { display: inline-block; width: 13px; color: #9147ff; font-size: 10px; line-height: 1.2; }
+        #tmod-mod-menu .mm-modlogs-title { font-weight: 700; color: #efeff1; }
+        #tmod-mod-menu .mm-modlogs-hint { float: right; color: #6f6f78; font-size: 10.5px; }
+        #tmod-mod-menu .mm-modlogs-sum { color: #adadb8; margin: 3px 0 4px; user-select: text; -webkit-user-select: text; }
+        #tmod-mod-menu .mm-modlogs-item { color: #adadb8; user-select: text; -webkit-user-select: text; }
                 #tmod-mod-menu .mm-ban-info { font-size: 11.5px; color: #adadb8; user-select: text; -webkit-user-select: text; word-break: break-word; white-space: pre-line; }
             </style>
             <div class="mm-header">
                 <div class="mm-header-top">
-                    <div class="mm-name"><span class="mm-badges"></span>${name}<span class="mm-login">${login}</span></div>
+                    <img class="mm-avatar" alt="" hidden>
+                    <div class="mm-ident">
+                        <div class="mm-name"><span class="mm-badges"></span>${name}<span class="mm-login">${login}</span></div>
+                        <div class="mm-meta" hidden></div>
+                    </div>
 
                     <button class="mm-close" data-action="close" title="Закрыть">✕</button>
                 </div>
@@ -4555,7 +5863,7 @@ const announceText = content.querySelector('#tmod-announce-text');
             </div>
             <div class="mm-body">
                 <div class="mm-section">Сообщение</div>
-                <button class="mm-btn wide" data-action="delete"${delDisabled}><span class="mm-ic">${MOD_ICONS.delete}</span><span class="mm-lbl">Удалить сообщение</span></button>
+                <button class="mm-btn wide danger" data-action="delete"${delDisabled}><span class="mm-ic">${MOD_ICONS.delete}</span><span class="mm-lbl">Удалить сообщение</span></button>
 
                 <div class="mm-section">Предупреждение</div>
                 <input class="mm-input" type="text" maxlength="500" placeholder="Причина (варн / таймаут / бан)">
@@ -4584,6 +5892,9 @@ const announceText = content.querySelector('#tmod-announce-text');
                 <div class="mm-ban-row" hidden>
                     <div class="mm-ban-info"></div>
                 </div>
+                <div class="mm-modlogs-row" hidden>
+                    <div class="mm-modlogs-info"></div>
+                </div>
 
                 <div class="mm-section">Роли</div>
                 <div class="mm-row">
@@ -4605,6 +5916,15 @@ const announceText = content.querySelector('#tmod-announce-text');
         panelMenuEl = menu;
         panelMenuState.badges = collectUserBadges(msgEl);
         renderPanelMenuUserBadges();
+        // Сворачивание/разворачивание истории модерации (по умолчанию свёрнута).
+        const modLogsRow = menu.querySelector('.mm-modlogs-row');
+        if (modLogsRow) {
+            modLogsRow.addEventListener('click', () => {
+                panelMenuState.modLogsOpen = !panelMenuState.modLogsOpen;
+                renderPanelMenuModLogs();
+                clampPanelMenuPosition();
+            });
+        }
 
         // Резервируем место под строки таймаута/бана, которые появятся после загрузки
         // статуса, чтобы меню не «подпрыгивало», дорастая вниз. Элементы уже в DOM,
@@ -4724,6 +6044,9 @@ const announceText = content.querySelector('#tmod-announce-text');
                 const s = panelMenuState;
                 if (!s || !s.userId) return;
                 const reason = reasonInput ? reasonInput.value.trim() : '';
+                // Снапшот логина цели: чат-фолбэк внутри действий обязан бить по тому же
+                // юзеру, на которого кликнули, а не по текущему panelMenuState.
+                const actorLogin = panelUserLogin(s);
                 switch (action) {
                     case 'close':
 closePanelMenu();
@@ -4735,11 +6058,11 @@ closePanelMenu();
                         runPanelAction('Предупредить', () => actionWarn(s.userId, reason));
                         break;
                     case 'purge':
-                        runPanelAction('Отстранить (1с)', () => actionTimeout(s.userId, 1, reason));
+                        runPanelAction('Отстранить (1с)', () => actionTimeout(s.userId, 1, reason, actorLogin));
                         break;
                     case 'preset': {
                         const sec = parseInt(btn.dataset.seconds, 10);
-                        runPanelAction(`Таймаут ${btn.dataset.label}`, () => actionTimeout(s.userId, sec, reason));
+                        runPanelAction(`Таймаут ${btn.dataset.label}`, () => actionTimeout(s.userId, sec, reason, actorLogin));
                         break;
                     }
                     case 'timeout-custom': {
@@ -4747,17 +6070,17 @@ closePanelMenu();
                         const secs = parseTimeoutDuration(txtInput && txtInput.value);
                         if (!secs) { setMenuStatus('Укажите срок (напр. 10м, 1ч30м, 2д)', 'err'); return; }
                         const sec = Math.max(60, Math.min(1209600, Math.round(secs)));
-                        runPanelAction(`Таймаут ${txtInput.value.trim()}`, () => actionTimeout(s.userId, sec, reason));
+                        runPanelAction(`Таймаут ${txtInput.value.trim()}`, () => actionTimeout(s.userId, sec, reason, actorLogin));
                         break;
                     }
                     case 'ban':
-                        runPanelAction('Бан', () => actionTimeout(s.userId, null, reason));
+                        runPanelAction('Бан', () => actionTimeout(s.userId, null, reason, actorLogin));
                         break;
                     case 'unban':
-                        runPanelAction('Разбан', () => actionUnban(s.userId));
+                        runPanelAction('Разбан', () => actionUnban(s.userId, actorLogin));
                         break;
                     case 'untimeout':
-                        runPanelAction('Прервать отстранение', () => actionUnban(s.userId));
+                        runPanelAction('Прервать отстранение', () => actionUnban(s.userId, actorLogin));
                         break;
                     case 'vip':
                         if (s.status.isVip === true) {
@@ -4852,30 +6175,8 @@ closePanelMenu();
         renderPanelMenuToggles();
         renderPanelMenuTimeout();
         renderPanelMenuBan();
+        renderPanelMenuModLogs();
         refreshPanelMenuStatus();
-    }
-
-    function closePanelMenu() {
-        if (!panelMenuEl) return;
-        // Сбрасываем подтверждение шаутаута при закрытии меню
-        const soBtn = panelMenuEl.querySelector('[data-action="shoutout"]');
-        if (soBtn) {
-            delete soBtn.dataset.shoutoutConfirmed;
-            if (soBtn._soPrevText) {
-                soBtn.textContent = soBtn._soPrevText;
-                delete soBtn._soPrevText;
-            } else {
-                const lbl = soBtn.querySelector('.mm-lbl');
-                if (lbl && lbl.textContent === 'Подтвердить?') {
-                    lbl.textContent = 'Отметить';
-                } else if (soBtn.textContent === 'Подтвердить?') {
-                    soBtn.textContent = 'Отметить';
-                }
-            }
-        }
-        try { panelMenuEl.remove(); } catch (e) {}
-        panelMenuEl = null;
-        panelMenuState = null;
     }
 
     function initChatAutofocus() {
@@ -5012,7 +6313,14 @@ closePanelMenu();
         }
 
         attach();
-        setInterval(() => { if (!raidSoContainer || !raidSoContainer.isConnected) attach(); }, 5000);
+        setInterval(() => {
+            if (!raidSoContainer || !raidSoContainer.isConnected) { attach(); return; }
+            // Fallback на document.body «залипал»: у body isConnected всегда true,
+            // поэтому observer навсегда оставался на всём документе и сканировал каждый
+            // добавленный узел. Переезжаем на настоящий контейнер чата, как только он есть.
+            const preferred = document.querySelector('section[data-test-selector="chat-room-component-layout"]');
+            if (preferred && preferred !== raidSoContainer) attach();
+        }, 5000);
     }
 
     function initModerationMenu() {
@@ -5155,12 +6463,21 @@ closePanelMenu();
         if (raidShoutoutRefresh) raidShoutoutRefresh();
     }
 
+    // Кнопка (и её обработчик) пересоздаётся вместе с панелью, поэтому флаг держим
+    // в модульной переменной: двойной клик по «Панель модератора» поднимал два окна
+    // OAuth, и первое из них «повисало» до своего таймаута.
+    let tmodLoginBusy = false;
+
     function injectButton() {
-        if (!isStreamPage()) return;
+        // Кнопка нужна и на «чат-страницах» (/<канал>/chat, /popout/.../chat,
+        // /embed/.../chat): ПКМ-меню там уже работает, а раньше кнопки не было вообще.
+        if (!isStreamPage() && !isChatContext()) return;
         if (!tmodSettingsLoaded) return;
         if (moderatorResolved === false && !tmodShowAlways) return;
         const chatInput = document.querySelector('[data-a-target="chat-input"]') || document.querySelector('.chat-input');
-        if (!chatInput) { setTimeout(injectButton, 1000); return; }
+        // Без рекурсивного setTimeout: за повторные попытки и за возврат кнопки после
+        // ремоунта чата отвечает интервал watchChannelChanges() (раз в секунду).
+        if (!chatInput) return;
         if (document.getElementById('tmod-btn')) return;
 
         const wrapper = document.createElement('div');
@@ -5177,14 +6494,20 @@ closePanelMenu();
 
         btn.onclick = async (e) => {
             e.preventDefault(); e.stopPropagation();
+            if (tmodLoginBusy) return;
             const token = await getToken();
             if (!token) {
-                const result = await authorize();
-                if (result.success) {
-                    modTokenCache = true;
-                    notify('Вход: ' + ((result.user && result.user.login) || 'выполнен'));
-                } else {
-                    notify('Ошибка: ' + (result.error || 'авторизация не удалась'));
+                tmodLoginBusy = true;
+                try {
+                    const result = await authorize();
+                    if (result.success) {
+                        modTokenCache = true;
+                        notify('Вход: ' + ((result.user && result.user.login) || 'выполнен'));
+                    } else {
+                        notify('Ошибка: ' + (result.error || 'авторизация не удалась'));
+                    }
+                } finally {
+                    tmodLoginBusy = false;
                 }
                 return;
             }
@@ -5210,10 +6533,27 @@ closePanelMenu();
                 // Кэш статусов ключован по каналу (channel:userId) — записи других
                 // каналов не перепутаются и при возврате на канал рендерятся мгновенно,
                 // поэтому хранилище не сбрасываем. Кэш ID канала — наоборот, одноразовый.
-                delete channelIdCache[prevPath];
+                // Кэш ID ключуется ИМЕНЕМ канала (см. getChannelId), а не путём: раньше
+                // здесь удалялся ключ вида '/channel', которого в кэше нет, — то есть
+                // очистка не делала ничего.
+                const prevParts = prevPath.slice(1).split('/');
+                const prevChannel = (prevParts[0] === 'moderator' || prevParts[0] === 'popout' || prevParts[0] === 'embed') && prevParts[1]
+                    ? prevParts[1]
+                    : (prevParts[0] || null);
+                if (prevChannel) delete channelIdCache[prevChannel];
                 resetModHereCache();
                 moderatorResolved = null;
-                amIModeratorHere().then((v) => { moderatorResolved = v; applyModerationVisibility(); });
+                // События чата слушаем по конкретному каналу — переподключаемся.
+                chatEventsRestart(getChannelName());
+                const expectChannel = getChannelName();
+                amIModeratorHere().then((v) => {
+                    // Ответ мог прийти уже после следующей навигации: без сверки канала
+                    // значение старого канала перебивало новое, и кнопка/ПКМ-меню
+                    // появлялись там, где ты не мод.
+                    if (getChannelName() !== expectChannel) return;
+                    moderatorResolved = v;
+                    applyModerationVisibility();
+                });
                 const btnWrapper = document.getElementById('tmod-btn-wrapper');
                 if (btnWrapper) btnWrapper.remove();
                 if (panelOpen && panelElement) { panelElement.remove(); panelOpen = false; }
@@ -5224,10 +6564,14 @@ closePanelMenu();
                     setTimeout(getChannelAccentColor, 12000);
                 }
             }
+            // Кнопка могла исчезнуть вместе с контейнером чата, который Twitch
+            // пересоздаёт (смена раскладки/theatre, ремоунт чата). Возвращаем её на
+            // место — раньше панель становилась недоступной до смены канала.
+            if (!document.getElementById('tmod-btn')) injectButton();
         }, 1000);
     }
 
-    if (isStreamPage()) {
+    if (isStreamPage() || isChatContext()) {
         console.log('[ModPanel] Starting on:', window.location.pathname);
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', injectButton);
@@ -5242,14 +6586,57 @@ closePanelMenu();
     watchChannelChanges();
     initModerationMenu();
     getPanelSettings().then((s) => { tmodShowAlways = s.showAlways === true; tmodSettingsLoaded = true; applyModerationVisibility(); });
-    amIModeratorHere().then((v) => { moderatorResolved = v; applyModerationVisibility(); });
+    const bootChannel = getChannelName();
+    amIModeratorHere().then((v) => {
+        if (getChannelName() !== bootChannel) return; // канал уже сменился — ответ не наш
+        moderatorResolved = v;
+        applyModerationVisibility();
+    });
     initRaidShoutout();
     initChatAutofocus();
     // Персистентный кэш статусов в память — к первому ПКМ-клику почти наверняка готов.
         loadPanelStatusCache();
+    // Живые события модерации из чата (IRC) — чтобы плашка появлялась и когда бан/таймаут
+    // выдал другой модератор, без переоткрытия меню.
+    chatEventsStart(getChannelName());
     // Разовый дожимающий вход для пользователей со старыми правами. Отложен,
     // чтобы не спорить с остальным стартом и не мешать первому рендеру.
     setTimeout(ensureScopesFresh, 1500);
+
+    // Изменения настроек и токена из popup / другой вкладки. Без этого слушателя
+    // content.js жил со значениями, прочитанными один раз при старте: переключатели
+    // в popup не действовали до перезагрузки страницы, а «Выйти» оставляло меню
+    // живым с закешированным токеном (действия падали с «Нет токена»).
+    if (IS_EXTENSION && chrome.storage && chrome.storage.onChanged) {
+        chrome.storage.onChanged.addListener((changes, area) => {
+            if (area !== 'local') return;
+            if (changes.tmod_settings) {
+                try {
+                    const s = JSON.parse(changes.tmod_settings.newValue || '{}');
+                    tmodContextMenuEnabled = s.contextMenu !== false;
+                    tmodChatAutofocus = s.chatAutofocus !== false;
+                    tmodShowAlways = s.showAlways === true;
+                    tmodSettingsLoaded = true;
+                    applyModerationVisibility();
+                } catch (e) {}
+            }
+            if (changes[STORAGE_KEY_TOKEN]) {
+                const t = changes[STORAGE_KEY_TOKEN].newValue;
+                modTokenCache = !!t;
+                if (!t) {
+                    // Токен сбросили — сбрасываем всё, что от него зависит.
+                    currentUserIdCache = null;
+                    panelMenuFetchToken++;
+                    closePanelMenu();
+                    chatEventsStop();
+                    applyModerationVisibility();
+                } else {
+                    // Вошли (например, через popup) — поднимаем слушатель событий чата.
+                    loadPanelActorLogin().then(() => chatEventsRestart(getChannelName()));
+                }
+            }
+        });
+    }
 
     // Меню Tampermonkey (в расширении эту роль играет popup/)
     if (!IS_EXTENSION && typeof GM_registerMenuCommand === 'function') {

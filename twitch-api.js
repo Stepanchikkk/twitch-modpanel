@@ -100,7 +100,9 @@
         };
         const scanDown = (root) => {
             const stack = [{ f: root.child, sib: root.sibling }];
-            while (stack.length) {
+            // Условие по count обязательно: без него лимит останавливал только сбор
+            // кандидатов, а обход продолжал класть в стек всё поддерево.
+            while (stack.length && count < maxNodes) {
                 const { f, sib } = stack.pop();
                 if (f) {
                     const u = check(f);
@@ -117,7 +119,7 @@
         };
         let cur = fiber;
         let depth = 0;
-        while (cur && depth < 80) {
+        while (cur && depth < 80 && count < maxNodes) {
             const u = check(cur);
             if (u) return u;
             const d = scanDown(cur);
@@ -162,19 +164,27 @@
         }
 
         // Прямые поля сообщения, затем поиск по дереву (предки + дети).
-        // Fiber-юзеру доверяем, только если его логин совпал с видимым ником
-        // сообщения; иначе id не берём — content.js добудет его по логину через Helix.
+        // Fiber-юзеру доверяем ТОЛЬКО при совпадении логина с видимым ником.
+        // Раньше проверка была «fail-open»: при нечитаемом нике (login === null)
+        // принимался ЛЮБОЙ кандидат, а searchFiberForUser обходит предков и чужие
+        // сообщения — и действие уходило другому человеку. При неизвестном нике
+        // берём только прямые поля самого сообщения, иначе userId: null.
+        const candLogin = (cand) => norm(cand && (cand.login || cand.userLogin || cand.userName || cand.displayName) || '');
         const matchesLogin = (cand) => {
-            if (!cand || !login) return true;
-            const l = norm(cand.login || cand.userLogin || cand.userName || cand.displayName || '');
-            return !l || l === norm(login);
+            if (!cand || !login) return false;
+            const l = candLogin(cand);
+            return !!l && l === norm(login);
         };
         let u = userFromMessage(m);
-        if (!matchesLogin(u)) u = null;
-        if (!u) u = searchFiberForUser(found);
-        if (!matchesLogin(u)) u = null;
-        if (!u) u = searchFiberForUser(fiber);
-        if (!matchesLogin(u)) u = null;
+        if (login) {
+            if (!matchesLogin(u)) u = null;
+            if (!u) u = searchFiberForUser(found);
+            if (!matchesLogin(u)) u = null;
+            if (!u) u = searchFiberForUser(fiber);
+            if (!matchesLogin(u)) u = null;
+        } else if (!candLogin(u)) {
+            u = null;
+        }
         u = u || {};
         const flag = (v) => (v === true || v === false ? !!v : null);
         const badgeOf = (badges, types) => {
@@ -262,12 +272,159 @@
         return { fiber: true, results };
     }
 
+    // ------------------------------------------------------------------------
+    // Диагностика GQL: узнать операцию, которой Twitch рисует карточку юзера.
+    // В DevTools Network это сделать нереально (сотни запросов в секунду), поэтому
+    // перехватываем fetch здесь, в page world, и пишем только операции gql.twitch.tv
+    // в кольцевой буфер. Включается вручную:  localStorage.TMOD_CAPTURE_GQL = '1'
+    // Посмотреть результат (в консоли СТРАНИЦЫ, не расширения).
+    // Twitch шлёт persisted queries, поэтому в записи важен hash, а не query:
+    //   copy(TMOD_GQL_CAPTURED.filter(i => i.targetUser).map(i => i.operationName + ' ' + i.hash).join('\n'))
+    //   copy(JSON.stringify(TMOD_GQL_CAPTURED.filter(i => i.targetUser).map(i => i.raw), null, 1))
+    // Второй вариант даёт готовое тело для реплея: operationName + variables + extensions.
+    // ------------------------------------------------------------------------
+    const TMOD_GQL_KEEP = 40;
+    let tmodGqlCtx = null; // { startedAt, userId, label } — выставляется content.js
+
+    function tmodGqlCaptureOn() {
+        try { return localStorage.getItem('TMOD_CAPTURE_GQL') === '1'; } catch (e) { return false; }
+    }
+
+    function tmodGqlGuessName(query) {
+        const m = /\b(?:query|mutation|subscription)\s+([A-Za-z0-9_]+)/.exec(String(query || ''));
+        return m ? m[1] : '(анонимная)';
+    }
+
+    function tmodGqlNormalizeOps(body) {
+        const out = [];
+        const push = (o) => {
+            if (!o || typeof o !== 'object') return;
+            if (!o.query && !o.operationName) return;
+            out.push({
+                operationName: o.operationName || tmodGqlGuessName(o.query),
+                query: o.query || '',
+                variables: o.variables || null,
+                // Twitch почти всё шлёт как persisted query: текста запроса в теле нет,
+                // вместо него хеш в extensions.persistedQuery.sha256Hash — именно он и
+                // нужен для реплея (тело получается крошечным).
+                extensions: o.extensions || null,
+                raw: o
+            });
+        };
+        try {
+            const parsed = typeof body === 'string' ? JSON.parse(body) : body;
+            if (Array.isArray(parsed)) parsed.forEach(push);
+            else push(parsed);
+        } catch (e) {}
+        return out;
+    }
+
+    function tmodGqlHash(op) {
+        try {
+            return String((op.extensions && op.extensions.persistedQuery && op.extensions.persistedQuery.sha256Hash) || '');
+        } catch (e) { return ''; }
+    }
+
+    function tmodGqlRecord(input, init) {
+        if (!tmodGqlCaptureOn()) return;
+        let url = '';
+        try { url = typeof input === 'string' ? input : (input && input.url) || ''; } catch (e) { return; }
+        if (String(url).indexOf('gql.twitch.tv') === -1) return;
+        let body = null;
+        try { body = (init && init.body) || (input && input.body) || null; } catch (e) {}
+        if (body && typeof body !== 'string') { try { body = JSON.stringify(body); } catch (e) { body = null; } }
+        const ops = tmodGqlNormalizeOps(body);
+        if (!ops.length) return;
+        const at = Date.now();
+        const ctx = tmodGqlCtx || {};
+        const uid = ctx.userId ? String(ctx.userId) : '';
+        // id в переменных бывает числом ({"id":12345}) и строкой — проверяем оба вида,
+        // иначе пометка targetUser пропускает половину операций карточки.
+        const idRe = uid ? new RegExp('(^|[^0-9])' + uid + '([^0-9]|$)') : null;
+        const inCtx = !!(ctx.startedAt && at - ctx.startedAt < 12000);
+        const items = Array.isArray(window.TMOD_GQL_CAPTURED) ? window.TMOD_GQL_CAPTURED : [];
+        const added = [];
+        for (const op of ops) {
+            let vjson = '';
+            try { vjson = JSON.stringify(op.variables || null); } catch (e) { vjson = ''; }
+            const rec = {
+                at: at,
+                sinceCtx: ctx.startedAt ? at - ctx.startedAt : null,
+                operationName: op.operationName,
+                hash: tmodGqlHash(op),
+                query: op.query,
+                variables: op.variables,
+                extensions: op.extensions,
+                raw: op.raw,
+                targetUser: idRe ? idRe.test(vjson) : null,
+                label: ctx.label || null
+            };
+            items.push(rec);
+            added.push(rec);
+        }
+        while (items.length > TMOD_GQL_KEEP) items.shift();
+        window.TMOD_GQL_CAPTURED = items;
+        // Автоподхват хешей: сохраняем текущий хеш каждой нужной нам операции, чтобы
+        // реплей в content.js не сломался, когда Twitch обновит клиент и сменит хеши.
+        // Учимся мы бесплатно — карточка всё равно открывается при чтении ролей.
+        for (const rec of added) {
+            try {
+                if (!rec.hash) continue;
+                if (!/^(ChatModeratorStrikeStatus|UserModStatus|LowTrustUserProperties|ViewerCardModLogs|ViewerCardModLogsComments|ViewerCardModLogsSharedComments|ViewerCardHeader|ViewerCard)$/.test(rec.operationName)) continue;
+                localStorage.setItem('TMOD_GQL_HASH_' + rec.operationName, rec.hash);
+            } catch (e) {}
+        }
+        // Логируем только то, что попали в окно чтения карточки: иначе консоль
+        // заваливается всеми подряд gql-запросами страницы (SendEvents и т.п.).
+        if (!inCtx) return;
+        try {
+            window.postMessage({
+                type: 'TMOD_GQL_CAPTURED_LOG',
+                ops: added.map((r) => ({ op: r.operationName, hash: r.hash ? r.hash.slice(0, 10) + '…' : '(нет)', targetUser: r.targetUser, sinceCtx: r.sinceCtx }))
+            }, '*');
+        } catch (e) {}
+    }
+
+    function tmodGqlInstallHook() {
+        try {
+            const orig = window.fetch;
+            if (typeof orig !== 'function' || orig.__tmodGqlHook) return;
+            const wrapped = function (input, init) {
+                try { tmodGqlRecord(input, init); } catch (e) {}
+                return orig.apply(this, arguments);
+            };
+            wrapped.__tmodGqlHook = true;
+            window.fetch = wrapped;
+        } catch (e) {}
+    }
+    tmodGqlInstallHook();
+
     window.addEventListener('message', (event) => {
         if (event.source !== window) return;
         if (event.data?.type === 'TMOD_SEND_CHAT') {
             sendToTwitchChat(event.data.message);
+        } else if (event.data?.type === 'TMOD_GQL_CAPTURE_CTX') {
+            // content.js помечает окно чтения карточки: кто именно читается.
+            tmodGqlCtx = { startedAt: Date.now(), userId: event.data.userId, label: event.data.label || null };
+        } else if (event.data?.type === 'TMOD_DEBUG_STORE') {
+            // Склад диагностики в page world: сюда content.js кладёт сырые ответы
+            // внутренних запросов, чтобы их можно было посмотреть из консоли страницы
+            // (из изолированного мира расширения они не видны):
+            //   copy(JSON.stringify(TMOD_DEBUG_DATA, null, 1))
+            try {
+                window.TMOD_DEBUG_DATA = window.TMOD_DEBUG_DATA || {};
+                window.TMOD_DEBUG_DATA[String(event.data.key || 'data')] = event.data.value;
+            } catch (e) {}
         } else if (event.data?.type === 'TMOD_GET_MSG') {
-            const el = document.querySelector('[data-tmod-probe]');
+            // Метка = nonce запроса (см. content.js): берём ИМЕННО свой элемент,
+            // иначе при наложившихся кликах вернули бы данные чужого сообщения.
+            const nonce = String(event.data.nonce || '');
+            let el = null;
+            try {
+                el = nonce
+                    ? document.querySelector('[data-tmod-probe="' + nonce + '"]')
+                    : document.querySelector('[data-tmod-probe]');
+            } catch (e) { el = null; }
             let data = null;
             if (el) {
                 data = getMessageDataFromElement(el);

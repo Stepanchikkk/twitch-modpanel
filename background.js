@@ -11,8 +11,19 @@ let authWindowId = null;
 // OAuth авторизация
 // ============================================================================
 
+// Одно окно авторизации за раз: при повторном вызове второй поток перезаписывал
+// authWindowId и добавлял ещё один слушатель tabs.onUpdated, а первый «повисал» до
+// своего 120-секундного таймаута. Закрытие окна руками тоже снимает блокировку.
+chrome.windows.onRemoved.addListener((id) => {
+    if (authWindowId !== null && id === authWindowId) authWindowId = null;
+});
+
 function startOAuth() {
     return new Promise((resolve) => {
+        if (authWindowId !== null) {
+            resolve({ success: false, error: 'Окно авторизации уже открыто' });
+            return;
+        }
         const redirectUri = 'https://stepanchikkk.github.io/twitch-modpanel/';
         const scopes = [
             'moderation:read',
@@ -30,6 +41,9 @@ function startOAuth() {
             'channel:manage:broadcast',
             'moderator:manage:shoutouts',
             'moderator:read:chatters',
+            'moderator:read:followers',
+            'moderator:read:unban_requests',
+            'moderator:manage:unban_requests',
             'moderator:read:shield_mode',
             'channel:manage:raids',
             'channel:manage:vips',
@@ -161,6 +175,15 @@ async function getUserInfo() {
 // Message Listener
 // ============================================================================
 
+// Cookie auth-token — это полный доступ к аккаунту, поэтому отдаём её ТОЛЬКО
+// контент-скрипту, работающему на twitch.tv (её запрашивает GQL-путь панели).
+function isTwitchContentScript(sender) {
+    try {
+        const url = (sender && sender.tab && sender.tab.url) || (sender && sender.url) || '';
+        return /^https:\/\/([a-z0-9-]+\.)*twitch\.tv\//i.test(url);
+    } catch (e) { return false; }
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === 'OAUTH_START') {
         (async () => {
@@ -168,21 +191,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             sendResponse(result);
         })();
         return true;
-    } else if (message.type === 'OAUTH_GET_TOKEN') {
-        getToken().then(token => sendResponse({ success: !!token, token }));
-        return true;
-    } else if (message.type === 'OAUTH_GET_USER') {
-        getUserInfo().then(user => sendResponse({ success: true, user }));
-        return true;
     } else if (message.type === 'GET_AUTH_COOKIE') {
+        if (!isTwitchContentScript(sender)) {
+            sendResponse({ success: false, value: null, error: 'Forbidden' });
+            return false;
+        }
         chrome.cookies.get({ url: 'https://www.twitch.tv', name: 'auth-token' }, (cookie) => {
             sendResponse({ success: !!(cookie && cookie.value), value: cookie ? cookie.value : null });
         });
-        return true;
-    } else if (message.type === 'FETCH_URL') {
-        fetch(message.url)
-            .then(async (r) => sendResponse({ success: true, status: r.status, text: await r.text() }))
-            .catch((e) => sendResponse({ success: false, error: e.message }));
         return true;
     } else if (message.type === 'TMOD_DEBUG_LOG') {
         // Отладка панели: логи из content.js видны здесь, в консоли service worker

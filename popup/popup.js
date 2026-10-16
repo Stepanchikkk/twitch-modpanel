@@ -115,7 +115,7 @@ function bindToggle(id, key, invert) {
         const next = !track.classList.contains('on');
         track.classList.toggle('on', next);
         const s = await getSettings();
-        s[key] = invert ? next : next;
+        s[key] = next;
         await saveSettings(s);
     });
 }
@@ -126,10 +126,18 @@ function showSettingsStatus(msg, ok) {
     settStatusEl.classList.remove('hidden');
 }
 
+// Обработчики вешаем один раз: openSettings() можно вызвать многократно
+// (настройки → назад → настройки), а closeSettings() слушатели не снимает —
+// иначе после второго захода клик по тумблеру обрабатывался бы дважды и
+// обработчики дрались за состояние (тумблер мигал, в storage уходило что попало).
+let settingsBound = false;
+
 function openSettings() {
     mainEl.classList.add('hidden');
     settingsViewEl.classList.remove('hidden');
     settStatusEl.classList.add('hidden');
+    if (settingsBound) return;
+    settingsBound = true;
     bindToggle('sett-ctxmenu', 'contextMenu', true);
     bindToggle('sett-autofocus', 'chatAutofocus', true);
     bindToggle('sett-showalways', 'showAlways', false);
