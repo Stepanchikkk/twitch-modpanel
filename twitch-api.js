@@ -212,11 +212,24 @@
             ?? badgeOf(m && m.badges, ['broadcaster', 'broad'])
             ?? flag(m && m.isBroadcaster);
 
+        // Текст сообщения из модели чата Twitch: это ровно то, что написал пользователь,
+        // включая названия смайлов. Нужен для превью: DOM сообщения содержит ещё время,
+        // ник и служебные подписи сторонних расширений (7TV/BTTV).
+        const bodyOf = (msg) => {
+            if (!msg) return '';
+            const cand = [msg.messageBody, msg.message, msg.body, msg.rawBody, msg.text];
+            for (const c of cand) {
+                if (typeof c === 'string' && c.trim()) return c.trim();
+            }
+            return '';
+        };
+
         return {
             messageId: m.id || null,
             userId: (u && u.id != null ? String(u.id) : null),
             userLogin: login || (u && (u.login || u.userLogin)) || null,
             userName: displayName || (u && (u.displayName || u.userName)) || login || null,
+            body: bodyOf(m) || bodyOf(u),
             isBroadcaster,
             isModerator,
             isVip
@@ -325,16 +338,171 @@
         } catch (e) { return ''; }
     }
 
+    // Чтение заголовков запроса (Headers или обычный объект).
+    function tmodReadHeaders(src) {
+        try {
+            const h = (src && src.headers) || null;
+            if (!h) return null;
+            const get = (name) => {
+                if (typeof h.get === 'function') return h.get(name);
+                const k = Object.keys(h).find((x) => x.toLowerCase() === String(name).toLowerCase());
+                return k ? h[k] : null;
+            };
+            return {
+                clientId: get('Client-Id') || null,
+                integrity: get('Client-Integrity') || null,
+                sessionId: get('Client-Session-Id') || null,
+                deviceId: get('X-Device-Id') || null,
+                version: get('Client-Version') || null,
+                hasAuth: !!get('Authorization')
+            };
+        } catch (e) { return null; }
+    }
+
+    // Живые заголовки клиента Twitch: сохраняем ВСЕГДА (это нужно для работы, а не для
+    // отладки). Токен integrity короткоживущий и не является учётными данными пользователя —
+    // он нужен только чтобы повторять запросы Twitch, которые иначе отбиваются проверкой.
+    function tmodStoreLiveHeaders(h) {
+        try {
+            if (!h || !h.integrity) return;
+            localStorage.setItem('TMOD_LIVE_GQL_HEADERS', JSON.stringify({
+                at: Date.now(),
+                integrity: h.integrity,
+                sessionId: h.sessionId || null,
+                deviceId: h.deviceId || null,
+                version: h.version || null,
+                clientId: h.clientId || null
+            }));
+        } catch (e) {}
+    }
+
     function tmodGqlRecord(input, init) {
-        if (!tmodGqlCaptureOn()) return;
         let url = '';
         try { url = typeof input === 'string' ? input : (input && input.url) || ''; } catch (e) { return; }
         if (String(url).indexOf('gql.twitch.tv') === -1) return;
+        const live = tmodReadHeaders(init) || tmodReadHeaders(input);
+        if (live && live.integrity) tmodStoreLiveHeaders(live);
         let body = null;
         try { body = (init && init.body) || (input && input.body) || null; } catch (e) {}
         if (body && typeof body !== 'string') { try { body = JSON.stringify(body); } catch (e) { body = null; } }
         const ops = tmodGqlNormalizeOps(body);
+        // Диагностика пагинации: запоминаем, какие GQL-операции Twitch вообще дёргает, когда
+        // журнал листают. Работает всегда, без режима отладки — по консоли видно, листается ли.
+        try {
+            const names = JSON.parse(localStorage.getItem('TMOD_GQL_OPS') || '{}') || {};
+            ops.forEach((op) => {
+                const n = String(op.operationName || '—');
+                names[n] = (names[n] || 0) + 1;
+            });
+            localStorage.setItem('TMOD_GQL_OPS', JSON.stringify(names));
+            ops.forEach((op) => {
+                const n = String(op.operationName || '');
+                // Поиск ПОЛЬЗОВАТЕЛЕЙ: публичного API у Twitch нет (в Helix только каналы).
+                // Поэтому запоминаем их собственную операцию из трафика страницы — поиск на сайте
+                // или автодополнение личных сообщений. Панель потом ищет по всему Twitch ею же.
+                if (/searchuser|usersearch|autocomplete|whisper|searchresult/i.test(n)) {
+                    try {
+                        const list = JSON.parse(localStorage.getItem('TMOD_USER_SEARCH_OPS') || '[]') || [];
+                        const h = String((op.extensions && op.extensions.persistedQuery
+                            && op.extensions.persistedQuery.sha256Hash) || '');
+                        if (h) {
+                            list.unshift({
+                                at: Date.now(), op: n, hash: h,
+                                vars: JSON.stringify(op.variables || {}).slice(0, 400)
+                            });
+                            localStorage.setItem('TMOD_USER_SEARCH_OPS', JSON.stringify(list.slice(0, 6)));
+                        }
+                    } catch (e0) {}
+                }
+                if (!/mod|log|action|strike|ban|chat/i.test(n)) return;
+                let log = [];
+                try { log = JSON.parse(localStorage.getItem('TMOD_GQL_MODLOG_OPS') || '[]') || []; } catch (e) { log = []; }
+                log.unshift({
+                    at: Date.now(), op: n,
+                    hash: String((op.extensions && op.extensions.persistedQuery && op.extensions.persistedQuery.sha256Hash) || ''),
+                    vars: JSON.stringify(op.variables || {}).slice(0, 300)
+                });
+                localStorage.setItem('TMOD_GQL_MODLOG_OPS', JSON.stringify(log.slice(0, 30)));
+                // Если Twitch листает сам журнал — запоминаем поле пагинации И хэш запроса:
+                // у листающей версии запроса хэш может быть другим, и тогда наш `after` просто
+                // игнорируется (что и происходило).
+                const v = op.variables || {};
+                const extra = Object.keys(v).filter((k) => !/^(channelID|channelLogin)$/i.test(k));
+                if (/ModActionsList|ModerationAction|ModLog/i.test(n)) {
+                    const h = String((op.extensions && op.extensions.persistedQuery && op.extensions.persistedQuery.sha256Hash) || '');
+                    // Разные варианты запроса = разные хэши. Запоминаем оба: базовый (без
+                    // курсора) и листающий (с after) — иначе наш `after` уходит не тем хэшем
+                    // и Twitch отвечает ошибкой.
+                    try {
+                        const hashes = JSON.parse(localStorage.getItem('TMOD_MODLOG_HASHES') || '{}') || {};
+                        if (h) hashes[h] = JSON.stringify(v).slice(0, 200);
+                        localStorage.setItem('TMOD_MODLOG_HASHES', JSON.stringify(hashes));
+                        // Имя операции для каждого хеша: панель по нему отбрасывает хеши ЧУЖИХ
+                        // операций, которые попали сюда по совпадению имени (регулярка выше), —
+                        // именно такой хеш ломал листание журнала.
+                        try {
+                            const owners = JSON.parse(localStorage.getItem('TMOD_MODLOG_HASH_OPS') || '{}') || {};
+                            if (h) owners[h] = String(n);
+                            localStorage.setItem('TMOD_MODLOG_HASH_OPS', JSON.stringify(owners));
+                        } catch (e4) {}
+                    } catch (e3) {}
+                    if (!extra.length) {
+                        if (h) localStorage.setItem('TMOD_MODLOG_HASH_BASE', h);
+                    } else if (h) {
+                        // Ключом пагинации считаем ТОЛЬКО переменную-курсор. Раньше сюда попадала
+                        // первая «лишняя» переменная — у операций карточек это targetID, и панель
+                        // отправляла курсор в targetID, отчего журнал переставал листаться.
+                        const cursorVar = Object.keys(v).find((k) => !/^(channelID|channelLogin)$/i.test(k)
+                            && (/^(after|cursor|endCursor|from|offset)$/i.test(k)
+                                || /^eyJ[A-Za-z0-9_-]{8,}/.test(String(v[k] || ''))));
+                        if (!cursorVar) return;
+                        localStorage.setItem('TMOD_MODLOG_PAGE_KEY', JSON.stringify({
+                            key: cursorVar, type: typeof v[cursorVar], sample: String(v[cursorVar]).slice(0, 40), at: Date.now()
+                        }));
+                        try { localStorage.setItem('TMOD_MODLOG_VARS_SAMPLE', JSON.stringify(v).slice(0, 600)); } catch (e2) {}
+                        localStorage.setItem('TMOD_MODLOG_HASH_PAGE', h);
+                        // Имя операции сохраняем рядом с хешем: без него панель не может понять,
+                        // что «выученный» хеш принадлежит ДРУГОЙ операции (мы фильтруем по имени
+                        // регуляркой), и подставляет его для ModActionsList — Twitch на это
+                        // отвечает "operation with name 'ModActionsList' not found".
+                        localStorage.setItem('TMOD_MODLOG_PAGE_OP', String(n));
+                    }
+                }
+            });
+        } catch (e) {}
+        if (!tmodGqlCaptureOn()) return;
         if (!ops.length) return;
+        let hdrs = null;
+        try {
+            if (live) {
+                hdrs = {
+                    clientId: live.clientId,
+                    hasIntegrity: !!live.integrity,
+                    hasDeviceId: !!live.deviceId,
+                    hasAuth: live.hasAuth,
+                    hasSessionId: !!live.sessionId,
+                    clientVersion: live.version
+                };
+                // Версия клиента нужна, чтобы повторять запросы Twitch (она не секретная).
+                if (hdrs.clientVersion) {
+                    try { localStorage.setItem('TMOD_CLIENT_VERSION', hdrs.clientVersion); } catch (e) {}
+                }
+            }
+        } catch (e) {}
+        // Аналитика Twitch (spade/SendEvents) шлёт огромные GZIP-блобы и мгновенно вытесняет
+        // из буфера то, что нам нужно: он хранит только последние TMOD_GQL_KEEP записей.
+        // Такие операции не кладём совсем, а у остальных обрезаем гигантские строки.
+        const TMOD_GQL_NOISE = /^(SendEvents|SendSpadeEvents|.*Spade.*|.*Analytics.*|.*Telemetry.*)$/i;
+        const useful = ops.filter((o) => !TMOD_GQL_NOISE.test(String(o.operationName || '')));
+        if (!useful.length) return;
+        const trimVars = (v) => {
+            if (!v || typeof v !== 'object') return v;
+            try {
+                const s = JSON.stringify(v);
+                if (s.length <= 1500) return v;
+                return JSON.parse(s.replace(/"([^"]{512,})"/g, (m, p1) => '"<' + p1.length + ' chars>"'));
+            } catch (e) { return v; }
+        };
         const at = Date.now();
         const ctx = tmodGqlCtx || {};
         const uid = ctx.userId ? String(ctx.userId) : '';
@@ -344,20 +512,22 @@
         const inCtx = !!(ctx.startedAt && at - ctx.startedAt < 12000);
         const items = Array.isArray(window.TMOD_GQL_CAPTURED) ? window.TMOD_GQL_CAPTURED : [];
         const added = [];
-        for (const op of ops) {
+        for (const op of useful) {
             let vjson = '';
             try { vjson = JSON.stringify(op.variables || null); } catch (e) { vjson = ''; }
+            const vars = trimVars(op.variables);
             const rec = {
                 at: at,
                 sinceCtx: ctx.startedAt ? at - ctx.startedAt : null,
                 operationName: op.operationName,
                 hash: tmodGqlHash(op),
                 query: op.query,
-                variables: op.variables,
+                variables: vars,
                 extensions: op.extensions,
                 raw: op.raw,
                 targetUser: idRe ? idRe.test(vjson) : null,
-                label: ctx.label || null
+                label: ctx.label || null,
+                headers: hdrs
             };
             items.push(rec);
             added.push(rec);

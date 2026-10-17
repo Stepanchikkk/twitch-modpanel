@@ -28,6 +28,14 @@
             font-weight: 600;
             color: #efeff1;
         }
+        /* Версия берётся из манифеста (chrome.runtime.getManifest), а не дублируется в разметке:
+           иначе при релизе легко забыть поднять её в двух местах. */
+        header .version {
+            margin-left: auto;
+            font-size: 11.5px;
+            color: #8f8f98;
+            flex-shrink: 0;
+        }
         main { padding: 16px; }
         .status {
             text-align: center;
@@ -123,6 +131,7 @@
     <header>
         <img src="../icons/icon128.png" alt="">
         <h1>Панель модератора</h1>
+        <span class="version" id="version"></span>
     </header>
 
     <main>

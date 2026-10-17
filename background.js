@@ -44,6 +44,7 @@ function startOAuth() {
             'moderator:read:followers',
             'moderator:read:unban_requests',
             'moderator:manage:unban_requests',
+            'clips:edit',
             'moderator:read:shield_mode',
             'channel:manage:raids',
             'channel:manage:vips',

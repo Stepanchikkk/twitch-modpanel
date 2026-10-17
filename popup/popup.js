@@ -13,6 +13,12 @@ const settingsViewEl = document.getElementById('settingsView');
 const openSettingsBtn = document.getElementById('openSettings');
 const backFromSettingsBtn = document.getElementById('backFromSettings');
 const settStatusEl = document.getElementById('settStatus');
+const versionEl = document.getElementById('version');
+
+// Версия для шапки: единственный источник правды — manifest.json, чтобы номер не разъезжался.
+try {
+    if (versionEl) versionEl.textContent = 'v' + chrome.runtime.getManifest().version;
+} catch (e) {}
 
 // Проверка токена
 async function checkAuth() {

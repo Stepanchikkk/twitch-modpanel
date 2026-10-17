@@ -39,10 +39,11 @@
         'channel:manage:broadcast',
         'moderator:manage:shoutouts',
         'moderator:read:chatters',
-        // Фолловер (дата фоллова) и заявки на разбан: без этих прав фичи молча не работают.
+        // Фолловер (дата фоллова), заявки на разбан и клипы (последнее — для стримерского токена).
         'moderator:read:followers',
         'moderator:read:unban_requests',
         'moderator:manage:unban_requests',
+        'clips:edit',
         'moderator:read:shield_mode',
         'channel:manage:raids',
         'channel:manage:vips',
@@ -707,6 +708,7 @@
                 'moderator:read:followers',
                 'moderator:read:unban_requests',
                 'moderator:manage:unban_requests',
+                'clips:edit',
                 'moderator:read:shield_mode',
                 'channel:manage:raids',
                 'channel:manage:vips',
@@ -911,22 +913,80 @@
             chat: `<img src="${chatIconUrl}" alt="">`,
             poll: `<img src="${pollIconUrl}" alt="">`,
             prediction: `<img src="${predictionIconUrl}" alt="">`,
-            clip: `<svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="m19.613 2-1.912.585.584 1.912 1.913-.584L19.613 2Zm-5.737 1.754 1.912-.585.585 1.913-1.913.585-.584-1.913Zm-1.913.585-1.913.585.585 1.912 1.913-.584-.585-1.913ZM8.138 5.508l-1.913.585.585 1.913 1.912-.585-.584-1.913Zm-3.825 1.17L2.4 7.263l.585 1.912 1.912-.584-.584-1.913ZM5 11H3v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-9h-2v9H5v-9Z"></path><path d="M9 11H7v2h2v-2Zm2 0h2v2h-2v-2Zm6 0h-2v2h2v-2Z"></path></svg>`,
             rewards: `<img src="${rewardsIconUrl}" alt="">`,
             stream: `<svg width="24" height="24" viewBox="0 0 24 24"><path fill="white" fill-rule="evenodd" d="M13.207 7.621 4 16.828V20h3.172l9.207-9.207-3.172-3.172Zm4.586 1.758L14.62 6.207l1.88-1.879L19.672 7.5l-1.88 1.879ZM8 21.999H2v-6L15.086 2.915a2 2 0 0 1 2.828 0l3.172 3.172a2 2 0 0 1 0 2.828L8 22Z" clip-rule="evenodd"></path></svg>`,
-            shoutout: `<svg viewBox="0 0 24 24" fill="white" width="24" height="24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 12h-2v-2h2v2zm0-4h-2V6h2v4z"/></svg>`,
             raid: `<svg width="24" height="24" viewBox="0 0 24 24"><path fill="white" fill-rule="evenodd" d="M9.364 16.849A1.99 1.99 0 0 0 9 18v2a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2a1.99 1.99 0 0 0-.364-1.15l2.796-4.196A4.62 4.62 0 0 1 22 12a9.95 9.95 0 0 0-.235-2.163C20.777 5.354 16.78 2 12 2S3.223 5.354 2.234 9.837C2.081 10.534 2 11.257 2 12a4.618 4.618 0 0 1 4.568.655l2.796 4.194Zm-2.18-6.199a6.62 6.62 0 0 0-2.848-.95 8.004 8.004 0 0 1 15.328 0c-1 .094-1.976.415-2.848.951a11.72 11.72 0 0 0-9.632 0Zm8.145 1.553a9.722 9.722 0 0 0-6.659 0L11.202 16h1.596l2.531-3.797Z" clip-rule="evenodd"></path></svg>`,
+            banned: `<svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path fill-rule="evenodd" clip-rule="evenodd" d="M1 12C1 5.925 5.925 1 12 1s11 4.925 11 11-4.925 11-11 11S1 18.075 1 12Zm11 9A9 9 0 0 1 4.968 6.382l12.65 12.65A8.962 8.962 0 0 1 12 21Zm7.032-3.382a9 9 0 0 0-12.65-12.65l12.65 12.65Z"></path></svg>`,
+            unbanrequests: `<svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M19.032 17.618A9 9 0 0 0 5.292 6H8v2H2V2h2v2.45A10.97 10.97 0 0 1 12 1c6.075 0 11 4.925 11 11s-4.925 11-11 11a10.981 10.981 0 0 1-7.778-3.222A10.966 10.966 0 0 1 1 12h2a9.002 9.002 0 0 0 9 9 8.962 8.962 0 0 0 5.618-1.968l-7.325-7.325 1.414-1.414 7.325 7.325Z"></path></svg>`,
+            viewers: `<svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path fill-rule="evenodd" d="M6 8a6 6 0 1 1 7.025 5.913l.012.036A3 3 0 0 0 15.883 16H17a4 4 0 0 1 4 4v2h-2v-2a2 2 0 0 0-2-2h-1.117A5 5 0 0 1 12 16.15 5 5 0 0 1 8.117 18H7a2 2 0 0 0-2 2v2H3v-2a4 4 0 0 1 4-4h1.117a3 3 0 0 0 2.846-2.051l.012-.036A6.002 6.002 0 0 1 6 8Zm6 4a4 4 0 1 1 0-8 4 4 0 0 1 0 8Z" clip-rule="evenodd"></path></svg>`,
+            modactions: `<svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M13 3a9 9 0 1 0 8.94 10.06l-2-.24A7 7 0 1 1 13 5v3l4.5-4.5L13 0v3Z"></path><path d="M12 8h2v4.59l3.2 3.2-1.41 1.41L12 13.41V8Z"></path></svg>`,
+            checkuser: `<svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path fill-rule="evenodd" d="M10 2a8 8 0 1 0 4.906 14.32l5.387 5.387 1.414-1.414-5.387-5.387A8 8 0 0 0 10 2Zm0 2a6 6 0 1 1 0 12 6 6 0 0 1 0-12Z" clip-rule="evenodd"></path></svg>`
         };
         const TILE_LABELS = {
             announce: 'Анонс', chat: 'Чат', poll: 'Опрос', prediction: 'Прогноз',
-            clip: 'Клип', rewards: 'Награды', stream: 'Стрим', shoutout: 'Отметить', raid: 'Рейд'
+            rewards: 'Награды', stream: 'Стрим', raid: 'Рейд',
+            viewers: 'Зрители',
+            banned: 'Баны<br>и таймауты',
+            unbanrequests: 'Заявки<br>на разбан',
+            modactions: 'Действия<br>модераторов',
+            checkuser: 'Проверить<br>юзера'
         };
-        const DEFAULT_TILE_ORDER = ['announce', 'chat', 'poll', 'prediction', 'clip', 'rewards', 'stream', 'shoutout', 'raid'];
+        const DEFAULT_TILE_ORDER = ['announce', 'chat', 'poll', 'prediction', 'rewards', 'stream', 'raid', 'viewers', 'banned', 'unbanrequests', 'modactions', 'checkuser'];
 
         panel.innerHTML = `
             <style>
                 @keyframes tmod-slide-in { from { opacity: 0; } to { opacity: 1; } }
                 .tmod-no-select { user-select: none !important; -webkit-user-select: none !important; }
+                /* Скроллбары «парящие»: фон полосы прозрачный, виден только бегунок. */
+                #tmod-panel ::-webkit-scrollbar, #tmod-mod-menu ::-webkit-scrollbar { width: 6px; height: 6px; }
+                #tmod-panel ::-webkit-scrollbar-track, #tmod-mod-menu ::-webkit-scrollbar-track { background: transparent; }
+                #tmod-panel ::-webkit-scrollbar-thumb, #tmod-mod-menu ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 3px; }
+                #tmod-panel ::-webkit-scrollbar-thumb:hover, #tmod-mod-menu ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.32); }
+                #tmod-panel ::-webkit-scrollbar-corner, #tmod-mod-menu ::-webkit-scrollbar-corner { background: transparent; }
+                #tmod-panel *, #tmod-mod-menu * { scrollbar-color: rgba(255,255,255,.16) transparent; scrollbar-width: thin; }
+                /* Единая типизация скруглений вместо инлайновых border-radius по разделам:
+                   поля ввода и крупные кнопки — 10px, мелкие кнопки действий — 8px,
+                   «пилюли»-фильтры — полностью круглые. Значения заданы классами, а не
+                   стилями на каждом элементе. */
+                .tmod-in { border-radius: 10px !important; }
+                .tmod-btn { border-radius: 10px !important; }
+                .tmod-sm { border-radius: 8px !important; }
+                .tmod-chip { border-radius: 999px !important; }
+                /* «Редактировать панель» — только на главном экране: любой раздел панели
+                   начинается с кнопки «Назад», по ней и прячем. */
+                #tmod-panel:has(#tmod-back) #tmod-panel-edit { display: none !important; }
+                .tmod-vw-row { border-radius: 8px; min-width: 0; }
+                .tmod-vw-row:hover { background: #31313a; }
+                /* Ник занимает свободное место и при нехватке переносится, а не обрезается:
+                   терять часть ника в списке нельзя. Горизонтальной прокрутки не будет —
+                   у тела списка overflow-x: hidden. */
+                .tmod-vw-nick { color: #efeff1; min-width: 0; flex: 1 1 auto; overflow-wrap: anywhere; }
+                .tmod-vw-act { background: none; border: 1px solid #3a3a3d; border-radius: 8px; color: #adadb8; cursor: pointer; font-size: 11px; padding: 1px 5px; display: inline-flex; align-items: center; justify-content: center; min-width: 22px; min-height: 20px; opacity: 0; flex: 0 0 auto; }
+                .tmod-vw-act svg { width: 14px; height: 14px; display: block; }
+                .tmod-vw-mark { width: 7px; height: 7px; border-radius: 50%; background: #eb4b4b; box-shadow: 0 0 6px rgba(235,75,75,.8); flex: 0 0 7px; }
+                .tmod-vw-row:hover .tmod-vw-mark { display: none; }
+                .tmod-vw-act[data-danger="1"] { border-color: #8f3d3d; color: #ff8a86; }
+                .tmod-vw-confirm { position: absolute; right: 4px; top: 0; bottom: 0; display: flex; align-items: center; gap: 6px; padding: 0 6px; background: #18181b; border: 1px solid #3a3a3d; border-radius: 10px; z-index: 3; font-size: 11.5px; color: #efeff1; }
+                .tmod-vw-confirm button { background: #26262c; border: 1px solid #3a3a3d; border-radius: 8px; color: #efeff1; cursor: pointer; font-size: 11px; padding: 2px 7px; }
+                .tmod-vw-confirm .tmod-vw-yes { background: #3d1f22; border-color: #8f3d3d; color: #ff8a86; }
+                .tmod-vw-confirm button:hover { filter: brightness(1.25); }
+                /* Выпадающие подсказки под полем ввода (плитка «Проверить юзера»).
+                   Позиция фиксированная и считается в JS: панель низкая, поле ввода у самого низа,
+                   поэтому список должен уметь открываться вверх и не обрезаться контейнером. */
+                #tmod-cu-sugg { position: fixed; z-index: 1000001; background: #18181b; border: 1px solid #3a3a3d; border-radius: 10px; box-shadow: 0 10px 24px rgba(0,0,0,.5); overflow: hidden auto; max-height: 240px; box-sizing: border-box; }
+                /* Цвет и размер задаём явно: голый span наследовал цвет страницы (чёрный текст
+                   на сером), а размер брался от содержимого панели, а не от строки списка. */
+                #tmod-cu-sugg div[data-login] { padding: 7px 10px; font-size: 14px; color: #efeff1; cursor: pointer; display: flex; gap: 8px; align-items: center; }
+                #tmod-cu-sugg div[data-login]:hover, #tmod-cu-sugg div[data-login].sel { background: #3a3a44; }
+                #tmod-cu-sugg div[data-login].sel { box-shadow: inset 2px 0 0 #9146FF; }
+                #tmod-cu-sugg .tmod-cu-nick { flex: 1 1 auto; min-width: 0; font-weight: 600; color: #efeff1; overflow-wrap: anywhere; }
+                #tmod-cu-sugg .tmod-cu-tag { margin-left: auto; font-size: 11.5px; font-weight: 600; flex: 0 0 auto; }
+                #tmod-cu-sugg .tmod-cu-empty { padding: 9px 10px; font-size: 13px; color: #adadb8; }
+                .tmod-vw-row:hover .tmod-vw-act, .tmod-vw-act[data-danger="1"][data-armed="1"] { opacity: 1; }
+                /* В результате «Проверить юзера» строка одна — действия показываем сразу,
+                   а не по наведению, как в списках. */
+                .tmod-lookup-row .tmod-vw-act { opacity: 1; }
+                .tmod-vw-act:hover { background: #3a3a3d; color: #efeff1; }
                 .tmod-feature-btn {
                     background: #18181b !important; border: 1px solid #3a3a3d !important; border-radius: 8px !important;
                     cursor: pointer !important; display: flex !important; flex-direction: row !important;
@@ -939,11 +999,19 @@
                 .tmod-feature-btn:hover { background: #26262c !important; border-color: #4f4f52 !important; }
                 .tmod-feature-btn img { width: 24px !important; height: 24px !important; object-fit: contain !important; flex-shrink: 0 !important; filter: brightness(0) invert(1) !important; }
                 .tmod-feature-btn .tmod-label { font-size: 14px !important; font-weight: 600 !important; color: #efeff1 !important; white-space: nowrap !important; }
+                /* Двухстрочные подписи: один класс на все такие плитки. Высота плитки задаётся
+                   однострочными соседями (иконка 24 + отступы 18+18), поэтому здесь отступы
+                   уменьшены, а освободившаяся высота отдана ТЕКСТУ: кегль больше, чем у
+                   однострочных подписей не сделать (строка «и таймауты» в колонке не влезает),
+                   поэтому воздух распределён межстрочным интервалом — две строки заполняют
+                   плитку, а не висят по центру пустого места. */
+                .tmod-feature-btn.tmod-2l { padding: 9px 10px !important; }
+                .tmod-feature-btn.tmod-2l .tmod-label { font-size: 13px !important; line-height: 1.5 !important; }
                 .tmod-toggle-active span:first-of-type { background-color: #9146FF !important; }
                 .tmod-toggle-active span:last-of-type { transform: translateX(20px) !important; background-color: #fff !important; }
                 .tmod-select-btn {
                     width: 100%; display: flex; align-items: center; gap: 10px;
-                    background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px;
+                    background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 10px;
                     color: #efeff1; padding: 8px 10px; font-size: 14px; cursor: pointer;
                     font-family: inherit; text-align: left;
                 }
@@ -975,26 +1043,41 @@
                     opacity: 0.85;
                     transition: transform 0.2s, opacity 0.2s;
                     cursor: move;
+                    /* Палец/перо: без этого браузер уводит жест в прокрутку и drag не начинается. */
+                    touch-action: none;
                 }
+                /* В режиме редактора плитки чуть уменьшены; под курсором возвращаются к
+                   натуральному размеру и подсвечиваются рамкой — раньше правило :hover было
+                   копией базового и наведение не давало никакого отклика. */
                 .tmod-edit-mode .tmod-tile-wrapper:hover {
-                    transform: scale(0.92);
-                    opacity: 0.85;
+                    transform: scale(1);
+                    opacity: 1;
+                }
+                .tmod-edit-mode .tmod-tile-wrapper:hover .tmod-feature-btn {
+                    border-color: #9146FF !important;
+                }
+                /* Пунктир вокруг сетки — тот же приём, что у зоны скрытых плиток: сразу видно,
+                   что включён режим настройки. */
+                .tmod-edit-mode #tmod-tiles-grid {
+                    min-height: 60px;
+                    outline: 1px dashed #3a3a3d;
+                    outline-offset: 4px;
+                    border-radius: 8px;
                 }
                 .tmod-edit-mode .tmod-tile-action {
                     opacity: 1 !important;
                     pointer-events: auto !important;
                 }
+                /* Призрак перетаскиваемой плитки. Трансформ (движение) задаётся инлайном, потому
+                   что он и есть позиция: в CSS его быть не должно, иначе !important перебивает
+                   translate3d и плитка застревает на месте. */
                 .tmod-drag-ghost {
-                    transform: scale(1.06) !important;
                     opacity: 1 !important;
-                    box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
+                    box-shadow: 0 10px 28px rgba(0,0,0,0.65) !important;
                     position: fixed !important;
                     z-index: 1000000;
                     pointer-events: none !important;
                     margin: 0 !important;
-                }
-                .tmod-edit-mode #tmod-tiles-grid {
-                    min-height: 60px;
                 }
                 .tmod-tt-track { width: 36px; height: 20px; background: #3a3a3d; border-radius: 10px; position: relative; cursor: pointer; transition: background 0.25s; flex-shrink: 0; }
                 .tmod-tt-track.on { background: #00f593; }
@@ -1013,7 +1096,10 @@
                 </div>
             </div>
             <div style="padding: 8px; border-radius: 0 0 8px 8px; min-width: 360px; box-sizing: border-box;" id="tmod-panel-content">
-                <div id="tmod-tiles-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;"></div>
+                <div style="position: relative; min-height: 60px;">
+                    <div id="tmod-tiles-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;"></div>
+                    <div id="tmod-tiles-empty-label" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 12px; color: #adadb8; pointer-events: none; text-align: center;">Все плитки скрыты —<br>нажми «Настроить панель»</div>
+                </div>
                 <div id="tmod-tiles-hidden-zone" style="display: none; margin-top: 12px; border-top: 1px dashed #3a3a3d; padding-top: 8px;">
                     <div style="position: relative; min-height: 60px;">
                         <div id="tmod-tiles-hidden" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;"></div>
@@ -1042,8 +1128,9 @@
             const dx = e.clientX - startX, dy = e.clientY - startY;
             let newRight = startRight - dx, newBottom = startBottom - dy;
             const panelRect = panel.getBoundingClientRect();
-            newRight = Math.max(10, Math.min(newRight, window.innerWidth - panelRect.width - 10));
-            newBottom = Math.max(10, Math.min(newBottom, window.innerHeight - panelRect.height - 10));
+            // Панель можно прижать вплотную к краю экрана (было 10px отступа).
+            newRight = Math.max(0, Math.min(newRight, window.innerWidth - panelRect.width));
+            newBottom = Math.max(0, Math.min(newBottom, window.innerHeight - panelRect.height));
             panel.style.right = newRight + 'px'; panel.style.bottom = newBottom + 'px';
         }
 
@@ -1068,6 +1155,7 @@
         const hiddenZone = panel.querySelector('#tmod-tiles-hidden-zone');
         const hiddenGrid = panel.querySelector('#tmod-tiles-hidden');
         const hiddenLabel = panel.querySelector('#tmod-tiles-hidden-label');
+        const emptyLabel = panel.querySelector('#tmod-tiles-empty-label');
         const editBtn = panel.querySelector('#tmod-panel-edit');
 
         let tileOrder = null;
@@ -1077,20 +1165,28 @@
 
         function tileHtml(feature, hidden) {
             if (!TILE_ICONS[feature]) return '';
+            // Типизация подписи: перенос строки задаётся <br> в TILE_LABELS, а класс ниже
+            // один для всех двухстрочных плиток — так их высота совпадает с остальными.
+            const label = TILE_LABELS[feature] || feature;
+            const twoLine = label.indexOf('<br>') !== -1 ? ' tmod-2l' : '';
             const actionBtn = hidden
-                ? `<button class="tmod-tile-action tmod-tile-add" data-feature="${feature}" title="Показать" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:transparent;border:2px solid #9146FF;color:#9146FF;font-size:14px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;opacity:0;pointer-events:none;transition:opacity 0.2s;">+</button>`
-                : `<button class="tmod-tile-action tmod-tile-remove" data-feature="${feature}" title="Скрыть" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:transparent;border:2px solid #ff6b6b;color:#ff6b6b;font-size:14px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;opacity:0;pointer-events:none;transition:opacity 0.2s;">−</button>`;
-            return `<div class="tmod-tile-wrapper" style="position:relative;width:100%;height:100%;">${actionBtn}<button class="tmod-feature-btn" data-feature="${feature}" style="width:100%;height:100%;">${TILE_ICONS[feature]}<span class="tmod-label">${TILE_LABELS[feature]}</span></button></div>`;
+                ? `<button class="tmod-tile-action tmod-tile-add" data-feature="${feature}" data-tip="Показать плитку" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:transparent;border:2px solid #9146FF;color:#9146FF;font-size:14px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;opacity:0;pointer-events:none;transition:opacity 0.2s;">+</button>`
+                : `<button class="tmod-tile-action tmod-tile-remove" data-feature="${feature}" data-tip="Скрыть плитку" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:transparent;border:2px solid #ff6b6b;color:#ff6b6b;font-size:14px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:10;opacity:0;pointer-events:none;transition:opacity 0.2s;">−</button>`;
+            return `<div class="tmod-tile-wrapper" style="position:relative;width:100%;height:100%;">${actionBtn}<button class="tmod-feature-btn${twoLine}" data-feature="${feature}" style="width:100%;height:100%;">${TILE_ICONS[feature]}<span class="tmod-label">${label}</span></button></div>`;
         }
 
         function renderTiles() {
             const visible = (tileOrder || []).filter(f => !tileHidden.includes(f));
             grid.innerHTML = visible.map(f => tileHtml(f, false)).join('');
+            // Если скрыто всё, пустая сетка смотрится как поломка — показываем подсказку.
+            if (emptyLabel) emptyLabel.style.display = visible.length ? 'none' : 'block';
+            bindTips(content);
         }
 
         function renderHidden() {
             hiddenGrid.innerHTML = tileHidden.map(f => tileHtml(f, true)).join('');
             hiddenLabel.style.display = tileHidden.length ? 'none' : 'block';
+            bindTips(content);
         }
 
         function saveTilesConfig() {
@@ -1104,146 +1200,392 @@
             else if (feature === 'chat') showChatSection(panel);
             else if (feature === 'poll') sendToChatInput('/poll');
             else if (feature === 'prediction') sendToChatInput('/prediction');
-            else if (feature === 'clip') showClipSection(panel);
             else if (feature === 'rewards') sendToChatInput('/requests');
             else if (feature === 'stream') showStreamSection(panel);
             else if (feature === 'shoutout') showShoutoutSection(panel);
+            else if (feature === 'unbanrequests') showUnbanRequestsSection(panel);
+            else if (feature === 'banned') showBannedSection(panel);
             else if (feature === 'raid') showRaidSection(panel);
+            else if (feature === 'modactions') showModActionsSection(panel);
+            else if (feature === 'viewers') showViewersSection(panel);
+            else if (feature === 'checkuser') showCheckUserSection(panel);
         }
 
-        function startTileDrag(e, btn, fromHidden) {
-            const feature = btn.dataset.feature;
-            const rect = btn.getBoundingClientRect();
-            const ghost = btn.cloneNode(true);
-            ghost.classList.add('tmod-drag-ghost');
-            ghost.style.cssText = `width:${rect.width}px;height:${rect.height}px;left:${e.clientX - rect.width/2}px;top:${e.clientY - rect.height/2}px;position:fixed;z-index:1000000;pointer-events:none;transform:scale(1.06);box-shadow:0 8px 24px rgba(0,0,0,0.6);margin:0;opacity:1;`;
-            document.body.appendChild(ghost);
-            btn.style.opacity = '0.4';
-            dragState = { feature, ghost, fromHidden, offsetX: rect.width/2, offsetY: rect.height/2, btn, placeholder: null };
+        // ------------------------------------------------------------------
+        // Перетаскивание плиток — по канонической схеме sortable-списков
+        // (dnd-kit «closestCenter» + displacement map из react-beautiful-dnd):
+        //   1) геометрия слотов замеряется ОДИН раз при старте и больше не перечитывается —
+        //      во время перетаскивания layout не трогаем вообще (это и убирает дёрганье);
+        //   2) «дырка» открывается трансформами соседних плиток, а не вставкой элемента в DOM:
+        //      transform не вызывает reflow;
+        //   3) события указателя обрабатываются через requestAnimationFrame — один расчёт на
+        //      кадр, а не на каждое движение мыши;
+        //   4) целевой слот выбирается по ближайшему центру (closestCenter), поэтому плитка
+        //      встаёт ровно туда, куда её ведут, независимо от направления;
+        //   5) order меняется ОДИН раз, на отпускании; клик не меняет ничего.
+        // ------------------------------------------------------------------
+        const DRAG_THRESHOLD = 5;
+        const SLOT_TRANSITION = 'transform 180ms cubic-bezier(.2, 0, 0, 1)';
+
+        function tileElements() {
+            return Array.from(grid.querySelectorAll('.tmod-tile-wrapper'));
         }
 
-        function moveTileDrag(e) {
-            if (!dragState) return;
-            const g = dragState.ghost;
-            g.style.left = (e.clientX - dragState.offsetX) + 'px';
-            g.style.top = (e.clientY - dragState.offsetY) + 'px';
-            g.style.transform = 'scale(1.06)';
-            // временно скрываем призрак для корректного elementFromPoint
-            const ghostDisplay = g.style.display;
-            g.style.display = 'none';
-            const over = document.elementFromPoint(e.clientX, e.clientY);
-            g.style.display = ghostDisplay;
-            if (over) {
-                const inHidden = over.closest('#tmod-tiles-hidden-zone');
-                if (inHidden) {
-                    hiddenZone.style.background = '#1a1a1e';
-                    hiddenZone.style.borderColor = '#9146FF';
-                } else {
-                    hiddenZone.style.background = '';
-                    hiddenZone.style.borderColor = '';
-                }
-                const target = over.closest('.tmod-feature-btn');
-                if (target && target !== dragState.btn) {
-                    const wrapper = target.closest('.tmod-tile-wrapper');
-                    const inGrid = wrapper && wrapper.parentNode === grid;
-                    if (dragState.fromHidden === false && inGrid) {
-                        const fromIdx = tileOrder.indexOf(dragState.feature);
-                        const toIdx = tileOrder.indexOf(target.dataset.feature);
-                        if (fromIdx !== -1 && toIdx !== -1) {
-                            tileOrder.splice(fromIdx, 1);
-                            tileOrder.splice(toIdx, 0, dragState.feature);
-                            renderTiles();
-                            const newBtn = grid.querySelector(`[data-feature="${dragState.feature}"]`);
-                            if (newBtn) { newBtn.style.opacity = '0.4'; dragState.btn = newBtn; }
-                        }
-                        if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
-                    } else if (dragState.fromHidden && inGrid) {
-                        if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
-                        const toIdx = tileOrder.indexOf(target.dataset.feature);
-                        const fromIdx = tileOrder.indexOf(dragState.feature);
-                        if (fromIdx !== -1) {
-                            tileOrder.splice(fromIdx, 1);
-                            tileOrder.splice(toIdx, 0, dragState.feature);
-                        } else if (toIdx !== -1) {
-                            tileOrder.splice(toIdx, 0, dragState.feature);
-                        }
-                        renderTiles();
-                        // Плейсхолдер вставляем ПОСЛЕ перерисовки: renderTiles() перезаписывает
-                        // grid.innerHTML и стирал только что вставленный индикатор, поэтому при
-                        // перетаскивании из скрытых точки сброса не было видно вообще.
-                        const ph = document.createElement('div');
-                        ph.className = 'tmod-drag-placeholder';
-                        ph.style.cssText = 'width:100%;height:100%;border:2px dashed #9146FF;border-radius:8px;background:rgba(145,70,255,0.1);pointer-events:none;box-sizing:border-box;';
-                        const wrapEl = (() => {
-                            const b = grid.querySelector('.tmod-feature-btn[data-feature="' + target.dataset.feature + '"]');
-                            return b ? b.closest('.tmod-tile-wrapper') : null;
-                        })();
-                        if (wrapEl && wrapEl.parentNode) {
-                            wrapEl.parentNode.insertBefore(ph, wrapEl);
-                            dragState.placeholder = ph;
-                        }
-                    } else if (dragState.fromHidden && !target && over.closest('#tmod-tiles-grid')) {
-                        if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
-                        if (tileOrder.includes(dragState.feature)) {
-                            tileOrder = tileOrder.filter(f => f !== dragState.feature);
-                            tileOrder.push(dragState.feature);
-                        } else {
-                            tileOrder.push(dragState.feature);
-                        }
-                        renderTiles();
-                        // См. выше: индикатор добавляем уже после перерисовки сетки.
-                        const ph = document.createElement('div');
-                        ph.className = 'tmod-drag-placeholder';
-                        ph.style.cssText = 'width:100%;height:100%;border:2px dashed #9146FF;border-radius:8px;background:rgba(145,70,255,0.1);pointer-events:none;box-sizing:border-box;';
-                        grid.appendChild(ph);
-                        dragState.placeholder = ph;
-                    } else {
-                        if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
-                    }
-                }
-            }
+        function featureOf(wrap) {
+            const btn = wrap.querySelector('.tmod-feature-btn');
+            return btn ? btn.dataset.feature : null;
         }
 
-        function endTileDrag(e) {
-            if (!dragState) return;
-            const wasHidden = dragState.fromHidden;
-            const feature = dragState.feature;
-            let dropHidden = false;
-            if (dragState.ghost) {
-                const g = dragState.ghost;
-                const ghostDisplay = g.style.display;
-                g.style.display = 'none';
-                const over = document.elementFromPoint(e.clientX, e.clientY);
-                g.style.display = ghostDisplay;
-                dropHidden = !!(over && over.closest('#tmod-tiles-hidden-zone'));
-                g.remove();
-                dragState.btn.style.opacity = '';
-                if (dragState.placeholder) { dragState.placeholder.remove(); dragState.placeholder = null; }
-                hiddenZone.style.background = '';
-                hiddenZone.style.borderColor = '';
-            }
+        // Инвариант: каждая известная плитка есть в order ровно один раз, hidden ⊆ order.
+        function repairTiles() {
+            const seen = Object.create(null);
+            tileOrder = (tileOrder || []).filter((f) => {
+                if (!TILE_ICONS[f] || seen[f]) return false;
+                seen[f] = 1;
+                return true;
+            });
+            Object.keys(TILE_ICONS).forEach((f) => { if (!tileOrder.includes(f)) tileOrder.push(f); });
+            tileHidden = tileHidden.filter((f) => !!TILE_ICONS[f]);
+        }
 
-            if (wasHidden) {
-                if (!dropHidden) {
-                    tileHidden = tileHidden.filter(f => f !== feature);
-                    if (!tileOrder.includes(feature)) tileOrder.push(feature);
-                } else {
-                    tileOrder = tileOrder.filter(f => f !== feature);
-                }
-            } else if (dropHidden && !tileHidden.includes(feature)) {
-                tileHidden.push(feature);
-                tileOrder = tileOrder.filter(f => f !== feature);
-            }
+        function hideTile(feature) {
+            // Позицию в order сохраняем: «+» вернёт плитку на своё место, а не в конец списка.
+            if (!tileHidden.includes(feature)) tileHidden.push(feature);
+            repairTiles();
             renderTiles();
             renderHidden();
-            // Раскладка сохраняется сразу: раньше saveTilesConfig() вызывался только при
-            // выходе из режима пиксилем, поэтому свёрнутая плитка терялась, если панель
-            // закрыть крестиком (или перейти по каналу).
             saveTilesConfig();
-            // Без этого каждый драг тайла оставлял на document вечный mousemove,
-            // который держал в памяти DOM уже закрытой панели.
-            document.removeEventListener('mousemove', moveTileDrag);
-            dragState = null;
+        }
+
+        function showTile(feature) {
+            tileHidden = tileHidden.filter((f) => f !== feature);
+            repairTiles();
+            renderTiles();
+            renderHidden();
+            saveTilesConfig();
+        }
+
+        function pointInRect(x, y, r) {
+            return !!r && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+        }
+
+        // Замороженная геометрия: слоты сетки и прямоугольник зоны скрытых плиток.
+        function measureDrag() {
+            const slots = tileElements().map((w) => {
+                const r = w.getBoundingClientRect();
+                return { el: w, feature: featureOf(w), left: r.left, top: r.top, width: r.width, height: r.height };
+            });
+            const hz = hiddenZone.getBoundingClientRect();
+            const gr = grid.getBoundingClientRect();
+            dragState.slots = slots;
+            dragState.hiddenRect = { left: hz.left, top: hz.top, right: hz.right, bottom: hz.bottom };
+            // Область сетки с запасом: бросок чуть ниже последней плитки должен добавлять в конец,
+            // а не считаться промахом. Считаем один раз — за время драга раскладка не меняется.
+            dragState.gridRect = {
+                left: gr.left - 24, top: gr.top - 24, right: gr.right + 24, bottom: gr.bottom + 24
+            };
+            dragState.originIndex = slots.findIndex((s) => s.feature === dragState.feature);
+            dragState.targetIndex = dragState.originIndex;
+        }
+
+        // closestCenter: слот, центр которого ближе всего к указателю.
+        function closestSlot(x, y) {
+            const slots = dragState.slots || [];
+            let best = dragState.originIndex;
+            let bestD = Infinity;
+            slots.forEach((s, i) => {
+                const dx = x - (s.left + s.width / 2);
+                const dy = y - (s.top + s.height / 2);
+                const d = dx * dx + dy * dy;
+                if (d < bestD) { bestD = d; best = i; }
+            });
+            return best;
+        }
+
+        // Displacement map. Две ситуации:
+        //  * плитку тянут из сетки — её собственная ячейка «уезжает» в целевой слот (подсвеченная
+        //    плитка сама показывает, куда упадёт), а промежуточные сдвигаются на один слот в
+        //    сторону исходного. Так ни одна пара ячеек не накладывается;
+        //  * плитку тянут из скрытых — в сетке её нет, поэтому все плитки от целевого слота
+        //    сдвигаются на один вперёд, а место последней даёт заранее добавленная пустая клетка.
+        function applyDisplacement() {
+            const st = dragState;
+            const slots = st.slots || [];
+            const scale = ' scale(0.92)';   // масштаб режима редактора сохраняем в inline-трансформе
+            const setShift = (s, to) => {
+                if (!s || !s.el || !s.el.isConnected) return;
+                if (!to) { s.el.style.transform = ''; return; }
+                s.el.style.transform = `translate3d(${to.left - s.left}px, ${to.top - s.top}px, 0)` + scale;
+            };
+            slots.forEach((s, i) => {
+                if (i === st.originIndex) {
+                    // Раньше здесь был пропуск, и затемнённая плитка оставалась в исходной ячейке,
+                    // накладываясь на соседей, которые в неё переезжали.
+                    setShift(s, slots[st.targetIndex]);
+                    return;
+                }
+                let shift = 0;
+                if (st.originIndex < 0) {
+                    if (i >= st.targetIndex) shift = 1;
+                } else if (i > st.originIndex && i <= st.targetIndex) {
+                    shift = -1;
+                } else if (i < st.originIndex && i >= st.targetIndex) {
+                    shift = 1;
+                }
+                setShift(s, shift ? slots[i + shift] : null);
+            });
+        }
+
+        // Один расчёт на кадр: двигаем призрак и пересчитываем целевой слот.
+        function dragFrame() {
+            if (!dragState || !dragState.active) return;
+            dragState.rafId = 0;
+            const st = dragState;
+            const x = st.pointerX;
+            const y = st.pointerY;
+            if (st.ghost) {
+                // transform вместо left/top: это композитор, layout не пересчитывается.
+                st.ghost.style.transform = `translate3d(${x - st.grabX}px, ${y - st.grabY}px, 0) scale(1.06)`;
+            }
+            const overHidden = pointInRect(x, y, st.hiddenRect);
+            st.overHidden = overHidden;
+            // Отпускание внутри сетки = осознанный бросок; мимо (в том числе за панель) — отмена.
+            st.inGrid = !overHidden && pointInRect(x, y, st.gridRect);
+            hiddenZone.style.background = overHidden ? '#1a1a1e' : '';
+            hiddenZone.style.borderColor = overHidden ? '#9146FF' : '';
+            if (overHidden) return;
+            const idx = closestSlot(x, y);
+            if (idx !== st.targetIndex) {
+                st.targetIndex = idx;
+                applyDisplacement();
+            }
+        }
+
+        function scheduleFrame() {
+            if (!dragState || dragState.rafId) return;
+            dragState.rafId = requestAnimationFrame(dragFrame);
+        }
+
+        // Снять обработчики с конкретной кнопки (захват указателя отпускается отдельно: при
+        // перерисовке сетки он отваливается сам, когда элемент отсоединяется).
+        function releaseListeners(btn) {
+            if (!btn) return;
+            btn.removeEventListener('pointermove', onTilePointerMove);
+            btn.removeEventListener('pointerup', onTilePointerUp);
+            btn.removeEventListener('pointercancel', onTilePointerCancel);
+            btn.removeEventListener('lostpointercapture', onTilePointerCancel);
+        }
+
+        function releaseCapture(st) {
+            if (!st || !st.btn) return;
+            releaseListeners(st.btn);
+            try {
+                if (st.btn.hasPointerCapture && st.btn.hasPointerCapture(st.pointerId)) {
+                    st.btn.releasePointerCapture(st.pointerId);
+                }
+            } catch (e) {}
+        }
+
+        function onDragBlur() {
+            const st = dragState;
+            cleanupDrag();
+            if (st && st.wasHidden && st.joined) restoreHidden(st.feature);
+        }
+
+        function cleanupDrag() {
+            if (!dragState) return;
+            const st = dragState;
+            dragState = null;   // сразу: releasePointerCapture ниже вызовет lostpointercapture
+            if (st.rafId) { cancelAnimationFrame(st.rafId); st.rafId = 0; }
+            document.removeEventListener('keydown', onDragKeyDown, true);
+            window.removeEventListener('blur', onDragBlur);
+            if (st.btn) {
+                st.btn.style.opacity = '';
+                st.btn.style.cursor = '';
+            }
+            releaseCapture(st);
+            // Снимаем сдвиги, транзишены и подсказки композитору.
+            (st.slots || []).forEach((s) => {
+                if (!s.el) return;
+                s.el.style.transform = '';
+                s.el.style.transition = '';
+                s.el.style.willChange = '';
+            });
+            if (st.ghost) st.ghost.remove();
+            hiddenZone.style.background = '';
+            hiddenZone.style.borderColor = '';
+        }
+
+        function onDragKeyDown(e) {
+            if (e.key !== 'Escape') return;
+            const st = dragState;
+            cleanupDrag();
+            if (st && st.wasHidden && st.joined) restoreHidden(st.feature);
+        }
+
+        function onTilePointerDown(e) {
+            if (!tileEditing) return;
+            if (e.pointerType === 'mouse' && e.button !== 0) return;
+            let btn = e.target && e.target.closest ? e.target.closest('.tmod-feature-btn') : null;
+            if (!btn) return;
+            let wrap = btn.closest('.tmod-tile-wrapper');
+            if (!wrap) return;
+            e.preventDefault();
+            const feature = btn.dataset.feature;
+            // Из скрытых плитка переезжает в сетку НЕ здесь, а в beginTileDrag — то есть только
+            // когда движение реально началось. Иначе она «телепортировалась» в сетку на нажатие.
+            const wasHidden = !!btn.closest('#tmod-tiles-hidden-zone');
+            const rect = wrap.getBoundingClientRect();
+            dragState = {
+                feature, wasHidden, joined: false,
+                btn, wrap, pointerId: e.pointerId,
+                startX: e.clientX, startY: e.clientY,
+                // Смещение захвата считаем от точки нажатия — призрак не «прыгает» под курсором.
+                // Для плитки из скрытых оно будет пересчитано на старте (её берут за центр).
+                grabX: e.clientX - rect.left, grabY: e.clientY - rect.top,
+                pointerX: e.clientX, pointerY: e.clientY,
+                ghost: null, active: false, slots: null, originIndex: -1, targetIndex: -1,
+                overHidden: false, inGrid: false, rafId: 0
+            };
+            // Захват указателя: дальнейшие события идут на саму плитку, «вечных» слушателей
+            // на document не остаётся (раньше они переживали закрытие панели).
+            try { btn.setPointerCapture(e.pointerId); } catch (err) {}
+            btn.addEventListener('pointermove', onTilePointerMove);
+            btn.addEventListener('pointerup', onTilePointerUp);
+            btn.addEventListener('pointercancel', onTilePointerCancel);
+            btn.addEventListener('lostpointercapture', onTilePointerCancel);
+        }
+
+        function beginTileDrag(e) {
+            const st = dragState;
+            // Плитка из скрытых вступает в сетку именно здесь — когда перетаскивание началось.
+            // Заодно для неё появляется место, и дальше всё идёт тем же путём, что и внутри сетки.
+            if (st.wasHidden && !st.joined) {
+                st.joined = true;
+                tileHidden = tileHidden.filter((f) => f !== st.feature);
+                renderTiles();
+                renderHidden();
+                const nb = grid.querySelector('.tmod-feature-btn[data-feature="' + st.feature + '"]');
+                const nw = nb && nb.closest('.tmod-tile-wrapper');
+                if (nb && nw) {
+                    // Слушатели и захват переносим на НОВЫЙ элемент: старый отсоединён перерисовкой.
+                    releaseListeners(st.btn);
+                    st.btn = nb;
+                    st.wrap = nw;
+                    try { nb.setPointerCapture(e.pointerId); } catch (err) {}
+                    nb.addEventListener('pointermove', onTilePointerMove);
+                    nb.addEventListener('pointerup', onTilePointerUp);
+                    nb.addEventListener('pointercancel', onTilePointerCancel);
+                    nb.addEventListener('lostpointercapture', onTilePointerCancel);
+                }
+            }
+            const rect = st.wrap.getBoundingClientRect();
+            if (st.wasHidden) {
+                // Плитка прилетела под курсор целиком — берём её за центр.
+                st.grabX = rect.width / 2;
+                st.grabY = rect.height / 2;
+            }
+            const ghost = st.btn.cloneNode(true);
+            ghost.classList.add('tmod-drag-ghost');
+            ghost.style.cssText = `width:${rect.width}px;height:${rect.height}px;left:0;top:0;`
+                + 'position:fixed;z-index:1000000;pointer-events:none;margin:0;opacity:1;'
+                + 'will-change:transform;';
+            document.body.appendChild(ghost);
+            dragState.ghost = ghost;
+            dragState.btn.style.opacity = '0.3';
+            dragState.btn.style.cursor = 'grabbing';
+            dragState.active = true;
+            // Порядок важен: сначала замеряем раскладку (до любых трансформов), потом включаем
+            // анимацию сдвигов и только затем считаем первый кадр.
+            measureDrag();
+            (dragState.slots || []).forEach((s) => {
+                if (!s.el) return;
+                s.el.style.transition = SLOT_TRANSITION;
+                s.el.style.willChange = 'transform';
+            });
+            document.addEventListener('keydown', onDragKeyDown, true);
+            window.addEventListener('blur', onDragBlur);
+            dragFrame();
+        }
+
+        function onTilePointerMove(e) {
+            if (!dragState || e.pointerId !== dragState.pointerId) return;
+            if (!dragState.active) {
+                // Порог: меньше — это клик, перетаскивание не начинаем.
+                if (Math.abs(e.clientX - dragState.startX) < DRAG_THRESHOLD
+                    && Math.abs(e.clientY - dragState.startY) < DRAG_THRESHOLD) return;
+                beginTileDrag(e);
+            }
+            dragState.pointerX = e.clientX;
+            dragState.pointerY = e.clientY;
+            scheduleFrame();
+        }
+
+        // Новый видимый порядок собирается из целевого слота, а order пересобирается из него:
+        // скрытые плитки остаются на своих местах, видимые получают новые позиции.
+        // Плитка из скрытых в видимом списке отсутствует — её туда ВСТАВЛЯЮТ, а не переставляют
+        // (раньше indexOf давал -1 и функция молча выходила: плитка не появлялась вообще).
+        function applyVisibleMove(feature, targetIndex) {
+            const visible = (tileOrder || []).filter((f) => !tileHidden.includes(f));
+            const from = visible.indexOf(feature);
+            if (from !== -1) visible.splice(from, 1);
+            const to = Math.max(0, Math.min(visible.length, targetIndex));
+            visible.splice(to, 0, feature);
+            // Достаём из скрытых: инвариант repairTiles() ниже восстановит остальное.
+            if (tileHidden.includes(feature)) tileHidden = tileHidden.filter((f) => f !== feature);
+            let vi = 0;
+            tileOrder = tileOrder.map((f) => (tileHidden.includes(f) ? f : visible[vi++]));
+            repairTiles();
+            renderTiles();
+            renderHidden();
+            saveTilesConfig();
+        }
+
+        // Отмена: плитка, которую вытащили из скрытых, возвращается туда. Записи в storage нет —
+        // в сохранённой конфигурации она и была скрытой, мы меняли состояние только в памяти.
+        function restoreHidden(feature) {
+            if (!tileHidden.includes(feature)) tileHidden.push(feature);
+            renderTiles();
+            renderHidden();
+        }
+
+        function onTilePointerUp(e) {
+            if (!dragState || e.pointerId !== dragState.pointerId) return;
+            const st = dragState;
+            const active = st.active;
+            const overHidden = st.overHidden;
+            const inGrid = st.inGrid;
+            const targetIndex = st.targetIndex;
+            const originIndex = st.originIndex;
+            cleanupDrag();
+            if (!active) {
+                // Клик: перестановки нет. Если плитку успели вытащить из скрытых — вернуть.
+                if (st.wasHidden && st.joined) restoreHidden(st.feature);
+                return;
+            }
+            if (overHidden) { hideTile(st.feature); return; }   // осознанно обратно в скрытые
+            if (!inGrid) {
+                // Бросили мимо сетки — отмена.
+                if (st.wasHidden && st.joined) restoreHidden(st.feature);
+                return;
+            }
+            // Плитка из скрытых: сам бросок в сетку и есть действие, поэтому добавляем её даже
+            // если она отпущена в той же ячейке, куда встала при входе (раньше это читалось как
+            // «сдвига нет» и плитка возвращалась в скрытые).
+            if (st.wasHidden && st.joined) { applyVisibleMove(st.feature, targetIndex); return; }
+            if (targetIndex === originIndex || targetIndex < 0) return;   // осталась на месте
+            applyVisibleMove(st.feature, targetIndex);
+        }
+
+        function onTilePointerCancel(e) {
+            if (!dragState) return;
+            if (e && e.pointerId !== undefined && e.pointerId !== dragState.pointerId) return;
+            // Захват отпустил СТАРЫЙ элемент, который мы заменили перерисовкой при перетаскивании
+            // из скрытых: это не отмена перетаскивания.
+            if (e && e.type === 'lostpointercapture' && e.target !== dragState.btn) return;
+            const st = dragState;
+            cleanupDrag();
+            if (st.wasHidden && st.joined) restoreHidden(st.feature);
         }
 
         function setEditBtnIcon(editing) {
@@ -1264,27 +1606,10 @@
         });
         setEditBtnIcon(false);
 
-        grid.addEventListener('mousedown', (e) => {
-            if (!tileEditing) return;
-            if (e.button !== 0) return;
-            const btn = e.target.closest('.tmod-feature-btn');
-            if (!btn) return;
-            e.preventDefault();
-            startTileDrag(e, btn, false);
-            document.addEventListener('mousemove', moveTileDrag);
-            document.addEventListener('mouseup', endTileDrag, { once: true });
-        });
-
-        hiddenGrid.addEventListener('mousedown', (e) => {
-            if (!tileEditing) return;
-            if (e.button !== 0) return;
-            const btn = e.target.closest('.tmod-feature-btn');
-            if (!btn) return;
-            e.preventDefault();
-            startTileDrag(e, btn, true);
-            document.addEventListener('mousemove', moveTileDrag);
-            document.addEventListener('mouseup', endTileDrag, { once: true });
-        });
+        // Один общий обработчик нажатия и для сетки, и для зоны скрытых: он сам понимает,
+        // откуда тянут плитку. Мouse-события не используются — только Pointer Events с захватом.
+        grid.addEventListener('pointerdown', onTilePointerDown);
+        hiddenGrid.addEventListener('pointerdown', onTilePointerDown);
 
         grid.addEventListener('click', (e) => {
             if (tileEditing) return;
@@ -1294,22 +1619,9 @@
 
         content.addEventListener('click', (e) => {
             const addBtn = e.target.closest('.tmod-tile-add');
-            if (addBtn) {
-                const f = addBtn.dataset.feature;
-                tileHidden = tileHidden.filter(x => x !== f);
-                if (!tileOrder.includes(f)) tileOrder.push(f);
-                renderTiles(); renderHidden();
-                saveTilesConfig();
-                return;
-            }
+            if (addBtn) { showTile(addBtn.dataset.feature); return; }
             const remBtn = e.target.closest('.tmod-tile-remove');
-            if (remBtn) {
-                const f = remBtn.dataset.feature;
-                if (!tileHidden.includes(f)) tileHidden.push(f);
-                renderTiles(); renderHidden();
-                saveTilesConfig();
-                return;
-            }
+            if (remBtn) { hideTile(remBtn.dataset.feature); return; }
         });
 
         storageGet('tmod_tiles_config').then(saved => {
@@ -1323,12 +1635,9 @@
                 }
             } catch { tileOrder = [...DEFAULT_TILE_ORDER]; }
             if (!tileOrder || !tileOrder.length) tileOrder = [...DEFAULT_TILE_ORDER];
-            // Восстанавливаем плитки, потерянные между order и hidden (баги старых версий)
-            (Object.keys(TILE_ICONS)).forEach(f => {
-                if (tileOrder.indexOf(f) === -1 && tileHidden.indexOf(f) === -1) {
-                    tileOrder.push(f);
-                }
-            });
+            // Один проход по инварианту: нет мёртвых признаков, нет дублей, все живые плитки
+            // присутствуют ровно один раз (лечит и старые конфиги).
+            repairTiles();
             renderTiles(); renderHidden();
         });
 
@@ -1346,7 +1655,7 @@
         const settingsBtn = panel.querySelector('#tmod-panel-settings');
         if (settingsBtn) settingsBtn.style.display = 'none';
         const sectionStyle = 'font-size: 11px; font-weight: 600; color: #adadb8; text-transform: uppercase; letter-spacing: 0.5px; margin: 16px 0 8px;';
-        const dangerBtnStyle = 'display: block; width: 100%; background: #0e0e10; border: 1px solid #5c2323; color: #ff6b6b; border-radius: 6px; padding: 9px 12px; font-size: 14px; font-weight: 600; cursor: pointer; text-align: left; margin-top: 6px;';
+        const dangerBtnStyle = 'display: block; width: 100%; background: #0e0e10; border: 1px solid #5c2323; color: #ff6b6b; padding: 9px 12px; font-size: 14px; font-weight: 600; cursor: pointer; text-align: left; margin-top: 6px;';
         content.innerHTML = `
             <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;"><span>←</span> <span>Назад</span></button>
             <h3 style="margin: 0 0 10px; font-size: 14px; font-weight: 600; color: #efeff1;">Настройки</h3>
@@ -1372,10 +1681,10 @@
                 <div class="tmod-tt-track" id="tmod-sett-showalways"><div class="tmod-tt-thumb"></div></div>
             </div>
             <div style="${sectionStyle}">Аккаунт</div>
-            <button id="tmod-sett-logout" data-label="Выйти из аккаунта" style="${dangerBtnStyle}">Выйти из аккаунта</button>
+            <button id="tmod-sett-logout" class="tmod-btn" data-label="Выйти из аккаунта" style="${dangerBtnStyle}">Выйти из аккаунта</button>
             <div style="${sectionStyle}">Сброс данных</div>
-            <button id="tmod-sett-reset-tiles" data-label="Сбросить плитки к дефолту" style="${dangerBtnStyle}">Сбросить плитки к дефолту</button>
-            <button id="tmod-sett-clear-history" data-label="Очистить историю анонсов" style="${dangerBtnStyle}">Очистить историю анонсов</button>
+            <button id="tmod-sett-reset-tiles" class="tmod-btn" data-label="Сбросить плитки к дефолту" style="${dangerBtnStyle}">Сбросить плитки к дефолту</button>
+            <button id="tmod-sett-clear-history" class="tmod-btn" data-label="Очистить историю анонсов" style="${dangerBtnStyle}">Очистить историю анонсов</button>
             <div id="tmod-sett-status" style="margin-top: 12px; font-size: 13px; text-align: center;"></div>
         `;
         content.querySelector('#tmod-back').onclick = () => { panel.remove(); panelOpen = false; setTimeout(() => createPanel(), 10); };
@@ -1542,7 +1851,7 @@ return `
         content.innerHTML = `
             <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;"><span>←</span> <span>Назад</span></button>
             <div id="tmod-history-wrap"></div>
-            <textarea id="tmod-announce-text" placeholder="Текст анонса (макс. 500 символов)" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 10px; font-size: 14px; resize: vertical;" rows="4"></textarea>
+            <textarea id="tmod-announce-text" class="tmod-in" placeholder="Текст анонса (макс. 500 символов)" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; color: #efeff1; padding: 10px; font-size: 14px; resize: vertical;" rows="4"></textarea>
             <div id="tmod-color-wrap">
                 <button type="button" class="tmod-select-btn" id="tmod-color-btn">
                     <span id="tmod-color-stripe" style="width: 8px; height: 18px; border-radius: 2px; flex-shrink: 0;"></span>
@@ -1551,7 +1860,7 @@ return `
                 </button>
                 <div class="tmod-color-list" id="tmod-color-list" hidden></div>
             </div>
-            <button id="tmod-send-announce" style="width: 100%; background: #9146FF; color: white; border: none; border-radius: 4px; padding: 10px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 10px;">Отправить</button>
+            <button id="tmod-send-announce" class="tmod-btn" style="width: 100%; background: #9146FF; color: white; border: none; padding: 10px; font-size: 14px; font-weight: 600; cursor: pointer; margin-top: 10px;">Отправить</button>
             <div id="tmod-announce-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
         `;
 
@@ -1781,7 +2090,7 @@ const announceText = content.querySelector('#tmod-announce-text');
                 .tmod-dd { position: relative; flex-shrink: 0; }
                 .tmod-dd-btn { display: flex; align-items: center; justify-content: space-between; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 10px; padding: 2px 8px; height: 20px; font-size: 11px; color: #efeff1; cursor: pointer; transition: border-color 0.15s; white-space: nowrap; }
                 .tmod-dd-btn:hover { border-color: #53535f; }
-                .tmod-dd-list { position: absolute; bottom: calc(100% + 4px); left: 0; right: 0; background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 6px; padding: 4px 0; z-index: 10; display: none; overflow: hidden; }
+                .tmod-dd-list { position: absolute; bottom: calc(100% + 4px); left: 0; right: 0; background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 10px; padding: 4px 0; z-index: 10; display: none; overflow: hidden; }
                 .tmod-dd-list.open { display: block; }
                 .tmod-dd-item { padding: 5px 8px; font-size: 11px; color: #efeff1; cursor: pointer; transition: background 0.1s; }
                 .tmod-dd-item:hover { background: #26262c; }
@@ -1983,32 +2292,6 @@ const announceText = content.querySelector('#tmod-announce-text');
         });
     }
 
-    function showClipSection(panel) {
-        const content = panel.querySelector('#tmod-panel-content');
-        if (!content) return;
-
-        content.innerHTML = `
-            <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;"><span>←</span> <span>Назад</span></button>
-            <div style="text-align: center; color: #adadb8; font-size: 13px; margin-bottom: 15px;">Создание клипа из текущего момента стрима</div>
-            <input type="text" id="tmod-clip-title" placeholder="Название клипа (необязательно)" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 10px; font-size: 14px; margin-bottom: 10px;">
-            <button id="tmod-create-clip" style="width: 100%; background: #9146FF; color: white; border: none; border-radius: 4px; padding: 12px; font-size: 14px; font-weight: 600; cursor: pointer;">${ICON_CLIP}Создать клип</button>
-            <div id="tmod-clip-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
-        `;
-
-        content.querySelector('#tmod-back').onclick = () => { panel.remove(); panelOpen = false; setTimeout(() => createPanel(), 10); };
-        content.querySelector('#tmod-create-clip').onclick = () => {
-            const title = content.querySelector('#tmod-clip-title').value.trim();
-            sendToChatInput(title ? '/clip "' + title + '"' : '/clip');
-            const statusDiv = content.querySelector('#tmod-clip-status');
-            statusDiv.innerHTML = ICON_OK + '<span style="color:#00ff00;">Клип создан!</span>';
-            setTimeout(() => {
-                if (!panel.isConnected || !panel.querySelector('#tmod-create-clip')) return;
-                panel.remove();
-                createPanel();
-            }, 1500);
-        };
-    }
-
     function showStreamSection(panel) {
         const channelName = getChannelName();
         const content = panel.querySelector('#tmod-panel-content');
@@ -2046,21 +2329,21 @@ const announceText = content.querySelector('#tmod-announce-text');
             <div id="tmod-stream-form" style="display: none;">
                 <div style="margin-bottom: 12px;">
                     <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 4px;">Название стрима</label>
-                    <input type="text" id="tmod-stream-title" maxlength="140" placeholder="Название трансляции" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
+                    <input type="text" id="tmod-stream-title" maxlength="140" class="tmod-in" placeholder="Название трансляции" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
                 </div>
                 <div style="margin-bottom: 4px; position: relative;">
                     <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 4px;">Категория / Игра</label>
-                    <input type="text" id="tmod-stream-category" placeholder="Поиск категории..." autocomplete="off" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
+                    <input type="text" id="tmod-stream-category" class="tmod-in" placeholder="Поиск категории..." autocomplete="off" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
                     <div id="tmod-cat-results" style="position: absolute; top: 100%; left: 0; right: 0; background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 0 0 4px 4px; display: none; z-index: 10; max-height: 250px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #3a3a3d transparent;"></div>
                 </div>
                 <div id="tmod-cat-card" style="margin-bottom: 12px; background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 6px; padding: 10px; display: none; align-items: center; gap: 12px;"></div>
                 <div style="margin-bottom: 12px;">
                     <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 4px;">Язык</label>
-                    <select id="tmod-stream-lang" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
+                    <select id="tmod-stream-lang" class="tmod-in" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
                         ${LANGUAGES.map(l => `<option value="${l.value}">${l.label}</option>`).join('')}
                     </select>
                 </div>
-                <button id="tmod-stream-save" style="width: 100%; background: #9146FF; color: white; border: none; border-radius: 4px; padding: 10px; font-size: 14px; font-weight: 600; cursor: pointer;">Сохранить</button>
+                <button id="tmod-stream-save" class="tmod-btn" style="width: 100%; background: #9146FF; color: white; border: none; padding: 10px; font-size: 14px; font-weight: 600; cursor: pointer;">Сохранить</button>
                 <div id="tmod-stream-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
             </div>
         `;
@@ -2238,11 +2521,11 @@ const announceText = content.querySelector('#tmod-announce-text');
             <div id="tmod-so-loading" style="text-align: center; color: #adadb8; padding: 20px;">Загрузка зрителей...</div>
             <div id="tmod-so-form" style="display: none;">
                 <div style="margin-bottom: 10px; display: flex; gap: 6px;">
-                    <input type="text" id="tmod-so-manual" placeholder="Имя пользователя..." autocomplete="off" style="flex: 1; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
-                    <button id="tmod-so-send-manual" style="background: #9146FF; color: white; border: none; border-radius: 4px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;">Отметить</button>
+                    <input type="text" id="tmod-so-manual" class="tmod-in" placeholder="Имя пользователя..." autocomplete="off" style="flex: 1; background: #0e0e10; border: 1px solid #3a3a3d; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
+                    <button id="tmod-so-send-manual" class="tmod-btn" style="background: #9146FF; color: white; border: none; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;">Отметить</button>
                 </div>
                 <div style="border-top: 1px solid #26262c; padding-top: 8px; margin-bottom: 8px;">
-                    <input type="text" id="tmod-so-search" placeholder="Поиск в чате..." autocomplete="off" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
+                    <input type="text" id="tmod-so-search" class="tmod-in" placeholder="Поиск в чате..." autocomplete="off" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
                 </div>
                 <div id="tmod-so-list" style="max-height: 350px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #3a3a3d transparent;"></div>
                 <div id="tmod-so-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
@@ -2378,6 +2661,2745 @@ const announceText = content.querySelector('#tmod-announce-text');
     // Рейд
     // ============================================================================
 
+    // --- Плитка «Действия модераторов» (ModActionsList) --------------------------
+    // Собственный журнал Twitch (окно «Действия модератора»): автор, цель, время, а для
+    // удалённых сообщений — их текст. Серверная история канала, поэтому видна независимо
+    // от того, смотрел ли модератор стрим и была ли в тот момент открыта панель.
+    const MOD_ACTION_CATEGORIES = {
+        CHAT_MODE_CHANGES: 'режим чата', RAIDS: 'рейды', UNBAN_REQUESTS: 'заявки на разбан',
+        GUEST_STAR: 'Guest Star', WARNINGS: 'предупреждения', ROLE_CHANGES: 'роли',
+        BLOCKED_AND_PERMITTED_TERMS: 'слова', TIMEOUTS_AND_UNTIMEOUTS: 'отстранения',
+        AUTOMOD_LEVEL_CHANGES: 'AutoMod', MODS_AND_VIPS: 'моды и VIP',
+        SUSPICIOUS_USERS: 'подозрительные', BANS_AND_UNBANS: 'баны',
+        SHOUTOUTS: 'отметки', MESSAGE_DELETIONS: 'удаления'
+    };
+
+    function modActionColor(icon, category) {
+        if (icon === 'BAN' || icon === 'CHECK' && category === 'BANS_AND_UNBANS') return '#eb0400';
+        if (icon === 'TIMEOUT' || category === 'TIMEOUTS_AND_UNTIMEOUTS') return '#e68100';
+        if (icon === 'TRASH' || category === 'MESSAGE_DELETIONS') return '#9147ff';
+        if (icon === 'MEGAPHONE' || category === 'SHOUTOUTS') return '#00c8af';
+        if (icon === 'RAID' || category === 'RAIDS') return '#1f69ff';
+        if (icon === 'VIP' || category === 'MODS_AND_VIPS') return '#d4af37';
+        if (category === 'UNBAN_REQUESTS') return '#00d66a';
+        if (category === 'BLOCKED_AND_PERMITTED_TERMS') return '#7a7a85';
+        return '#adadb8';
+    }
+
+    // Поле пагинации журнала: проверено на живых запросах Twitch — `after` (base64-курсор),
+    // первая страница идёт с `after: ""`. Перехватчик может переопределить значение,
+    // если Twitch переименует поле.
+    // Ключ пагинации. «Выученное» значение принимаем ТОЛЬКО если оно похоже на курсор:
+    // twitch-api.js писал сюда первую переменную, которой не было в базовом запросе, — и туда
+    // попадали targetID / userID / filter от операций карточек. С таким ключом мы отправляли
+    // курсор в никуда (например `targetID: "eyJ…"`), Twitch его игнорировал и возвращал первую
+    // страницу — это и выглядело как «журнал перестал листаться».
+    const MODLOG_CURSOR_KEY = /^(after|cursor|endcursor|end_cursor|startcursor|from|offset)$/i;
+    function modLogPageKey() {
+        try {
+            const j = JSON.parse(localStorage.getItem('TMOD_MODLOG_PAGE_KEY') || 'null');
+            if (j && j.key) {
+                const key = String(j.key);
+                const sample = String(j.sample || '');
+                if (MODLOG_CURSOR_KEY.test(key) || /^eyJ[A-Za-z0-9_-]{8,}/.test(sample)) {
+                    return { key: key, type: (j.type === 'number') ? 'number' : 'string', learned: true };
+                }
+                debugLogOnce('modlog-pagekey-ignored', { key: key, sample: sample.slice(0, 40) });
+            }
+        } catch (e) {}
+        return { key: 'after', type: 'string', learned: false };
+    }
+    function modLogCursorField() {
+        return modLogPageKey().key;
+    }
+
+    // Курсор пагинации из ответа: у Twitch это base64-строка, начинающаяся с 'eyJ'.
+    // Сначала ищем по имени поля (cursor/after), только потом — по виду строки.
+    function findCursorIn(node, wantValue) {
+        if (node == null) return null;
+        if (typeof node === 'string') {
+            if (wantValue) return /^eyJ[A-Za-z0-9+/=_-]{10,}$/.test(node) ? node : null;
+            return /^eyJ[A-Za-z0-9+/=_-]{24,}$/.test(node) ? node : null;
+        }
+        if (typeof node !== 'object') return null;
+        const keys = Array.isArray(node) ? node.map((_, i) => i) : Object.keys(node);
+        for (const k of keys) {
+            if (!Array.isArray(node) && /cursor|after/i.test(String(k))) {
+                const byName = findCursorIn(node[k], true);
+                if (byName) return byName;
+            }
+        }
+        for (const k of keys) {
+            const found = findCursorIn(node[k], false);
+            if (found) return found;
+        }
+        return null;
+    }
+
+    // Кэш журнала модерации по каналу: храним уже прочитанные события, чтобы при следующем
+    // открытии не тянуть те же страницы заново. Новые записи подтягиваем сверху, а глубину
+    // (старые страницы) добираем в фоне и дописываем по мере поступления.
+    const MODLOG_CACHE_KEY = 'TMOD_MODLOG_CACHE';
+    const MODLOG_CACHE_MAX = 3000;
+    // v3: опорные id страниц (доказательство «догнали без пропусков»), курсор обрыва догона и
+    // признак «журнал прочитан до конца». Старые версии без этих полей не проходят самопроверку
+    // и перечитываются заново — так битый или устаревший кэш не может дать неполный список.
+    const MODLOG_CACHE_VERSION = 3;
+    // В кэш кладём ТОЛЬКО страйки: бан, отстранение, их снятие и предупреждение.
+    // Остальное (удаления сообщений, VIP, мод-права, отметки) списку банов не нужно,
+    // а место занимает — из-за этого история упиралась в лимит хранилища.
+    // Что считать страйком, определяем в первую очередь по КАТЕГОРИИ (filterCategoryID):
+    // именно она надёжна. По значку нельзя: у разбана и снятия таймаута иконка CHECK,
+    // а не UNBAN/UNTIMEOUT — из-за этого снятия не распознавались.
+    function strikeKindOf(ev) {
+        if (!ev) return '';
+        const cat = String(ev.category || '').toUpperCase();
+        const icon = String(ev.icon || '').toUpperCase();
+        if (cat === 'BANS_AND_UNBANS') return icon === 'CHECK' ? 'unban' : 'ban';
+        if (cat === 'TIMEOUTS_AND_UNTIMEOUTS') return icon === 'CHECK' ? 'untimeout' : 'timeout';
+        if (cat === 'WARNINGS') return 'warn';
+        // Резерв, если категория не пришла: значок, затем текст (он локализован).
+        if (/UNBAN|UNTIMEOUT/.test(icon)) return 'unban';
+        if (icon === 'BAN') return 'ban';
+        if (icon === 'TIMEOUT') return 'timeout';
+        const txt = String(ev.title || ev.text || ev.body || '').toLowerCase();
+        if (/разбан|снят[оы]?\s*(бан|отстран)/.test(txt)) return 'unban';
+        if (/забан/.test(txt)) return 'ban';
+        if (/отстран/.test(txt)) return 'timeout';
+        if (/предупрежд/.test(txt)) return 'warn';
+        return '';
+    }
+    function isStrikeEvent(e) {
+        return !!strikeKindOf(e);
+    }
+
+    // Длительность отстранения из текста журнала («Отстранён на 10 минут») — нужна, чтобы
+    // понять, истекло ли оно, когда проверка статуса недоступна.
+    function parseTimeoutMs(text) {
+        const t = String(text || '').toLowerCase();
+        const m = /(\d+)\s*(сек|second|мин|minute|час|hour|день|дн|day|недел|week)/.exec(t);
+        if (!m) return 0;
+        const n = Number(m[1]);
+        const u = m[2];
+        if (/сек|second/.test(u)) return n * 1000;
+        if (/мин|minute/.test(u)) return n * 60000;
+        if (/час|hour/.test(u)) return n * 3600000;
+        if (/день|дн|day/.test(u)) return n * 86400000;
+        if (/недел|week/.test(u)) return n * 7 * 86400000;
+        return 0;
+    }
+    // «Причина» из записи журнала. Twitch кладёт в текст ОПИСАНИЕ действия («Забанен
+    // пользователем X», «Модератор Y забанил пользователя Z во время общего чата») — это не
+    // причина, и в списке такая строка только мешает. Показываем причину, если Twitch её
+    // действительно указал; иначе строки нет вовсе.
+    function reasonFromLogEvent(ev) {
+        const raw = [ev && ev.text, ev && ev.body]
+            .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+        if (!raw) return '';
+        const m = /(?:указанн\w*\s+причина|указаны\s+правила\s+чата|причина|reason)\s*:?\s*(.+)$/i.exec(raw);
+        if (m && m[1] && m[1].trim()) return m[1].trim();
+        // Нет маркера причины, но текст и не описание действия (например, «хватит спамить»).
+        if (/забан|разбан|отстран|снят|предупрежд|запрос на снятие|общего чата|общем чате/i.test(raw)) return '';
+        return raw;
+    }
+    // Бан/отстранение из общего чата: в журнале канала такие записи есть, но к нашему
+    // каналу они относятся лишь косвенно — помечаем, чтобы не выглядело как наше действие.
+    function isSharedChatEvent(ev) {
+        const raw = [ev && ev.title, ev && ev.text, ev && ev.body].filter(Boolean).join(' ');
+        return /общего чата|общем чате|shared chat/i.test(raw);
+    }
+    function modLogCacheAll() {
+        try {
+            const all = JSON.parse(localStorage.getItem(MODLOG_CACHE_KEY) || '{}') || {};
+            // Ключ кэша — ID канала. Раньше ключом был логин, а журнал читается по ID: при
+            // любом расхождении записи одного канала оседали в кэше другого и всплывали как
+            // «забанен» там, где такой записи в журнале нет. Старые ключи удаляем насовсем.
+            let dirty = false;
+            Object.keys(all).forEach((k) => { if (!/^\d+$/.test(k)) { delete all[k]; dirty = true; } });
+            if (dirty) {
+                try { localStorage.setItem(MODLOG_CACHE_KEY, JSON.stringify(all)); } catch (e) {}
+            }
+            return all;
+        } catch (e) { return {}; }
+    }
+    // Форма кэша канала — в одном месте (v3).
+    function modLogCacheEmpty() {
+        return {
+            v: MODLOG_CACHE_VERSION, events: [], hasMore: true, topAt: null, topId: null,
+            deepCursor: null, deepAt: null, gapCursor: null, endReached: false,
+            anchorIds: [], pages: 0, scanned: 0, at: 0
+        };
+    }
+
+    // Самопроверка кэша. Кэш — единственное основание для вывода «докачали только новое»,
+    // поэтому битый кэш нельзя использовать молча: лучше прочитать журнал заново.
+    function modLogCacheCheck(c) {
+        if (!c || typeof c !== 'object') return 'кэша нет';
+        if (!Array.isArray(c.events)) return 'нет списка записей';
+        if (c.v !== MODLOG_CACHE_VERSION) return 'кэш старой версии (' + c.v + ')';
+        const ids = Object.create(null);
+        let maxAt = 0;
+        let minAt = 0;
+        for (const e of c.events) {
+            if (!e || !e.id || !e.at) return 'запись без id или даты';
+            if (ids[e.id]) return 'дубликат записи ' + String(e.id).slice(0, 8);
+            ids[e.id] = 1;
+            const t = new Date(e.at).getTime();
+            if (!t) return 'нечитаемая дата записи';
+            if (!maxAt || t > maxAt) maxAt = t;
+            if (!minAt || t < minAt) minAt = t;
+        }
+        const top = c.topAt ? new Date(c.topAt).getTime() : 0;
+        const deep = c.deepAt ? new Date(c.deepAt).getTime() : 0;
+        if (c.events.length) {
+            if (!top || top < maxAt) return 'верхняя граница старее самой свежей записи';
+            if (!deep || deep > minAt) return 'нижняя граница новее самой старой записи';
+            if (!Array.isArray(c.anchorIds) || !c.anchorIds.length) return 'нет опорных id страниц';
+        }
+        return '';
+    }
+    function modLogCacheGet(channel) {
+        const all = modLogCacheAll();
+        const c = all[channel];
+        // Чужой канал в кэше — сразу мимо: записи одного журнала не должны всплывать в другом.
+        if (c && c.cid && String(c.cid) !== String(channel)) {
+            debugLog('modlog-cache-foreign', { key: channel, cid: c.cid });
+            return modLogCacheEmpty();
+        }
+        const bad = modLogCacheCheck(c);
+        if (bad) {
+            if (c) {
+                debugLog('modlog-cache-repair', { key: channel, reason: bad });
+                delete all[channel];
+                try { localStorage.setItem(MODLOG_CACHE_KEY, JSON.stringify(all)); } catch (e) {}
+            }
+            return modLogCacheEmpty();
+        }
+        // Чистим кэш от записей, которые строк создавать не должны: артефакты «модератор
+        // забанил сам себя» и следы чужих действий в общем чате. Такие записи попадали в
+        // localStorage от старых версий парсера и всплывали как «забанен» там, где бана
+        // никогда не было.
+        const evs = (c.events || []).filter((e) => {
+            const tl = String((e && e.targetLogin) || '').toLowerCase();
+            const al = String((e && (e.actorLogin || e.actor)) || '').toLowerCase();
+            if (tl && al && tl === al) return false;
+            return !isSharedChatEvent(e);
+        });
+        if (evs.length !== (c.events || []).length) c.events = evs;
+        return c;
+    }
+    // Полный сброс кэша канала: кнопка «перечитать» и ремонт повреждённого кэша.
+    function modLogCacheDrop(channel) {
+        try {
+            const all = modLogCacheAll();
+            if (!all[channel]) return false;
+            delete all[channel];
+            localStorage.setItem(MODLOG_CACHE_KEY, JSON.stringify(all));
+            debugLog('modlog-cache-dropped', { key: String(channel) });
+            return true;
+        } catch (e) { return false; }
+    }
+    function modLogCacheSave(channel, events, hasMore, meta) {
+        const mapEvents = (list) => list.map((e) => ({
+            id: e.id, cid: e.cid, at: e.at, icon: e.icon, category: e.category,
+            title: e.title, text: e.text,
+            body: e.body ? String(e.body).slice(0, 160) : '',
+            actor: e.actor, actorLogin: e.actorLogin,
+            targetId: e.targetId, targetLogin: e.targetLogin
+        }));
+        const write = (evs) => {
+            const all = modLogCacheAll();
+            // Границы считаем ИЗ САМИХ ЗАПИСЕЙ: иначе самопроверка на следующем открытии
+            // забракует кэш из-за расхождения границ, и журнал будет читаться заново.
+            let topAt = null;
+            let deepAt = null;
+            evs.forEach((e) => {
+                if (!e.at) return;
+                if (!topAt || e.at > topAt) topAt = e.at;
+                if (!deepAt || e.at < deepAt) deepAt = e.at;
+            });
+            all[channel] = {
+                v: MODLOG_CACHE_VERSION,
+                cid: String(channel),
+                login: (meta && meta.login) || '',
+                at: Date.now(), hasMore: !!hasMore,
+                topAt: topAt, topId: (meta && meta.topId) || null,
+                // Докуда дошли вглубь: без этого после перезахода чтение начиналось с первой
+                // страницы и глохло на первой же странице без новых страйков.
+                deepCursor: (meta && meta.deepCursor) || null,
+                deepAt: deepAt,
+                // Курсор, на котором оборвался догон по лимиту страниц: следующий заход обязан
+                // продолжить отсюда, иначе между верхом журнала и старой глубиной останется
+                // непрочитанный участок (потерянные баны).
+                gapCursor: (meta && meta.gapCursor) || null,
+                endReached: !!(meta && meta.endReached),
+                // Опорные id — последняя запись каждой прочитанной страницы. По ним на следующем
+                // открытии доказываем, что догнали кэш без пропусков (и не перечитываем журнал).
+                anchorIds: ((meta && meta.anchorIds) || []).slice(0, 8),
+                pages: (meta && meta.totalPages) || 0,
+                scanned: (meta && meta.scanned) || 0,
+                events: mapEvents(evs)
+            };
+            localStorage.setItem(MODLOG_CACHE_KEY, JSON.stringify(all));
+        };
+        const evs = (events || []).filter(isStrikeEvent).slice(0, MODLOG_CACHE_MAX);
+        try {
+            write(evs);
+        } catch (e) {
+            // Не влезло в localStorage — режем историю вдвое и пробуем ещё раз, иначе кэш
+            // остаётся в прежнем состоянии и «докачка только нового» ломается молча.
+            const half = Math.floor(evs.length / 2);
+            try {
+                write(evs.slice(0, half));
+                debugLog('modlog-cache-trimmed', { was: evs.length, now: half });
+            } catch (e2) { debugLog('modlog-cache-save-fail', e2 && e2.message); }
+        }
+    }
+
+    // Прогрессивная загрузка журнала. onUpdate(state) зовётся после каждого шага, поэтому
+    // список можно рисовать сразу из кэша и дописывать страницы по мере загрузки.
+    // Фаза 1 — «догнать»: новые страницы сверху, пока не упрёмся в уже известную запись.
+    // Фаза 2 — «вглубь»: продолжаем в фоне, с паузами и лимитом, чтобы не грузить канал.
+    async function loadModLogProgressive(channelId, channelLogin, onUpdate, opts) {
+        const o = opts || {};
+        const maxPages = o.maxPages || 24;
+        const pause = o.pauseMs == null ? 250 : o.pauseMs;
+        const cached = modLogCacheGet(channelId);
+        const seen = Object.create(null);
+        const state = {
+            cid: String(channelId), login: channelLogin,
+            events: (cached.events || []).filter(isStrikeEvent).slice(),
+            hasMore: cached.hasMore !== false,
+            topAt: cached.topAt || null,
+            topId: cached.topId || null,
+            deepCursor: cached.deepCursor || null,
+            deepAt: cached.deepAt || null,
+            totalPages: cached.pages || 0,
+            scanned: cached.scanned || 0,
+            categoryCounts: Object.create(null),
+            iconCounts: Object.create(null),
+            noTarget: 0,
+            sample: [],
+            pageCounts: [],
+            pageInfo: null,
+            // Докуда дошли вглубь: значение монотонное и переживает перезапуск, поэтому
+            // «дошёл до <дата>» не откатывается назад после перезагрузки.
+            oldestAt: cached.deepAt || null,
+            // Кэш, из которого стартуем: по нему видно, читаем мы «только новое» или всё заново.
+            fromCache: !!(cached.events && cached.events.length),
+            cacheEvents: (cached.events || []).length,
+            // Опорные id прошлых страниц: по ним доказываем, что догнали кэш без пропусков.
+            anchorIds: (cached.anchorIds || []).slice(0, 8),
+            // Курсор обрыва догона (если в прошлый раз не догнали) и признак конца журнала.
+            gapCursor: cached.gapCursor || null,
+            endReached: !!cached.endReached,
+            caughtUp: false,
+            pages: 0, deep: false, done: false
+        };
+        state.events.forEach((e) => { if (e.id) seen[e.id] = 1; });
+        // Опорные id из кэша — по ним определяем момент, когда чтение сверху дошли до уже
+        // прочитанного. Проверяем по ВСЕМ событиям страницы, а не только по страйкам: страница
+        // может состоять из одних удалений сообщений, и тогда пересечение иначе не увидеть.
+        const cacheAnchors = Object.create(null);
+        state.anchorIds.forEach((id) => { if (id) cacheAnchors[id] = 1; });
+        if (onUpdate) onUpdate(state);
+
+        const pk = modLogPageKey();
+        let pageParam = (pk.type === 'number') ? 0 : '';
+        const hasMorePages = (page) => !!(page && page.hasNext
+            && ((pk.type === 'number') || page.endCursor));
+        const advance = (page) => {
+            if (pk.type === 'number') pageParam = (Number(pageParam) || 0) + (page.count || 0);
+            else pageParam = page.endCursor || null;
+        };
+        const addPage = (page) => {
+            const evs = page.events || [];
+            // Пересечение с уже прочитанным: страница содержит опорный id из кэша — значит
+            // участок между живым верхом журнала и кэшем прочитан полностью (пропусков нет).
+            const overlap = evs.some((e) => e && e.id && cacheAnchors[e.id]);
+            // Опорный id этой страницы — запоминаем на будущее (последняя запись страницы).
+            const lastEv = evs[evs.length - 1];
+            if (lastEv && lastEv.id) {
+                state.anchorIds.unshift(lastEv.id);
+                if (state.anchorIds.length > 8) state.anchorIds.pop();
+            }
+            // Кладём в состояние только страйки, но «догон» определяем по всей странице.
+            const fresh = evs.filter((e) => e.id && !seen[e.id] && isStrikeEvent(e));
+            let pageNewest = 0;
+            let pageNewestEv = null;
+            let pageOldest = null;
+            evs.forEach((e) => {
+                const t = new Date(e.at || 0).getTime();
+                if (t > pageNewest) { pageNewest = t; pageNewestEv = e; }
+                if (t && (!pageOldest || t < new Date(pageOldest).getTime())) pageOldest = e.at;
+                const c = String((e && e.category) || '—');
+                state.categoryCounts[c] = (state.categoryCounts[c] || 0) + 1;
+                const ic = String((e && e.icon) || '—');
+                state.iconCounts[ic] = (state.iconCounts[ic] || 0) + 1;
+                if (!e || !e.targetLogin) state.noTarget++;
+                if (state.sample.length < 25) {
+                    state.sample.push({
+                        icon: (e && e.icon) || '', category: (e && e.category) || '',
+                        title: String((e && e.title) || '').slice(0, 60),
+                        text: String((e && e.text) || '').slice(0, 60),
+                        target: (e && e.targetLogin) || '', at: (e && e.at) || null
+                    });
+                }
+            });
+            const wasCaughtUp = !!(state.topAt && pageNewest && pageNewest <= new Date(state.topAt).getTime());
+            fresh.forEach((e) => { seen[e.id] = 1; });
+            if (fresh.length) state.events = fresh.concat(state.events);
+            state.pages++;
+            state.pageCounts.push(evs.length);
+            // Сколько событий реально прочитано В ЭТОМ заходе (для статуса «читаю…»).
+            state.readNow = (state.readNow || 0) + evs.length;
+            // Считаем прочитанное только по НОВЫМ событиям: иначе повторное чтение той же
+            // страницы накручивало счётчик (+100 за каждый заход).
+            if (!wasCaughtUp) state.scanned += evs.length;
+            if (pageNewest && (!state.topAt || pageNewest > new Date(state.topAt).getTime())) {
+                state.topAt = new Date(pageNewest).toISOString();
+                state.topId = pageNewestEv ? pageNewestEv.id : state.topId;
+            }
+            // Самое старое прочитанное — по нему видно, докуда дошло чтение журнала.
+            if (pageOldest && (!state.oldestAt || new Date(pageOldest) < new Date(state.oldestAt))) {
+                state.oldestAt = pageOldest;
+            }
+            advance(page);
+            state.lastCursorSource = page.cursorSource || state.lastCursorSource || null;
+            return { fresh: fresh.length, hasNext: hasMorePages(page), wasCaughtUp: wasCaughtUp, overlap: overlap };
+        };
+
+        // Фаза 1 — «догнать». Идём сверху вниз, пока не найдём на странице ОПОРНЫЙ id из кэша:
+        // это доказательство, что между живым верхом журнала и кэшем пропусков нет, то есть
+        // новые записи получены все. Остановка по «на странице нет новых страйков» ненадёжна:
+        // страница может состоять из одних удалений сообщений, и тогда догон обрывается, не
+        // дойдя до кэша, а ниже остаются непрочитанные записи.
+        const catchUpMax = o.catchUpMax || 12;
+        while (state.pages < catchUpMax) {
+            const page = await fetchModActions(channelId, pageParam, seen);
+            if (!page || page.error || !page.events) {
+                state.error = (page && page.error) || 'не удалось загрузить';
+                if (page && page.noProgress) state.noProgress = true;
+                break;
+            }
+            const r = addPage(page);
+            state.pageInfo = page.pageInfo || null;
+            state.noPageHash = !!page.noPageHash;
+            if (page.noCursor) state.noCursor = true;
+            state.hasMore = r.hasNext;
+            // Курсор, с которого продолжать, если догнать до конца не удалось: следующий заход
+            // обязан начать ровно отсюда, иначе получится дыра в непрочитанном участке.
+            state.gapCursor = r.hasNext ? (page.endCursor || null) : null;
+            modLogCacheSave(channelId, state.events, r.hasNext, state);
+            if (onUpdate) onUpdate(state);
+            if (r.overlap) { state.caughtUp = true; break; }
+            if (!r.hasNext) { state.caughtUp = true; state.endReached = true; break; }
+        }
+        if (onUpdate) onUpdate(state);
+
+        // Фаза 2: глубина в фоне. Идём только от НЕПРЕРЫВНОЙ точки: если догнали кэш — с
+        // прошлого курсора глубины, если догон оборвался по лимиту — строго с его курсора.
+        // Прыжок на старую глубину оставлял бы между верхом и глубиной непрочитанный участок.
+        if (o.deep !== false && !state.endReached) {
+            state.deep = true;
+            let cur = (state.caughtUp && state.deepCursor) ? state.deepCursor : pageParam;
+            const seenCursors = Object.create(null);
+            while (cur && state.pages < maxPages) {
+                if (o.shouldStop && o.shouldStop()) { state.stopped = true; break; }
+                const ckey = String(cur);
+                if (seenCursors[ckey]) break;   // курсор повторился — дальше идти некуда
+                seenCursors[ckey] = 1;
+                await new Promise((r) => setTimeout(r, pause));
+                state.lastCursor = cur;
+                const page = await fetchModActions(channelId, cur, seen);
+                if (!page || page.error || !page.events) {
+                    state.error = (page && page.error) || null;
+                    // Twitch принимает запрос, но игнорирует курсор: страницы глубже первой он
+                    // так не отдаёт — об этом надо сказать прямо, а не молчать.
+                    if (page && page.noProgress) state.noProgress = true;
+                    break;
+                }
+                const r = addPage(page);
+                state.pageInfo = page.pageInfo || state.pageInfo;
+                state.deepCursor = page.endCursor || null;
+                state.hasMore = r.hasNext && (page.events || []).length > 0;
+                state.gapCursor = state.hasMore ? (page.endCursor || null) : null;
+                if (!state.hasMore) state.endReached = true;
+                modLogCacheSave(channelId, state.events, state.hasMore, state);
+                if (onUpdate) onUpdate(state);
+                if (!state.hasMore) break;
+                cur = page.endCursor || null;
+            }
+            state.deep = false;
+            state.done = true;
+            // Остановились из-за нашего лимита страниц, а не потому что журнал кончился.
+            state.limitHit = !!(state.pages >= maxPages && state.deepCursor && state.hasMore);
+            if (onUpdate) onUpdate(state);
+        }
+        // Разбивка по категориям: сразу видно, сколько в журнале реально страйков,
+        // а сколько удалений сообщений и прочего.
+        debugLog('modlog-categories', state.categoryCounts);
+        return state;
+    }
+
+    // Хеш, который в этом сеансе реально сдвигает страницы журнала (листающий вариант).
+    let modLogPagingHashWin = null;
+    // Хеши, отвергнутые Twitch в этом сеансе: чтобы не бить по ним запросами на каждой странице.
+    const modLogBadHashes = Object.create(null);
+
+    // Кандидаты в листающий хеш. twitch-api.js складывает в TMOD_MODLOG_HASHES «хеш → пример
+    // переменных» для всех операций журнала, которые присылает сам Twitch. Листающий вариант —
+    // тот, у которого в переменных есть курсор.
+    function modLogPagingHashes() {
+        const out = [];
+        try {
+            const map = JSON.parse(localStorage.getItem('TMOD_MODLOG_HASHES') || '{}') || {};
+            let owners = {};
+            try { owners = JSON.parse(localStorage.getItem('TMOD_MODLOG_HASH_OPS') || '{}') || {}; } catch (e) {}
+            Object.keys(map).forEach((h) => {
+                if (!h) return;
+                // Хеш, записанный от ДРУГОЙ операции, бесполезен: под именем ModActionsList
+                // Twitch отвечает "operation not found". Пропускаем его сразу.
+                if (owners[h] && owners[h] !== 'ModActionsList') return;
+                if (!/"(after|cursor)"/i.test(String(map[h] || ''))) return;
+                if (out.indexOf(h) === -1) out.push(h);
+            });
+        } catch (e) {}
+        return out;
+    }
+    // Хеши журнала, записанные с одними лишь channelID: среди них может оказаться другой
+    // вариант запроса (например листающий). Пробуем их после основных кандидатов.
+    function modLogChannelIdHashes() {
+        const out = [];
+        try {
+            const map = JSON.parse(localStorage.getItem('TMOD_MODLOG_HASHES') || '{}') || {};
+            let owners = {};
+            try { owners = JSON.parse(localStorage.getItem('TMOD_MODLOG_HASH_OPS') || '{}') || {}; } catch (e) {}
+            Object.keys(map).forEach((h) => {
+                if (!h) return;
+                if (owners[h] && owners[h] !== 'ModActionsList') return;
+                if (!/^\{"channelID":"\d+"\}$/.test(String(map[h] || ''))) return;
+                if (out.indexOf(h) === -1) out.push(h);
+            });
+        } catch (e) {}
+        return out;
+    }
+    // Признак того, что Twitch проигнорировал `after` и вернул уже прочитанную страницу.
+    // Решает НЕ сравнение курсоров (при эвристическом поиске курсора — cursorSource 'scan' —
+    // значение может совпасть с отправленным и дать ложный «повтор», из-за чего листание
+    // зря признавалось сломанным), а состав записей: если все id страницы уже известны,
+    // страница не сдвинулась.
+    function modLogPageIsRepeat(parsed, requestedCursor, known) {
+        if (!parsed || parsed.error) return false;
+        const evs = parsed.events || [];
+        if (!evs.length) return false;   // пустая страница — это конец журнала, а не повтор
+        if (known && evs.every((e) => e.id && known[e.id])) return true;
+        const cur = parsed.endCursor ? String(parsed.endCursor) : '';
+        return !!cur && parsed.cursorSource === 'edge' && cur === String(requestedCursor);
+    }
+    async function fetchModActions(channelId, page, known) {
+        if (!IS_EXTENSION) return { error: 'доступно только в расширении' };
+        const pk = modLogPageKey();
+        const isFirst = (page == null || page === '');
+        const ls = (k) => { try { return localStorage.getItem(k) || null; } catch (e) { return null; } };
+        const hashPage = ls('TMOD_MODLOG_HASH_PAGE');
+        const hashBase = ls('TMOD_MODLOG_HASH_BASE');
+
+        // Первую страницу запрашиваем БЕЗ курсора вообще: вариант с `after: ""` Twitch у нас
+        // отвергает (проверено дампом — хэш тот же, а запрос с пустым курсором падает),
+        // а без него первая страница приходит штатно.
+        if (!isFirst) {
+            const vars = { channelID: String(channelId) };
+            vars[pk.key] = (pk.type === 'number') ? Number(page) : String(page);
+            // Листающий вариант журнала — ОТДЕЛЬНЫЙ persisted-хеш (проверено логом: базовый
+            // хеш принимает запрос, но `after` игнорирует и возвращает ту же первую страницу).
+            // Поэтому кандидатов собираем из всех источников и берём тот, который реально
+            // сдвинул страницу:
+            //   1) хеш-победитель этого сеанса; 2) «выученный» TMOD_MODLOG_HASH_PAGE;
+            //   3) любой хеш из TMOD_MODLOG_HASHES, у которого в переменных есть курсор
+            //      (их пишет twitch-api.js, когда Twitch листает журнал сам);
+            //   4) базовый хеш и значение по умолчанию — как последний шанс.
+            const cands = [];
+            const pushCand = (h) => { const k = h || 'default'; if (cands.indexOf(k) === -1) cands.push(k); };
+            if (modLogPagingHashWin) pushCand(modLogPagingHashWin);
+            const pageOp = ls('TMOD_MODLOG_PAGE_OP');
+            if (hashPage && (!pageOp || pageOp === 'ModActionsList')) pushCand(hashPage);
+            modLogPagingHashes().forEach(pushCand);
+            if (hashBase) pushCand(hashBase);
+            modLogChannelIdHashes().forEach(pushCand);
+            pushCand(null);
+            let lastErr = null;
+            let repeated = false;
+            for (const cand of cands) {
+                if (modLogBadHashes[cand]) continue;   // уже отвергнут в этом сеансе
+                const hash = (cand === 'default') ? null : cand;
+                for (const withIntegrity of [true, false]) {
+                    const r1 = await gqlPersisted('ModActionsList', hash, vars, { integrity: withIntegrity });
+                    if (r1 && r1.success) {
+                        const parsed = parseModActions(r1, vars);
+                        if (parsed.error) {
+                            lastErr = parsed.error;
+                        } else if (modLogPageIsRepeat(parsed, page, known)) {
+                            // Хеш принят, но вернулась уже прочитанная страница.
+                            // Без integrity повторять бессмысленно: документ тот же.
+                            repeated = true;
+                            lastErr = 'страница не сдвинулась (Twitch вернул ту же страницу)';
+                            modLogBadHashes[cand] = 1;
+                            debugLog('modlog-page-fail', {
+                                hash: cand.slice(0, 10), integrity: withIntegrity,
+                                key: pk.key, cursor: String(page).slice(0, 40), error: lastErr,
+                                ignoredCursor: true, cursorSource: parsed.cursorSource || null,
+                                firstId: (parsed.events[0] || {}).id || null, pageIds: parsed.events.length
+                            });
+                            break;
+                        } else {
+                            // Страница сдвинулась — этот хеш и есть листающий.
+                            parsed.viaIntegrity = withIntegrity;
+                            modLogPagingHashWin = hash;
+                            if (hash) {
+                                try {
+                                    localStorage.setItem('TMOD_MODLOG_HASH_PAGE', String(hash));
+                                    localStorage.setItem('TMOD_MODLOG_PAGE_OP', 'ModActionsList');
+                                } catch (e) {}
+                            }
+                            if (!withIntegrity) debugLogOnce('modlog-page-plain-ok', true);
+                            debugLogOnce('modlog-paging-hash', { hash: hash ? String(hash).slice(0, 10) : 'default' });
+                            return parsed;
+                        }
+                    } else {
+                        lastErr = (r1 && (r1.rawError || r1.error)) || 'ошибка';
+                        if (/not found/i.test(String(lastErr))) {
+                            modLogBadHashes[cand] = 1;
+                            try {
+                                if (hashPage === hash) {
+                                    localStorage.removeItem('TMOD_MODLOG_HASH_PAGE');
+                                    localStorage.removeItem('TMOD_MODLOG_PAGE_OP');
+                                    debugLogOnce('modlog-page-hash-forgotten', true);
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                    debugLog('modlog-page-fail', {
+                        hash: cand.slice(0, 10), integrity: withIntegrity,
+                        key: pk.key, cursor: String(page).slice(0, 40), error: lastErr,
+                        rawCode: (r1 && r1.rawCode) || null
+                    });
+                }
+            }
+            return { error: lastErr || 'не удалось прочитать следующую страницу', noProgress: repeated };
+        }
+        // Первая страница: пробуем базовый хеш, затем выученный (порядок тот же и по той же
+        // причине — выученный может быть от другой операции).
+        const baseCandidates = [hashBase, hashPage].filter(Boolean);
+        if (!baseCandidates.length) baseCandidates.push(null);
+        let firstErr = null;
+        let first = null;
+        for (const h of baseCandidates) {
+            const r2 = await gqlPersisted('ModActionsList', h, { channelID: String(channelId) });
+            if (r2 && r2.success) {
+                const parsed = parseModActions(r2, { channelID: String(channelId) });
+                if (!parsed.error) { first = parsed; break; }
+                firstErr = parsed.error;
+            } else {
+                firstErr = (r2 && r2.error) || 'не удалось загрузить журнал';
+            }
+        }
+        if (!first) return { error: firstErr || 'не удалось загрузить журнал' };
+        first.noPageHash = !hashPage;
+        return first;
+    }
+
+    function parseModActions(res, vars) {
+        if (!res || !res.success) return { error: (res && res.error) || 'не удалось загрузить' };
+        const conn = res.data && res.data.channel && res.data.channel.moderationActionLogs;
+        if (!conn) return { error: 'неожиданный ответ Twitch' };
+        const rawEdges = conn.edges || [];
+        const events = rawEdges.map((e) => {
+            const n = (e && e.node) || {};
+            const u = n.user || {};
+            // Цель действия: Twitch кладёт пользователя токеном в фрагменты текста. Поле бывает
+            // разным (у бана цель в content, а не в title), поэтому смотрим ВСЕ поля, а автора
+            // исключаем — он есть в node.user.
+            const collectTokens = (frag) => {
+                const out = [];
+                ((frag && frag.localizedStringFragments) || []).forEach((f) => {
+                    const t = f && f.token;
+                    if (t && t.id && t.login) out.push({ id: String(t.id), login: String(t.login).toLowerCase() });
+                });
+                return out;
+            };
+            const actorLogin = String(u.login || '').toLowerCase();
+            const tokens = collectTokens(n.title).concat(collectTokens(n.content)).concat(collectTokens(n.contentBody));
+            // Запасной вариант «первый токен» убран намеренно: у записей вида «Забанен
+            // пользователем X» Twitch не присылает цель вообще (в content только автор), и
+            // первый токен — это сам модератор. Раньше отсюда брались строки «xpohoc забанил
+            // xpohoc» / «Koronich забанил Koronich». Цель неизвестна — пусть будет пусто.
+            const target = tokens.find((t) => t.login && t.login !== actorLogin) || null;
+            const targetId = target ? target.id : '';
+            const targetLogin = target ? target.login : '';
+            return {
+                id: n.id || '',
+                // Канал, из журнала которого пришла запись. Без этого поля события разных
+                // каналов было невозможно различить, и запись чужого журнала могла всплыть
+                // в списке нашего канала.
+                cid: String((vars && vars.channelID) || ''),
+                at: n.createdAt || null,
+                icon: n.icon || '',
+                category: n.filterCategoryID || '',
+                title: tmodFragText(n.title),
+                text: tmodFragText(n.content),
+                body: tmodFragText(n.contentBody),
+                actor: u.displayName || u.login || '',
+                actorLogin: u.login || '',
+                targetId: targetId,
+                targetLogin: targetLogin,
+                actorAvatar: /^https:\/\/static-cdn\.jtvnw\.net\//.test(String(u.profileImageURL || ''))
+                    ? u.profileImageURL : ''
+            };
+        });
+        const pi = (conn && conn.pageInfo) || {};
+        // Курсор следующей страницы у Twitch лежит в ПОСЛЕДНЕМ edge (Relay-стиль):
+        // pageInfo содержит только hasNextPage, поэтому раньше курсор искался «по виду
+        // строки» и вторая страница падала.
+        const lastEdge = rawEdges[rawEdges.length - 1];
+        let nextCursor = (lastEdge && lastEdge.cursor) || pi.endCursor || pi.cursor || null;
+        let cursorSource = nextCursor ? (lastEdge && lastEdge.cursor ? 'edge' : 'pageInfo') : '';
+        if (!nextCursor) {
+            nextCursor = findCursorIn(res.data, false);
+            cursorSource = nextCursor ? 'scan' : '';
+        }
+        return {
+            events, hasNext: !!pi.hasNextPage, endCursor: nextCursor,
+            pageInfo: pi, cursorSource: cursorSource, count: events.length,
+            // Есть следующая страница, но курсора нет — листать нечем, об этом надо сказать.
+            noCursor: !nextCursor && !!pi.hasNextPage
+        };
+    }
+
+    function showModActionsSection(panel) {
+        const content = panel.querySelector('#tmod-panel-content');
+        if (!content) return;
+        const savedWidth = panel.getBoundingClientRect().width + 'px';
+        panel.style.width = savedWidth;
+        panel.style.minWidth = savedWidth;
+
+        content.innerHTML = `
+            <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;"><span>\u2190</span> <span>Назад</span></button>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <div style="font-size:14px;font-weight:600;color:#efeff1;">Действия модераторов</div>
+                <button id="tmod-ma-refresh" title="Обновить" aria-label="Обновить" style="background:none;border:none;color:#adadb8;cursor:pointer;padding:0;width:24px;height:24px;display:flex;align-items:center;justify-content:center;flex:0 0 24px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 5.999A9.985 9.985 0 0 0 12 2C6.477 2 2 6.477 2 12h2a8 8 0 0 1 14.93-4H14v2h8V2h-2v3.999ZM12 20a8 8 0 0 0 8-8h2c0 5.523-4.477 10-10 10a9.985 9.985 0 0 1-8-3.999V22H2v-8h8v2H5.07A7.997 7.997 0 0 0 12 20Z"></path></svg></button>
+            </div>
+            <div id="tmod-ma-filters" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;"></div>
+            <div id="tmod-ma-list" style="max-height:380px;overflow-y:auto;scrollbar-width:thin;font-size:12.5px;line-height:1.4;color:#efeff1;">Загрузка…</div>
+            <div id="tmod-ma-note" style="margin-top:8px;font-size:11px;color:#8f8f98;"></div>
+        `;
+
+        content.querySelector('#tmod-back').onclick = () => {
+            panel.remove();
+            panelOpen = false;
+            setTimeout(() => createPanel(), 10);
+        };
+        const listEl = content.querySelector('#tmod-ma-list');
+        const filtersEl = content.querySelector('#tmod-ma-filters');
+        const noteEl = content.querySelector('#tmod-ma-note');
+        let events = [];
+        let activeCat = '';
+
+        function renderFilters() {
+            const cats = [];
+            events.forEach((e) => { if (e.category && cats.indexOf(e.category) === -1) cats.push(e.category); });
+            if (!cats.length) { filtersEl.innerHTML = ''; return; }
+            const chips = [['', 'Все']].concat(cats.map((c) => [c, MOD_ACTION_CATEGORIES[c] || c]));
+            filtersEl.innerHTML = chips.map(([id, label]) =>
+                `<button data-cat="${escapeHtml(id)}" class="tmod-chip" style="background:${id === activeCat ? '#9146FF' : '#2f2f33'};color:${id === activeCat ? '#fff' : '#adadb8'};border:none;padding:2px 9px;font-size:11px;cursor:pointer;">${escapeHtml(label)}</button>`
+            ).join('');
+            filtersEl.querySelectorAll('button[data-cat]').forEach((b) => {
+                b.onclick = () => { activeCat = b.dataset.cat; renderFilters(); renderList(); };
+            });
+        }
+
+        function renderList() {
+            const shown = activeCat ? events.filter((e) => e.category === activeCat) : events;
+            if (!shown.length) { listEl.innerHTML = '<div style="color:#8f8f98;">Ничего не найдено</div>'; return; }
+            listEl.innerHTML = shown.map((e) => {
+                const color = modActionColor(e.icon, e.category);
+                const when = e.at ? timeAgoMs(new Date(e.at).getTime()) : '';
+                const avatar = e.actorAvatar
+                    ? `<img src="${escapeHtml(e.actorAvatar)}" alt="" style="width:20px;height:20px;border-radius:50%;flex:0 0 20px;">`
+                    : '<span style="width:20px;height:20px;border-radius:50%;background:#3a3a3d;flex:0 0 20px;"></span>';
+                const body = e.body
+                    ? `<div style="color:#adadb8;margin-top:2px;word-break:break-word;">${escapeHtml(e.body)}</div>`
+                    : '';
+                const title = e.title ? `<span style="font-weight:600;">${escapeHtml(e.title)}</span> ` : '';
+                const clickable = !!e.targetId;
+                return `<div class="tmod-ma-row"${clickable ? ` data-uid="${escapeHtml(e.targetId)}" data-ulogin="${escapeHtml(e.targetLogin)}" data-uname="${escapeHtml(e.title)}"` : ''} style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid #26262c;position:relative;${clickable ? 'cursor:pointer;' : ''}"${clickable ? ' data-tip="Открыть меню модерации"' : ''}>
+                    <span style="width:3px;border-radius:2px;background:${color};flex:0 0 3px;"></span>
+                    ${avatar}
+                    <div style="min-width:0;flex:1 1 auto;">
+                        <div style="word-break:break-word;">${title}${escapeHtml(e.text)}</div>
+                        ${body}
+                        <div style="color:#6f6f78;font-size:11px;margin-top:2px;">${e.actor ? escapeHtml(e.actor) + ' • ' : ''}${escapeHtml(when)}</div>
+                    </div>
+                </div>`;
+            }).join('');
+            // Клик по записи открывает наше меню модерации для этого юзера: id цели есть
+            // в заголовке действия, поэтому искать его сообщение в чате не нужно.
+            listEl.querySelectorAll('.tmod-ma-row[data-uid]').forEach((rowEl) => {
+                rowEl.onclick = () => {
+                    showPanelMenu({
+                        userId: rowEl.dataset.uid,
+                        userLogin: rowEl.dataset.ulogin,
+                        userName: rowEl.dataset.uname || rowEl.dataset.ulogin,
+                        messageId: null
+                    }, null);
+                };
+            });
+            bindTips(listEl);
+        }
+
+        async function load() {
+            listEl.textContent = 'Загрузка…';
+            noteEl.textContent = '';
+            try {
+                const token = await getToken();
+                const cid = await getChannelId(getChannelName(), token);
+                if (!cid) { listEl.textContent = 'Не удалось определить канал'; return; }
+                const res = await fetchModActions(cid);
+                if (!res || res.error) {
+                    listEl.textContent = 'Не удалось загрузить: ' + ((res && res.error) || 'ошибка');
+                    return;
+                }
+                events = res.events;
+                activeCat = '';
+                renderFilters();
+                renderList();
+                noteEl.textContent = events.length
+                    ? 'Показаны последние ' + events.length + ' действий' + (res.hasNext ? ' (есть более старые)' : '')
+                    : 'Twitch не отдал ни одного действия';
+            } catch (e) {
+                listEl.textContent = 'Ошибка: ' + (e && e.message ? e.message : String(e));
+            }
+        }
+
+        content.querySelector('#tmod-ma-refresh').onclick = load;
+        load();
+    }
+
+    // --- Плитка «Зрители» --------------------------------------------------------
+    // Twitch отдаёт список участников только в режиме модератора, а внутренний запрос этой
+    // панели нам недоступен (отвергается по integrity). Зато сама панель «Сообщество» уже
+    // отрисована в DOM, когда открыта, — разбираем её и показываем те же группы
+    // (владелец/модераторы/VIP/боты/зрители). Если панель закрыта, показываем тех, кто
+    // сейчас в чате (официальный /helix/chat/chatters) и подсказку, где взять роли.
+    function readCommunityGroupsFromDom() {
+        const root = document.getElementById('community-tab-content');
+        if (!root) return null;
+        const hasMembers = (el) => !!(el && el.querySelector && el.querySelector('[aria-label^="Подробнее о пользователе"]'));
+        const groups = [];
+        root.querySelectorAll('button[aria-expanded]').forEach((btn) => {
+            const tEl = btn.querySelector('strong');
+            const title = tEl ? String(tEl.textContent || '').trim() : '';
+            // Ближайший предок, внутри которого лежит список участников этой группы.
+            let host = btn.parentElement;
+            while (host && host !== root && !hasMembers(host)) host = host.parentElement;
+            if (!host || host === root) host = btn.parentElement;
+            const members = [];
+            if (host) {
+                host.querySelectorAll('[aria-label^="Подробнее о пользователе"]').forEach((b) => {
+                    const login = String(b.getAttribute('aria-label') || '')
+                        .replace(/^Подробнее о пользователе\s*/i, '').trim().toLowerCase();
+                    const nEl = b.querySelector('span');
+                    const name = nEl ? String(nEl.textContent || '').trim() : login;
+                    if (login) members.push({ login, name });
+                });
+            }
+            if (title || members.length) groups.push({ title: title || 'Участники', members });
+        });
+        if (!groups.length) return null;
+        // Группы не должны дублировать друг друга (на всякий случай).
+        const seen = Object.create(null);
+        groups.forEach((g) => { g.members = g.members.filter((m) => !seen[m.login] && (seen[m.login] = 1)); });
+        return groups;
+    }
+
+    async function fetchUserCards(users) {
+        const out = Object.create(null);
+        const token = await getToken();
+        if (!token) return out;
+        const logins = users.map((u) => u.login).filter(Boolean);
+        for (let i = 0; i < logins.length; i += 100) {
+            const batch = logins.slice(i, i + 100);
+            const r = await apiRequest('https://api.twitch.tv/helix/users?login=' + batch.map((l) => encodeURIComponent(l)).join('&login='), {
+                headers: { 'Authorization': 'Bearer ' + token, 'Client-Id': CLIENT_ID }
+            });
+            if (r.error || !r.ok) continue;
+            try {
+                (JSON.parse(r.text).data || []).forEach((u) => {
+                    const img = String(u.profile_image_url || '');
+                    out[u.login] = {
+                        id: String(u.id),
+                        name: u.display_name || u.login,
+                        avatar: /^https:\/\/static-cdn\.jtvnw\.net\//.test(img) ? img : ''
+                    };
+                });
+            } catch (e) {}
+        }
+        return out;
+    }
+
+    async function fetchChatterList() {
+        const token = await getToken();
+        if (!token) return [];
+        const broadcasterId = await getChannelId(getChannelName(), token);
+        const userId = await getCurrentUserId(token);
+        if (!broadcasterId || !userId) return [];
+        const out = [];
+        let cursor = '';
+        for (let page = 0; page < 4; page++) {
+            const url = `https://api.twitch.tv/helix/chat/chatters?broadcaster_id=${broadcasterId}&moderator_id=${userId}&first=1000`
+                + (cursor ? '&after=' + encodeURIComponent(cursor) : '');
+            const resp = await apiRequest(url, { headers: { 'Authorization': 'Bearer ' + token, 'Client-Id': CLIENT_ID } });
+            if (resp.error || !resp.ok) break;
+            let data = null;
+            try { data = JSON.parse(resp.text); } catch { break; }
+            (data.data || []).forEach((c) => out.push({ login: c.user_login, name: c.user_name }));
+            cursor = (data.pagination && data.pagination.cursor) || '';
+            if (!cursor) break;
+        }
+        return out;
+    }
+
+    // Иконки быстрых действий в списках зрителей — те же, что в меню модерации.
+    // «Отметить» — рупор (раньше стоял значок анонса: тот же пузырь с «!», это была ошибка).
+    const VW_ICONS = {
+        ban: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M1 12C1 5.925 5.925 1 12 1s11 4.925 11 11-4.925 11-11 11S1 18.075 1 12Zm11 9A9 9 0 0 1 4.968 6.382l12.65 12.65A8.962 8.962 0 0 1 12 21Zm7.032-3.382a9 9 0 0 0-12.65-12.65l12.65 12.65Z" clip-rule="evenodd"/></svg>',
+        timeout: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 11.586V5h-2v7.414l3.293 3.293 1.414-1.414L13 11.586Z"/><path fill-rule="evenodd" d="M1 12C1 5.925 5.925 1 12 1s11 4.925 11 11-4.925 11-11 11S1 18.075 1 12Zm11 9a9 9 0 1 1 0-18 9 9 0 0 1 0 18Z" clip-rule="evenodd"/></svg>',
+        warn: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M13.226 2.72a1.404 1.404 0 0 0-2.452 0L2.192 17.84c-.545.96.136 2.16 1.226 2.16h17.164c1.09 0 1.771-1.2 1.226-2.16L13.226 2.72ZM13 7h-2v7h2V7Zm0 9h-2v2h2v-2Z" clip-rule="evenodd"/></svg>',
+        shoutout: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="m13 17 9 5V2l-9 5H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h3v5h2v-5h4Zm7-11.601-6 3.333v6.536l6 3.333V5.399ZM4 9h8v6H4V9Z"/></svg>',
+        menu: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"/></svg>'
+    };
+
+    // Действия в списке и догрузка статусов — только если ты модератор ЭТОГО канала.
+    // Источник правды — moderatorResolved: он сбрасывается при переходе на другой канал
+    // (свой отдельный флаг устаревал при SPA-навигации и «разрешая» действия на чужом канале).
+    function viewersModeratorHere() {
+        return moderatorResolved === true;
+    }
+
+    // Статус зрителя из локального кэша статусов (ключ — канал + userId). Нужен, чтобы
+    // помечать забаненных/отстранённых и предлагать снятие, не дёргая Twitch на каждую строку.
+    function cachedViewerStatus(userId) {
+        if (!userId) return null;
+        try {
+            const e = panelStatusCache[panelStatusCacheKey(userId)];
+            if (!e || !e.status) return null;
+            if (Date.now() - (e.at || 0) > 30 * 60 * 1000) return null;
+            const s = e.status;
+            const exp = s.banExpiresAt ? new Date(s.banExpiresAt).getTime() : 0;
+            const timedOutActive = !!s.isTimedOut && (!exp || exp > Date.now());
+            return { isBanned: !!s.isBanned, isTimedOut: timedOutActive, banExpiresAt: s.banExpiresAt || null };
+        } catch (err) { return null; }
+    }
+
+    function viewerActionsHtml(m, c) {
+        if (!viewersModeratorHere()) return '';
+        const st = cachedViewerStatus(c && c.id);
+        const banned = !!(st && st.isBanned);
+        const timedOut = !!(st && st.isTimedOut);
+        const btn = (act, mode, tip, icon, danger) => `<button class="tmod-vw-act" data-act="${act}" data-mode="${mode}" data-login="${escapeHtml(m.login)}" data-tip="${escapeHtml(tip)}"${danger ? ' data-danger="1"' : ''}>${icon}</button>`;
+        const id = c && c.id;
+        // Маркер статуса: виден всегда (кнопки-то скрыты до наведения) и исчезает при
+        // наведении — тогда состояние и так видно по красным кнопкам.
+        let mark = '';
+        if (banned) mark = '<span class="tmod-vw-mark" title="Забанен"></span>';
+        else if (timedOut) mark = '<span class="tmod-vw-mark" title="Отстранён"></span>';
+        return `${mark}<span style="margin-left:auto;display:flex;gap:3px;align-items:center;">
+            ${btn('menu', 'menu', 'Меню модерации', VW_ICONS.menu, false)}
+            ${id ? btn('ban', banned ? 'unban' : 'ban', banned ? 'Снять бан' : 'Забанить', VW_ICONS.ban, banned) : ''}
+            ${id ? btn('timeout', timedOut ? 'untimeout' : 'timeout', timedOut ? 'Снять отстранение' : 'Отстранить на 10 минут', VW_ICONS.timeout, timedOut) : ''}
+            ${id ? btn('warn', 'warn', 'Предупредить', VW_ICONS.warn, false) : ''}
+            ${btn('shoutout', 'shoutout', 'Отметить', VW_ICONS.shoutout, false)}
+        </span>`;
+    }
+
+    // Своя подсказка: нативный title исчезает при малейшем движении курсора, а нужна
+    // подсказка, которая висит, пока курсор на кнопке.
+    function tmodTipEl() {
+        let el = document.getElementById('tmod-tip');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'tmod-tip';
+            el.style.cssText = 'position:fixed;z-index:1000002;background:#18181b;color:#efeff1;border:1px solid #3a3a3d;' +
+                'border-radius:6px;padding:4px 8px;font:11.5px/1.3 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;' +
+                'box-shadow:0 4px 16px rgba(0,0,0,.5);pointer-events:none;display:none;max-width:240px;';
+            document.body.appendChild(el);
+        }
+        return el;
+    }
+    function showTip(target, text) {
+        if (!target || !text) return;
+        const el = tmodTipEl();
+        el.textContent = text;
+        el.style.display = 'block';
+        const r = target.getBoundingClientRect();
+        const w = el.offsetWidth, h = el.offsetHeight;
+        const left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
+        let top = r.top - h - 6;
+        if (top < 8) top = r.bottom + 6;
+        el.style.left = left + 'px';
+        el.style.top = top + 'px';
+    }
+    function hideTip() {
+        const el = document.getElementById('tmod-tip');
+        if (el) el.style.display = 'none';
+    }
+
+    // Обработчики быстрых действий. Бан и отстранение требуют второго клика — чтобы
+    // не забанить человека случайным промахом.
+    // Открытые списки зрителей (окно и плитка) — после действия их надо перерисовать,
+    // чтобы маркер и красные кнопки отражали новый статус.
+    let viewersListReloads = [];
+    function refreshViewersLists() {
+        viewersListReloads.forEach((f) => { try { f(); } catch (e) {} });
+    }
+
+    function closeViewerConfirm() {
+        document.querySelectorAll('.tmod-vw-confirm').forEach((el) => el.remove());
+    }
+
+    // Подтверждение прямо в строке: кнопки раскрываются в вопрос с «Да»/«Отмена».
+    function openViewerConfirm(rowEl, question, onYes) {
+        closeViewerConfirm();
+        const box = document.createElement('div');
+        box.className = 'tmod-vw-confirm';
+        box.innerHTML = '<span class="tmod-vw-q"></span><button class="tmod-vw-yes">Да</button><button class="tmod-vw-no">Отмена</button>';
+        box.querySelector('.tmod-vw-q').textContent = question;
+        const yes = box.querySelector('.tmod-vw-yes');
+        box.querySelector('.tmod-vw-no').onclick = (e) => { e.stopPropagation(); box.remove(); };
+        yes.onclick = async (e) => {
+            e.stopPropagation();
+            yes.disabled = true;
+            box.querySelector('.tmod-vw-q').textContent = 'Выполняю…';
+            let res = null;
+            try { res = await onYes(); } catch (err) { res = { success: false, error: err && err.message }; }
+            box.querySelector('.tmod-vw-q').textContent = (res && res.success) ? '✓ Готово' : ('✗ ' + ((res && res.error) || 'не удалось'));
+            yes.remove();
+            box.querySelector('.tmod-vw-no').textContent = 'Закрыть';
+            if (res && res.success) setTimeout(() => { box.remove(); refreshViewersLists(); }, 1200);
+        };
+        rowEl.appendChild(box);
+        setTimeout(() => { if (box.isConnected && !yes.disabled) box.remove(); }, 12000);
+    }
+
+    // Догрузка статусов ПАЧКАМИ: 50 человек на один запрос, максимум 150 за раз, и только те,
+    // кого нет в локальной базе. 300 зрителей = 6 запросов вместо 300. Запись в базу — одной
+    // пачкой в конце (иначе было бы 300 записей в хранилище).
+    const viewerStatusPrefetchInFlight = Object.create(null);
+    function setViewerStatusBulk(userId, status, login) {
+        try {
+            panelStatusCache[panelStatusCacheKey(userId)] = {
+                at: Date.now(), userId: String(userId),
+                login: login ? String(login).toLowerCase() : undefined,
+                status: status
+            };
+        } catch (e) {}
+    }
+    async function prefetchViewerStatuses(cards) {
+        if (!viewersModeratorHere()) return;
+        const ctx = await getModeratorContext();
+        if (!ctx || !ctx.broadcasterId) return;
+        const ids = [];
+        const idLogin = Object.create(null);
+        Object.keys(cards || {}).forEach((login) => {
+            const id = cards[login] && cards[login].id;
+            if (!id) return;
+            const key = String(id);
+            if (cachedViewerStatus(key) || viewerStatusPrefetchInFlight[key]) return;
+            viewerStatusPrefetchInFlight[key] = true;
+            idLogin[key] = login;
+            ids.push(key);
+        });
+        const todo = ids.slice(0, 150);
+        if (!todo.length) return;
+        debugLog('viewers-status-prefetch', {
+            всего: ids.length, берём: todo.length, запросов: Math.ceil(todo.length / 50)
+        });
+        let changed = false;
+        for (let i = 0; i < todo.length; i += 50) {
+            const part = todo.slice(i, i + 50);
+            const res = await gqlBatchPersisted(part.map((id) => ({
+                operationName: 'ChatModeratorStrikeStatus',
+                variables: { channelID: String(ctx.broadcasterId), targetUserID: id }
+            })));
+            part.forEach((id, idx) => {
+                const entry = res && res[idx];
+                if (entry && entry.errors) { debugLog('viewers-status-err', entry.errors[0] && entry.errors[0].message); return; }
+                const s = entry && entry.data && entry.data.chatModeratorStrikeStatus;
+                if (!s) return;
+                const isBanned = !!s.banDetails;
+                const isTimedOut = !!s.timeoutDetails;
+                const exp = (s.banDetails && s.banDetails.expiresAt)
+                    || (s.timeoutDetails && s.timeoutDetails.expiresAt) || null;
+                setViewerStatusBulk(id, { isBanned: isBanned, isTimedOut: isTimedOut, banExpiresAt: exp }, idLogin[id]);
+                changed = true;
+            });
+        }
+        if (changed) {
+            persistPanelStatusCache();
+            refreshViewersLists();
+        }
+    }
+
+    // Немедленная проверка статуса конкретного человека у Twitch — сразу после нашего
+    // действия, не дожидаясь перечитывания журнала. Пишем в локальную базу только то,
+    // что подтвердил сервер.
+    async function verifyUserStrikeNow(userId) {
+        try {
+            const ctx = await getModeratorContext();
+            if (!ctx || !userId) return null;
+            const res = await gqlBatchPersisted([{
+                operationName: 'ChatModeratorStrikeStatus',
+                variables: { channelID: String(ctx.broadcasterId), targetUserID: String(userId) }
+            }]);
+            const s = res && res[0] && res[0].data && res[0].data.chatModeratorStrikeStatus;
+            if (!s) return null;
+            const det = s.banDetails || s.timeoutDetails || {};
+            const patch = {
+                isBanned: !!s.banDetails,
+                isTimedOut: !!s.timeoutDetails,
+                banExpiresAt: det.expiresAt || null
+            };
+            updatePanelStatusCacheFromAction(userId, patch);
+            return patch;
+        } catch (e) { return null; }
+    }
+
+    // Подсказки: единый механизм (data-tip) и для строки, и для кнопок внутри неё. Раньше у
+    // строки был нативный title, поэтому при наведении на «Снять» браузер показывал подсказку
+    // строки своим стилем — рядом с нашей, двумя разными подсказками сразу.
+    function bindTips(root) {
+        root.querySelectorAll('[data-tip]').forEach((el) => {
+            // Помечаем обработанные: bindTips зовётся после каждой перерисовки списков, и без
+            // метки на неудалённых элементах копились бы одинаковые обработчики.
+            if (el.dataset.tipBound === '1') return;
+            el.dataset.tipBound = '1';
+            let tipTimer = null;
+            el.addEventListener('mouseenter', () => {
+                clearTimeout(tipTimer);
+                tipTimer = setTimeout(() => {
+                    // Если курсор уже на кнопке внутри строки — её подсказка важнее строковой.
+                    if (el.querySelector && el.querySelector('.tmod-vw-act:hover')) return;
+                    showTip(el, el.dataset.tip);
+                }, 450);
+            });
+            el.addEventListener('mouseleave', () => { clearTimeout(tipTimer); hideTip(); });
+        });
+    }
+    function bindViewerActions(listEl, noteEl, openMenuFn) {
+        const note = (t) => { if (noteEl) noteEl.textContent = t; };
+        bindTips(listEl);
+        listEl.querySelectorAll('.tmod-vw-act[data-act]').forEach((bEl) => {
+            bEl.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const act = bEl.dataset.act;
+                const mode = bEl.dataset.mode || act;
+                const login = bEl.dataset.login;
+                const rowEl = bEl.closest('.tmod-vw-row');
+                const uid = rowEl && rowEl.dataset.uid;
+                const uname = (rowEl && rowEl.dataset.uname) || login;
+                if (act === 'menu') {
+                    const data = { userId: uid || null, userLogin: login, userName: uname, messageId: null };
+                    if (openMenuFn) openMenuFn(data); else showPanelMenu(data, null);
+                    return;
+                }
+                if (act === 'shoutout') {
+                    sendToChatInput('/shoutout ' + login);
+                    note('Отметка для ' + login + ' отправлена в чат');
+                    return;
+                }
+                if (!uid || !rowEl) { note('Не удалось определить id — открой меню модерации'); return; }
+                const question = mode === 'unban' ? 'Снять бан с ' + login + '?'
+                    : mode === 'untimeout' ? 'Снять отстранение с ' + login + '?'
+                        : mode === 'timeout' ? 'Отстранить ' + login + ' на 10 минут?'
+                            : mode === 'warn' ? 'Предупредить ' + login + '?'
+                                : 'Забанить ' + login + '?';
+                openViewerConfirm(rowEl, question, async () => {
+                    try {
+                        let r = null;
+                        if (mode === 'ban') {
+                            r = await actionTimeout(uid, null, null, login);
+                            if (r && r.success) updatePanelStatusCacheFromAction(uid, { isBanned: true, isTimedOut: false, banExpiresAt: null });
+                        } else if (mode === 'timeout') {
+                            r = await actionTimeout(uid, 600, null, login);
+                            if (r && r.success) {
+                                updatePanelStatusCacheFromAction(uid, {
+                                    isBanned: false, isTimedOut: true,
+                                    banExpiresAt: new Date(Date.now() + 600 * 1000).toISOString()
+                                });
+                            }
+                        } else if (mode === 'warn') {
+                            r = await actionWarn(uid, 'Предупреждение');
+                        } else if (mode === 'unban' || mode === 'untimeout') {
+                            r = await actionUnban(uid, login);
+                            if (r && r.success) updatePanelStatusCacheFromAction(uid, { isBanned: false, isTimedOut: false, banExpiresAt: null });
+                        } else {
+                            return { success: false, error: 'неизвестное действие' };
+                        }
+                        // Сразу после действия спрашиваем статус у Twitch — если он ответит,
+                        // запись в базе перезапишется подтверждённым значением.
+                        if (r && r.success && mode !== 'warn') verifyUserStrikeNow(uid);
+                        return r;
+                    } catch (err) { return { success: false, error: err && err.message }; }
+                });
+            };
+        });
+    }
+
+    function showViewersSection(panel) {
+        const content = panel.querySelector('#tmod-panel-content');
+        if (!content) return;
+        const savedWidth = panel.getBoundingClientRect().width + 'px';
+        panel.style.width = savedWidth;
+        panel.style.minWidth = savedWidth;
+
+        content.innerHTML = `
+            <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;"><span>\u2190</span> <span>Назад</span></button>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <div style="font-size:14px;font-weight:600;color:#efeff1;">Зрители</div>
+                <button id="tmod-vw-refresh" title="Обновить" aria-label="Обновить" style="background:none;border:none;color:#adadb8;cursor:pointer;padding:0;width:24px;height:24px;display:flex;align-items:center;justify-content:center;flex:0 0 24px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 5.999A9.985 9.985 0 0 0 12 2C6.477 2 2 6.477 2 12h2a8 8 0 0 1 14.93-4H14v2h8V2h-2v3.999ZM12 20a8 8 0 0 0 8-8h2c0 5.523-4.477 10-10 10a9.985 9.985 0 0 1-8-3.999V22H2v-8h8v2H5.07A7.997 7.997 0 0 0 12 20Z"></path></svg></button>
+            </div>
+            <div id="tmod-vw-list" style="max-height:380px;overflow-y:auto;scrollbar-width:thin;font-size:12.5px;line-height:1.4;color:#efeff1;">Загрузка…</div>
+            <div id="tmod-vw-note" style="margin-top:8px;font-size:11px;color:#8f8f98;"></div>
+        `;
+        content.querySelector('#tmod-back').onclick = () => {
+            panel.remove();
+            panelOpen = false;
+            setTimeout(() => createPanel(), 10);
+        };
+        const listEl = content.querySelector('#tmod-vw-list');
+        const noteEl = content.querySelector('#tmod-vw-note');
+
+        function renderGroups(groups, cards) {
+            listEl.innerHTML = groups.map((g) => {
+                if (!g.members.length) return '';
+                const items = g.members.map((m) => {
+                    const c = cards[m.login] || {};
+                    const color = '#efeff1';
+                    const avatar = c.avatar
+                        ? `<img src="${escapeHtml(c.avatar)}" alt="" style="width:22px;height:22px;border-radius:50%;flex:0 0 22px;">`
+                        : '<span style="width:22px;height:22px;border-radius:50%;background:#2f2f33;flex:0 0 22px;"></span>';
+                    const nick = `<span class="tmod-vw-nick" data-login="${escapeHtml(m.login)}" style="color:${escapeHtml(color)};" title="ЛКМ — карточка юзера в чате, ПКМ — меню модерации">${escapeHtml(m.name || m.login)}</span>`;
+                    const actions = viewerActionsHtml(m, c);
+                    return `<div class="tmod-vw-row" data-login="${escapeHtml(m.login)}"${c.id ? ` data-uid="${escapeHtml(c.id)}" data-uname="${escapeHtml(m.name || m.login)}"` : ''} style="display:flex;align-items:center;gap:8px;padding:4px;cursor:context-menu;position:relative;">
+                        ${avatar}${nick}${actions}
+                    </div>`;
+                }).join('');
+                return `<div style="margin-bottom:10px;">
+                    <div style="font-size:11px;color:#8f8f98;margin-bottom:3px;">${escapeHtml(g.title)} — ${g.members.length}</div>
+                    ${items}
+                </div>`;
+            }).join('');
+
+            const openMenu = (login, uid, uname) => {
+                showPanelMenu({
+                    userId: uid || null,
+                    userLogin: login,
+                    userName: uname || login,
+                    messageId: null
+                }, null);
+            };
+            listEl.querySelectorAll('.tmod-vw-row').forEach((rowEl) => {
+                const login = rowEl.dataset.login;
+                const uid = rowEl.dataset.uid;
+                const uname = rowEl.dataset.uname;
+                // ПКМ по строке — наше меню модерации (как в чате).
+                rowEl.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openMenu(login, uid, uname);
+                });
+            });
+            // ЛКМ по нику — родная карточка пользователя через чат-команду /user.
+            listEl.querySelectorAll('.tmod-vw-nick').forEach((nEl) => {
+                nEl.style.cursor = 'pointer';
+                nEl.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    sendToChatInput('/user ' + nEl.dataset.login);
+                };
+            });
+            listEl.querySelectorAll('.tmod-vw-act').forEach((bEl) => {
+                bEl.onclick = null;
+            });
+            bindViewerActions(listEl, noteEl);
+        }
+
+        async function load() {
+            // Список может быть уже закрыт — тогда снимаем себя с перезагрузки.
+            if (!listEl.isConnected) {
+                viewersListReloads = viewersListReloads.filter((f) => f !== load);
+                return;
+            }
+            if (viewersListReloads.indexOf(load) === -1) viewersListReloads.push(load);
+            listEl.textContent = 'Загрузка…';
+            noteEl.textContent = '';
+            try {
+                // Все источники внутри loadViewerGroups: запрос Twitch → панель «Сообщество» → чатеры.
+                const vg = await loadViewerGroups();
+                const vgAll = [];
+                vg.groups.forEach((g) => g.members.forEach((m) => vgAll.push(m)));
+                if (!vgAll.length) {
+                    const isMod = await amIModeratorHere();
+                    listEl.innerHTML = (vg.source === 'chatters' && isMod === false)
+                        ? '<div style="color:#8f8f98;">Список зрителей Twitch отдаёт только модераторам канала — публичного доступа к нему нет.</div>'
+                        : '<div style="color:#8f8f98;">Список пуст.</div>';
+                    noteEl.textContent = '';
+                    return;
+                }
+                const vgCards = await fetchUserCards(vgAll);
+                renderGroups(vg.groups, vgCards);
+                prefetchViewerStatuses(vgCards);
+                noteEl.textContent = vg.source === 'gql' ? ''
+                    : (vg.source === 'dom' ? 'Из панели «Сообщество». ЛКМ по нику — карточка, ПКМ — меню.'
+                        : 'Только те, кто сейчас в чате.');
+                return;
+                const chatters = await fetchChatterList();
+                if (!chatters.length) {
+                    const isMod = await amIModeratorHere();
+                    listEl.innerHTML = isMod === false
+                        ? '<div style="color:#8f8f98;">Список зрителей Twitch отдаёт только модераторам канала — публичного доступа к нему нет.</div>'
+                        : '<div style="color:#8f8f98;">Пусто: панель «Сообщество» закрыта, а в чате сейчас никого нет.</div>';
+                    noteEl.textContent = 'Открой режим модератора → «Сообщество» и нажми «Обновить»: тогда будут роли (модераторы/VIP/боты/зрители).';
+                    return;
+                }
+                const cards = await fetchUserCards(chatters);
+                renderGroups([{ title: 'Сейчас в чате', members: chatters }], cards);
+                noteEl.textContent = 'Панель «Сообщество» закрыта, поэтому это только те, кто сейчас в чате. Открой её в режиме модератора и нажми «Обновить» — увидишь роли.';
+            } catch (e) {
+                listEl.textContent = 'Ошибка: ' + (e && e.message ? e.message : String(e));
+            }
+        }
+
+        content.querySelector('#tmod-vw-refresh').onclick = load;
+        load();
+    }
+
+    // Клик по счётчику зрителей на странице открывает нашу плитку «Зрители»: на ПК этот
+    // элемент у модератора некликабельный, поэтому вешаем свой обработчик.
+    function initViewersCounterClick() {
+        const counter = document.querySelector('[data-a-target="animated-channel-viewers-count"]');
+        if (!counter) return;
+        const host = counter.parentElement || counter;
+        if (host.dataset && host.dataset.tmodViewersHooked === '1') return;
+        try { host.dataset.tmodViewersHooked = '1'; } catch (e) { return; }
+        host.style.cursor = 'pointer';
+        host.title = 'Показать зрителей (ModPanel)';
+        host.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            // Отдельное окошко со списком зрителей, а не открытие панели.
+            openViewersWindow();
+        }, true);
+    }
+
+    // --- Плитка «Заявки на разбан» (официальный Helix) --------------------------
+    async function fetchUnbanRequests() {
+        const ctx = await getModeratorContext();
+        if (!ctx) return { error: 'не удалось определить канал' };
+        const url = `https://api.twitch.tv/helix/moderation/unban_requests?broadcaster_id=${ctx.broadcasterId}&moderator_id=${ctx.moderatorId}&status=pending&first=50`;
+        const res = await helixCall(url);
+        if (!res.success) return { error: res.error || ('HTTP ' + (res.status || '?')) };
+        const rows = (res.data && res.data.data) || [];
+        return {
+            items: rows.map((r) => ({
+                id: r.id,
+                userId: r.user_id,
+                login: r.user_login,
+                name: r.user_name || r.user_login,
+                text: r.text || '',
+                createdAt: r.created_at || null
+            }))
+        };
+    }
+
+    async function resolveUnbanRequest(reqId, status) {
+        const ctx = await getModeratorContext();
+        if (!ctx) return { success: false, error: 'не удалось определить канал' };
+        const url = `https://api.twitch.tv/helix/moderation/unban_requests?broadcaster_id=${ctx.broadcasterId}`
+            + `&moderator_id=${ctx.moderatorId}&unban_request_id=${encodeURIComponent(reqId)}&status=${status}`;
+        return helixCall(url, { method: 'PATCH' });
+    }
+
+    function showUnbanRequestsSection(panel) {
+        const content = panel.querySelector('#tmod-panel-content');
+        if (!content) return;
+        const savedWidth = panel.getBoundingClientRect().width + 'px';
+        panel.style.width = savedWidth;
+        panel.style.minWidth = savedWidth;
+        content.innerHTML = `
+            <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;"><span>\u2190</span> <span>Назад</span></button>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <div style="font-size:14px;font-weight:600;color:#efeff1;">Заявки на разбан</div>
+                <button id="tmod-ub-refresh" title="Обновить" aria-label="Обновить" style="background:none;border:none;color:#adadb8;cursor:pointer;padding:0;width:24px;height:24px;display:flex;align-items:center;justify-content:center;flex:0 0 24px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 5.999A9.985 9.985 0 0 0 12 2C6.477 2 2 6.477 2 12h2a8 8 0 0 1 14.93-4H14v2h8V2h-2v3.999ZM12 20a8 8 0 0 0 8-8h2c0 5.523-4.477 10-10 10a9.985 9.985 0 0 1-8-3.999V22H2v-8h8v2H5.07A7.997 7.997 0 0 0 12 20Z"></path></svg></button>
+            </div>
+            <div id="tmod-ub-list" style="max-height:380px;overflow-y:auto;scrollbar-width:thin;font-size:12.5px;line-height:1.4;color:#efeff1;">Загрузка…</div>
+            <div id="tmod-ub-note" style="margin-top:8px;font-size:11px;color:#8f8f98;"></div>
+        `;
+        content.querySelector('#tmod-back').onclick = () => {
+            panel.remove();
+            panelOpen = false;
+            setTimeout(() => createPanel(), 10);
+        };
+        const listEl = content.querySelector('#tmod-ub-list');
+        const noteEl = content.querySelector('#tmod-ub-note');
+
+        async function load() {
+            listEl.textContent = 'Загрузка…';
+            noteEl.textContent = '';
+            try {
+                const res = await fetchUnbanRequests();
+                if (!res || res.error) {
+                    listEl.innerHTML = '<div style="color:#ff6b6b;">Не удалось загрузить: ' + escapeHtml(String((res && res.error) || 'ошибка')) + '</div>';
+                    return;
+                }
+                if (!res.items.length) {
+                    listEl.innerHTML = '<div style="color:#8f8f98;">Активных заявок нет</div>';
+                    return;
+                }
+                listEl.innerHTML = res.items.map((it) => {
+                    const when = it.createdAt ? timeAgoMs(new Date(it.createdAt).getTime()) : '';
+                    return `<div style="padding:8px 0;border-bottom:1px solid #26262c;">
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <span class="tmod-vw-nick" data-login="${escapeHtml(it.login)}" style="font-weight:600;cursor:pointer;" title="Открыть карточку в чате">${escapeHtml(it.name)}</span>
+                            <span style="color:#6f6f78;font-size:11px;">${escapeHtml(when)}</span>
+                            <span style="margin-left:auto;display:flex;gap:6px;">
+                                <button class="tmod-vw-act" data-ub="${escapeHtml(it.id)}" data-status="approved">Разбанить</button>
+                                <button class="tmod-vw-act" data-ub="${escapeHtml(it.id)}" data-status="denied">Отклонить</button>
+                            </span>
+                        </div>
+                        ${it.text ? `<div style="color:#adadb8;margin-top:4px;word-break:break-word;">${escapeHtml(it.text)}</div>` : ''}
+                    </div>`;
+                }).join('');
+                listEl.querySelectorAll('.tmod-vw-nick').forEach((nEl) => {
+                    nEl.onclick = () => sendToChatInput('/user ' + nEl.dataset.login);
+                });
+                listEl.querySelectorAll('button[data-ub]').forEach((bEl) => {
+                    bEl.onclick = async () => {
+                        const status = bEl.dataset.status;
+                        bEl.disabled = true;
+                        bEl.textContent = '…';
+                        const r = await resolveUnbanRequest(bEl.dataset.ub, status);
+                        if (r && r.success) {
+                            noteEl.textContent = status === 'approved' ? 'Заявка одобрена' : 'Заявка отклонена';
+                            load();
+                        } else {
+                            noteEl.textContent = 'Ошибка: ' + ((r && r.error) || 'не удалось');
+                            bEl.disabled = false;
+                            bEl.textContent = status === 'approved' ? 'Разбанить' : 'Отклонить';
+                        }
+                    };
+                });
+            } catch (e) {
+                listEl.textContent = 'Ошибка: ' + (e && e.message ? e.message : String(e));
+            }
+        }
+        content.querySelector('#tmod-ub-refresh').onclick = load;
+        load();
+    }
+
+    // --- Плитка «Забаненные и отстранённые» -------------------------------------
+    // Стримеру Twitch отдаёт полный список (Helix moderation/banned). Модератору — нет,
+    // поэтому для него список считается из того, что реально видно: журнал действий
+    // модераторов + локальная база статусов, а каждый кандидат проверяется внутренним
+    // запросом ПАЧКАМИ (50 человек на запрос), чтобы не показывать истёкшие отстранения.
+    async function collectBannedUsers(onProgress, shouldStop) {
+        const ctx = await getModeratorContext();
+        if (!ctx) return { error: 'Не удалось определить канал' };
+        const isBroadcaster = String(ctx.moderatorId) === String(ctx.broadcasterId);
+
+        // Аватарки и нормальные имена — одним набором запросов Helix на весь список
+        // (батчинг внутри fetchUserCards), чтобы строки выглядели как в журнале действий.
+        async function decorate(rows) {
+            if (!rows.length) return rows;
+            try {
+                const cards = await fetchUserCards(rows.map((r) => ({ login: r.login, name: r.name })));
+                rows.forEach((r) => {
+                    const c = cards[r.login];
+                    if (!c) return;
+                    if (c.id && !r.userId) r.userId = String(c.id);
+                    if (c.avatar) r.avatar = c.avatar;
+                    if (c.name) r.name = c.name;
+                });
+            } catch (e) {}
+            return rows;
+        }
+
+        if (isBroadcaster) {
+            const out = [];
+            let cursor = '';
+            for (let page = 0; page < 10; page++) {
+                const url = `https://api.twitch.tv/helix/moderation/banned?broadcaster_id=${ctx.broadcasterId}&first=100`
+                    + (cursor ? '&after=' + encodeURIComponent(cursor) : '');
+                const res = await helixCall(url);
+                if (!res.success) {
+                    return out.length ? { list: out, complete: false }
+                        : { error: res.error || ('HTTP ' + (res.status || '?')) };
+                }
+                ((res.data && res.data.data) || []).forEach((b) => out.push({
+                    userId: String(b.user_id), login: String(b.user_login || '').toLowerCase(),
+                    name: b.user_name || b.user_login || '', kind: b.expires_at ? 'timeout' : 'ban',
+                    at: b.created_at || null, expiresAt: b.expires_at || null,
+                    by: b.moderator_name || b.moderator_login || '', reason: b.reason || '',
+                    active: !b.expires_at || new Date(b.expires_at).getTime() > Date.now(),
+                    source: 'helix'
+                }));
+                cursor = (res.data && res.data.pagination && res.data.pagination.cursor) || '';
+                if (!cursor) break;
+            }
+            return { list: await decorate(out), complete: !cursor };
+        }
+
+        // Модератор: кандидаты из журнала (баны/таймауты минус снятия) и из локальной базы.
+        // Кандидаты: события журнала (бан/таймаут ставит, снятие — снимает) + локальная база.
+        // Сколько записей отброшено как принадлежащие другому каналу (видно в диагностике).
+        let foreignEvents = 0;
+        function candidatesFrom(events) {
+            const map = Object.create(null);
+            foreignEvents = 0;
+            events.slice()
+                .sort((a, b) => new Date(a.at || 0) - new Date(b.at || 0))
+                .forEach((ev) => {
+                    // Запись из журнала ДРУГОГО канала в нашем списке — невозможна: канал
+                    // берётся из ответа Twitch, а не из догадки. Такие события отбрасываем и
+                    // считаем, чтобы это было видно в диагностике.
+                    if (ev.cid && String(ev.cid) !== String(ctx.broadcasterId)) { foreignEvents++; return; }
+                    const login = String(ev.targetLogin || '').toLowerCase();
+                    if (!login) return;
+                    // Та же защита для уже сохранённого кэша (там лежат старые фантомные
+                    // записи): модератор не может забанить самого себя.
+                    const act = String(ev.actorLogin || ev.actor || '').toLowerCase();
+                    if (act && act === login) return;
+                    const kind = strikeKindOf(ev);
+                    if (!kind) return;
+                    if (kind === 'unban' || kind === 'untimeout') {
+                        // Снятие не выбрасываем: запись остаётся в списке как «снято», иначе
+                        // история банов/отстранений пропадает из вида.
+                        const prev = map[login];
+                        if (prev) {
+                            prev.active = false;
+                            prev.liftedAt = ev.at || null;
+                            prev.liftedBy = ev.actor || '';
+                        }
+                        return;
+                    }
+                    if (kind === 'warn') return;   // предупреждение — не бан и не отстранение
+                    const dur = kind === 'timeout'
+                        ? parseTimeoutMs(String(ev.title || '') + ' ' + String(ev.text || '') + ' ' + String(ev.body || ''))
+                        : 0;
+                    const atMs = ev.at ? new Date(ev.at).getTime() : 0;
+                    map[login] = {
+                        login: login, userId: String(ev.targetId || ''), name: ev.targetLogin || login,
+                        kind: kind, at: ev.at || null,
+                        expiresAt: (kind === 'timeout' && dur && atMs) ? new Date(atMs + dur).toISOString() : null,
+                        by: ev.actor || '', reason: reasonFromLogEvent(ev),
+                        shared: isSharedChatEvent(ev),
+                        // Провенанс: по этим полям в диагностике видно, какая именно запись
+                        // журнала породила строку (жалобы «такой записи не существует»).
+                        evId: ev.id || '', evText: String(ev.text || ev.title || '').slice(0, 160),
+                        source: 'log', byLog: true,
+                        // Журнал читается сверху вниз, а снятие всегда новее бана — значит, если
+                        // в прочитанной истории снятия нет, бан ещё действует. У отстранения
+                        // снятия может не быть вовсе (истекло само) — считаем по длительности.
+                        active: kind === 'timeout'
+                            ? (dur ? (atMs + dur > Date.now()) : null)
+                            : true
+                    };
+                });
+            Object.keys(panelStatusCache).forEach((key) => {
+                const e = panelStatusCache[key];
+                if (!e || !e.login || key.indexOf(getChannelName() + ':') !== 0) return;
+                const st = cachedViewerStatus(e.userId);
+                if (!st || (!st.isBanned && !st.isTimedOut)) return;
+                const login = String(e.login).toLowerCase();
+                const prev = map[login] || {};
+                map[login] = {
+                    login: login, userId: String(e.userId), name: e.login,
+                    kind: st.isBanned ? 'ban' : 'timeout', at: prev.at || null,
+                    expiresAt: st.banExpiresAt || null, by: prev.by || '', reason: prev.reason || '',
+                    source: 'cache', byLog: prev.byLog || false, active: true
+                };
+            });
+            // Новые сверху: состояние уже посчитано в хронологическом порядке, а показываем
+            // самые свежие записи первыми.
+            return Object.keys(map).map((k) => map[k]).sort((a, b) => {
+                const ta = a.at ? new Date(a.at).getTime() : 0;
+                const tb = b.at ? new Date(b.at).getTime() : 0;
+                return tb - ta;
+            });
+        }
+
+        // Проверка статуса — только УТОЧНЕНИЕ. Если запрос не удался или не подтвердил страйк,
+        // вывод из журнала НЕ трогаем: иначе «нет ответа» превращалось в «бана нет» и список
+        // активных пустел (ровно это и случилось).
+        const verifyState = Object.create(null);
+        let verifyFailed = 0;
+        // Сколько записей помечено как «действие в общем чате» (для диагностики).
+        let verifySharedUnconfirmed = 0;
+        async function verifyRows(rows) {
+            const ids = rows
+                .filter((r) => r.userId && r.source !== 'cache' && verifyState[r.userId] === undefined)
+                .map((r) => r.userId);
+            for (let i = 0; i < ids.length; i += 50) {
+                const part = ids.slice(i, i + 50);
+                let res = null;
+                // Одна повторная попытка: одиночная сетевая ошибка раньше навсегда оставляла
+                // строку без подтверждения (verifyState запоминал 'fail' до перезагрузки).
+                for (let attempt = 0; attempt < 2 && !Array.isArray(res); attempt++) {
+                    try {
+                        res = await gqlBatchPersisted(part.map((id) => ({
+                            operationName: 'ChatModeratorStrikeStatus',
+                            variables: { channelID: String(ctx.broadcasterId), targetUserID: id }
+                        })));
+                    } catch (e) { res = null; }
+                    if (!Array.isArray(res) && attempt === 0) await new Promise((r) => setTimeout(r, 400));
+                }
+                if (!Array.isArray(res)) { verifyFailed += part.length; continue; }   // запрос не прошёл
+                part.forEach((id, idx) => {
+                    const entry = res[idx];
+                    if (!entry || entry.errors) { verifyFailed++; verifyState[id] = 'fail'; return; }
+                    const s = entry.data && entry.data.chatModeratorStrikeStatus;
+                    // ВАЖНО: объект ответа приходит и когда страйка нет (все поля null).
+                    // Поэтому «страйк есть» — только по наличию banDetails/timeoutDetails.
+                    const hasStrike = !!(s && (s.banDetails || s.timeoutDetails));
+                    verifyState[id] = hasStrike ? 'strike' : 'none';
+                    if (!hasStrike) return;
+                    const det = s.banDetails || s.timeoutDetails || {};
+                    rows.forEach((r) => {
+                        if (r.userId !== id) return;
+                        r.kind = s.banDetails ? 'ban' : 'timeout';
+                        r.at = det.createdAt || r.at;
+                        r.expiresAt = det.expiresAt || null;
+                        r.by = det.timedOutBy || r.by;
+                        r.reason = det.reason || r.reason;
+                        r.active = true;
+                        r.confirmed = true;
+                    });
+                });
+            }
+            rows.forEach((r) => {
+                const v = verifyState[r.userId];
+                if (r.source === 'cache') { r.active = true; return; }
+                if (v === 'strike') { r.active = true; return; }
+                if (v === 'none') {
+                    // Twitch подтвердил, что страйка нет → снят или истёк, даже если снятия
+                    // нет в прочитанном журнале.
+                    r.active = false;
+                    r.liftedUnknown = true;
+                    return;
+                }
+                if (r.shared) {
+                    // Запись «Модератор X забанил пользователя Y во время общего чата» реальна:
+                    // действие совершил модератор ДРУГОГО канала, и Twitch зеркалит его в журнал
+                    // каждого участника общего чата (в самом журнале цель показана как
+                    // «неизвестный пользователь»). Баном НАШЕГО канала это не является, поэтому
+                    // строка не «забанен» и не попадает в «Активные»; если Twitch подтвердит
+                    // страйк у нас, строка выше уже станет подтверждённым баном.
+                    r.active = false;
+                    r.sharedUnconfirmed = true;
+                    verifySharedUnconfirmed++;
+                    return;
+                }
+                // Проверка не прошла ('fail' или ещё не делалась) — оставляем вывод из журнала.
+                if (r.active === undefined) r.active = null;
+            });
+            return rows;
+        }
+
+        let verifyBusy = false;
+        let pendingState = null;
+        const emit = (rows, s) => {
+            if (!onProgress) return;
+            onProgress({
+                list: rows,
+                partial: !s.done,
+                deep: !!s.deep,
+                pages: s.pages || 0,
+                scanned: s.readNow || 0,
+                oldestAt: s.oldestAt || null,
+                strikes: rows.length
+            });
+        };
+        const pump = async () => {
+            if (verifyBusy) return;
+            verifyBusy = true;
+            while (pendingState) {
+                const s = pendingState;
+                pendingState = null;
+                const rows = await verifyRows(candidatesFrom(s.events));
+                emit(rows, s);
+            }
+            verifyBusy = false;
+        };
+
+        // Прогрессивно: сразу из кэша, затем новые записи сверху, затем глубина в фоне.
+        const state = await loadModLogProgressive(ctx.broadcasterId, getChannelName(), (s) => {
+            pendingState = s;
+            pump();
+        }, { maxPages: 24, shouldStop: shouldStop });
+        pendingState = state;
+        await pump();
+        // Сначала добираем id/аватарки (Helix), и только потом проверяем статус: иначе записи
+        // без id (в журнале бывает пустой заголовок) оставались без подтверждения.
+        let list = await decorate(candidatesFrom(state.events));
+        list = await verifyRows(list);
+        // Неудачные проверки не запоминаем: иначе одна сетевая ошибка до перезагрузки
+        // страницы навсегда оставляла строку неподтверждённой.
+        Object.keys(verifyState).forEach((k) => { if (verifyState[k] === 'fail') delete verifyState[k]; });
+        debugLog('banned-verify', {
+            проверено: Object.keys(verifyState).length,
+            не_подтвердилось: verifyFailed,
+            всего_строк: list.length,
+            активных: list.filter((r) => r.active === true).length
+        });
+        // Диагностика для кнопки «Скопировать логи»: по ней видно, что именно в журнале
+        // и на каком шаге теряются записи.
+        const cacheInfo = modLogCacheGet(ctx.broadcasterId);
+        lastBannedDiag = {
+            at: new Date().toISOString(),
+            channel: getChannelName(),
+            cursorField: modLogCursorField() || null,
+            pageKey: modLogPageKey(),
+            pageInfo: state.pageInfo,
+            pageCounts: state.pageCounts,
+            cursorSource: state.lastCursorSource || null,
+            lastCursor: state.lastCursor ? String(state.lastCursor).slice(0, 60) : null,
+            varsSample: (function () { try { return localStorage.getItem('TMOD_MODLOG_VARS_SAMPLE') || null; } catch (e) { return null; } })(),
+            scanned: state.scanned || 0,
+            pages: state.pages,
+            hasMore: state.hasMore,
+            noProgress: !!state.noProgress,
+            // Состояние кэша журнала: видно, читали мы только новое или всё заново, и почему.
+            cacheState: {
+                fromCache: !!state.fromCache, events: state.cacheEvents || 0,
+                caughtUp: !!state.caughtUp, endReached: !!state.endReached,
+                gapCursor: state.gapCursor ? String(state.gapCursor).slice(0, 24) : null,
+                deepCursor: state.deepCursor ? String(state.deepCursor).slice(0, 24) : null,
+                anchorIds: (state.anchorIds || []).length,
+                pages: state.totalPages || 0
+            },
+            strikesInLog: state.events.length,
+            eventsWithoutTarget: state.noTarget,
+            categories: state.categoryCounts,
+            icons: state.iconCounts,
+            verify: {
+                checked: Object.keys(verifyState).length, failed: verifyFailed,
+                droppedShared: verifySharedUnconfirmed, foreignChannelEvents: foreignEvents
+            },
+            cache: {
+                events: (cacheInfo.events || []).length,
+                scanned: cacheInfo.scanned || 0,
+                hasMore: cacheInfo.hasMore !== false,
+                topAt: cacheInfo.topAt || null
+            },
+            rows: list.map((r) => ({
+                login: r.login, kind: r.kind, active: r.active, source: r.source,
+                at: r.at, expiresAt: r.expiresAt, by: r.by, liftedAt: r.liftedAt || null,
+                shared: !!r.shared, confirmed: !!r.confirmed,
+                eventId: r.evId || null, eventText: r.evText || null
+            })),
+            sample: state.sample
+        };
+        try { window.postMessage({ type: 'TMOD_DEBUG_STORE', key: 'bannedDiag', value: lastBannedDiag }, '*'); } catch (e) {}
+        if (state.error) debugLog('banned-log-error', state.error);
+        if (!list.length) {
+            return {
+                list: [], complete: false, scanned: state.scanned || 0, strikes: 0,
+                oldestAt: state.oldestAt, pages: state.pages, hasMore: state.hasMore,
+                logError: state.error || null, noPageHash: !!state.noPageHash,
+                fromCache: !!state.fromCache, cacheEvents: state.cacheEvents || 0,
+                caughtUp: !!state.caughtUp, endReached: !!state.endReached
+            };
+        }
+        emit(list, state);
+        return {
+            list: list, complete: false, scanned: state.scanned || 0, strikes: list.length,
+            oldestAt: state.oldestAt, pages: state.pages, hasMore: state.hasMore,
+            limitHit: !!state.limitHit, readNow: state.readNow || 0,
+            noProgress: !!state.noProgress,
+            // Состояние кэша — чтобы в подписи было видно, читали мы «только новое» или всё заново.
+            fromCache: !!state.fromCache, cacheEvents: state.cacheEvents || 0,
+            caughtUp: !!state.caughtUp, endReached: !!state.endReached,
+            logError: state.error || null, noPageHash: !!state.noPageHash,
+            noCursor: !!state.noCursor
+        };
+    }
+
+    let lastBannedDiag = null;
+
+    // Копирование текста в буфер: clipboard API может быть недоступен без фокуса,
+    // поэтому есть запасной путь через временный textarea.
+    async function copyTextToClipboard(text) {
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch (e) {
+            try {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                const ok = document.execCommand('copy');
+                ta.remove();
+                return ok;
+            } catch (e2) { return false; }
+        }
+    }
+
+    // Ссылка на журнал модерации у Twitch: секции мод-вью открываются в popout-окне
+    // (тот же приём, что и у ссылки на shield-mode). Адрес можно переопределить в
+    // localStorage.TMOD_MODLOG_URL, если Twitch переименует секцию.
+    function modLogUrl(channelName) {
+        try {
+            const custom = localStorage.getItem('TMOD_MODLOG_URL');
+            if (custom) return custom.replace('{channel}', channelName || getChannelName());
+        } catch (e) {}
+        return 'https://www.twitch.tv/popout/moderator/' + (channelName || getChannelName()) + '/mod-actions';
+    }
+
+    // --- Плитка «Проверить юзера»: поиск по нику без клика по сообщению в чате ---------
+    // Источники — только те, что уже проверены и работают с токеном модератора:
+    // /helix/users (аккаунт), /helix/channels/followers (фолловер), /helix/chat/chatters
+    // (в чате сейчас), UserModStatus (модератор ли), LowTrustUserProperties (метки Twitch),
+    // ChatModeratorStrikeStatus (бан/таймаут со сроком, автором и причиной).
+    function checkUserLogin(raw) {
+        let s = String(raw || '').trim();
+        if (!s) return '';
+        const m = /twitch\.tv\/([^/?#\s]+)/i.exec(s);
+        if (m) s = m[1];
+        s = s.replace(/^@/, '').toLowerCase();
+        return /^[a-z0-9_]{3,25}$/.test(s) ? s : '';
+    }
+
+    function yearsWord(n) {
+        const n10 = n % 10;
+        const n100 = n % 100;
+        if (n10 === 1 && n100 !== 11) return 'год';
+        if (n10 >= 2 && n10 <= 4 && (n100 < 10 || n100 >= 20)) return 'года';
+        return 'лет';
+    }
+
+    async function fetchStrikeDetails(broadcasterId, userId) {
+        try {
+            const res = await gqlBatchPersisted([{
+                operationName: 'ChatModeratorStrikeStatus',
+                variables: { channelID: String(broadcasterId), targetUserID: String(userId) }
+            }]);
+            const s = res && res[0] && res[0].data && res[0].data.chatModeratorStrikeStatus;
+            if (!s) return null;
+            const det = s.banDetails || s.timeoutDetails || null;
+            return {
+                isBanned: !!s.banDetails,
+                isTimedOut: !!s.timeoutDetails,
+                createdAt: det ? (det.createdAt || null) : null,
+                expiresAt: s.timeoutDetails ? (s.timeoutDetails.expiresAt || null) : null,
+                by: det ? (det.timedOutBy || null) : null,
+                reason: det ? (det.reason || null) : null
+            };
+        } catch (e) { return null; }
+    }
+
+    async function showCheckUserSection(panel) {
+        const content = panel.querySelector('#tmod-panel-content');
+        if (!content) return;
+        content.innerHTML = `
+            <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;"><span>\u2190</span> <span>Назад</span></button>
+            <div style="font-size:14px;font-weight:600;color:#efeff1;margin-bottom:8px;">Проверить пользователя</div>
+            <div style="position:relative;display:flex;gap:6px;">
+                <input id="tmod-cu-input" class="tmod-in" type="text" placeholder="ник или ссылка на канал" autocomplete="off" style="flex:1;min-width:0;background:#0e0e10;border:1px solid #3a3a3d;color:#efeff1;padding:8px 10px;font-size:13px;box-sizing:border-box;">
+                <button id="tmod-cu-go" class="tmod-btn" style="background:#9146FF;color:#fff;border:none;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;">Проверить</button>
+                <div id="tmod-cu-sugg" style="display:none;"></div>
+            </div>
+            <div id="tmod-cu-out" style="margin-top:10px;font-size:12.5px;color:#efeff1;"></div>
+            <div id="tmod-cu-note" style="margin-top:8px;font-size:11px;color:#8f8f98;min-height:14px;"></div>
+        `;
+        const inputEl = content.querySelector('#tmod-cu-input');
+        const goEl = content.querySelector('#tmod-cu-go');
+        const suggEl = content.querySelector('#tmod-cu-sugg');
+        const outEl = content.querySelector('#tmod-cu-out');
+        const noteEl = content.querySelector('#tmod-cu-note');
+        const note = (t) => { noteEl.textContent = t || ''; };
+
+        content.querySelector('#tmod-back').onclick = () => {
+            panel.remove();
+            panelOpen = false;
+            setTimeout(() => createPanel(), 10);
+        };
+
+        const line = (label, value, color) => (value
+            ? `<div style="display:flex;gap:8px;margin-top:4px;"><span style="color:#8f8f98;flex:0 0 92px;">${label}</span><span style="color:${color || '#efeff1'};min-width:0;word-break:break-word;">${value}</span></div>`
+            : '');
+
+        async function lookup() {
+            const login = checkUserLogin(inputEl.value);
+            if (!login) { note('Нужен ник: 3–25 символов, латиница, цифры и _'); return; }
+            note('');
+            outEl.innerHTML = '<div style="color:#8f8f98;">Ищу…</div>';
+            const ctx = await getModeratorContext();
+            if (!ctx) { outEl.innerHTML = '<div style="color:#ff6b6b;">Не удалось определить канал (нужен вход в Twitch)</div>'; return; }
+            let card = null;
+            try {
+                const cards = await fetchUserCards([{ login, name: login }]);
+                card = cards[login] || null;
+            } catch (e) {}
+            if (!card || !card.id) {
+                outEl.innerHTML = '<div style="color:#ff6b6b;">Пользователь не найден</div>';
+                return;
+            }
+            const uid = String(card.id);
+            // Параллельно то, что не зависит друг от друга.
+            const [profile, lowTrust, isMod, strike] = await Promise.all([
+                fetchUserProfile(ctx.broadcasterId, uid),
+                fetchLowTrust(ctx.broadcasterId, uid),
+                fetchModStatus(ctx.broadcasterId, uid),
+                fetchStrikeDetails(ctx.broadcasterId, uid)
+            ]);
+
+            const avatar = (profile && profile.avatar) || card.avatar || '';
+            const name = card.name || login;
+            const age = profile && profile.createdAt ? new Date(profile.createdAt).getTime() : 0;
+            const ageYears = age ? Math.floor((Date.now() - age) / 31557600000) : 0;
+            const ageText = age
+                ? `${fmtDateShort(profile.createdAt)} (${ageYears} ${yearsWord(ageYears)})`
+                : '';
+            const followText = !profile || profile.isFollower === null ? ''
+                : (profile.isFollower
+                    ? ('да' + (profile.followedAt ? ', с ' + fmtDateShort(profile.followedAt) : ''))
+                    : 'нет');
+
+            let statusText = 'не забанен';
+            let statusColor = '#8f8f98';
+            let statusHint = '';
+            if (strike === null) {
+                statusText = 'неизвестно (Twitch не ответил)';
+            } else if (strike.isBanned) {
+                statusText = 'забанен';
+                statusColor = '#eb4b4b';
+                statusHint = [strike.by ? 'кем: ' + strike.by : '', strike.reason ? 'причина: ' + strike.reason : '',
+                    strike.createdAt ? fmtDateTime(strike.createdAt) : ''].filter(Boolean).join(' • ');
+            } else if (strike.isTimedOut) {
+                const until = strike.expiresAt ? new Date(strike.expiresAt).getTime() : 0;
+                const left = until && until > Date.now();
+                statusText = until
+                    ? (left ? 'отстранён до ' + fmtDateTime(strike.expiresAt) : 'отстранение истекло ' + fmtDateTime(strike.expiresAt))
+                    : 'отстранён (срок неизвестен)';
+                statusColor = left ? '#f0a04b' : '#8f8f98';
+                statusHint = [strike.by ? 'кем: ' + strike.by : '', strike.reason ? 'причина: ' + strike.reason : ''].filter(Boolean).join(' • ');
+            }
+
+            const lowBits = [];
+            if (lowTrust) {
+                if (lowTrust.treatment && lowTrust.treatment !== 'NONE') lowBits.push('санкция: ' + lowTrust.treatment.toLowerCase());
+                if (lowTrust.banEvasion && lowTrust.banEvasion !== 'UNLIKELY') lowBits.push('обход бана: ' + lowTrust.banEvasion.toLowerCase());
+                if (lowTrust.harasser && lowTrust.harasser !== 'UNLIKELY') lowBits.push('харассер: ' + lowTrust.harasser.toLowerCase());
+                if (lowTrust.sharedBans) lowBits.push('общих банов: ' + lowTrust.sharedBans);
+                (lowTrust.types || []).forEach((t) => lowBits.push(String(t).toLowerCase()));
+            }
+
+            outEl.innerHTML = `
+                <div class="tmod-vw-row tmod-lookup-row" data-login="${escapeHtml(login)}" data-uid="${escapeHtml(uid)}" data-uname="${escapeHtml(name)}" style="display:flex;align-items:center;gap:8px;padding:6px;flex-wrap:wrap;">
+                    ${avatar ? `<img src="${escapeHtml(avatar)}" alt="" style="width:34px;height:34px;border-radius:50%;flex:0 0 34px;">` : '<span style="width:34px;height:34px;border-radius:50%;background:#2f2f33;flex:0 0 34px;"></span>'}
+                    <span style="font-weight:600;font-size:13.5px;min-width:0;word-break:break-word;">${escapeHtml(name)}</span>
+                    ${viewerActionsHtml({ login: login, name: name }, { id: uid })}
+                </div>
+                <div style="margin-top:6px;">
+                    ${line('id', escapeHtml(uid))}
+                    ${line('аккаунт', escapeHtml(ageText))}
+                    ${line('фолловер', escapeHtml(followText))}
+                    ${line('модератор', isMod === null ? '' : (isMod ? 'да' : 'нет'))}
+                    ${line('в чате', '<span id="tmod-cu-presence" style="color:#8f8f98;">проверяю…</span>')}
+                    ${line('статус', `<span style="color:${statusColor};">${escapeHtml(statusText)}</span>${statusHint ? `<div style="color:#6f6f78;font-size:11px;margin-top:2px;">${escapeHtml(statusHint)}</div>` : ''}`, statusColor)}
+                    ${line('метки', lowBits.length ? escapeHtml(lowBits.join(' • ')) : '')}
+                </div>
+            `;
+            bindViewerActions(outEl, noteEl);
+            // Наличие в чате берём из того же кэша, что и подсказки: без второго тяжёлого запроса.
+            const presenceEl = outEl.querySelector('#tmod-cu-presence');
+            try {
+                const chatters = await getChatterListCached();
+                const here = chatters.some((c) => String(c.login || '').toLowerCase() === login);
+                if (presenceEl && presenceEl.isConnected) {
+                    presenceEl.textContent = here ? 'да' : 'нет';
+                    presenceEl.style.color = here ? '#00f593' : '#8f8f98';
+                }
+            } catch (e) {
+                if (presenceEl && presenceEl.isConnected) presenceEl.textContent = 'неизвестно';
+            }
+        }
+
+        // --- подсказки при вводе ---------------------------------------------------------
+        // Источники: кто в чате прямо сейчас (запрос тяжёлый — кэш на минуту), кого панель уже
+        // видела в этом канале, и кто есть в журнале банов/таймаутов. Локальные списки дают
+        // подсказки мгновенно, список чата подтягивается в фоне и дополняет их.
+        let ctxLocal = null;
+        let chatters = [];
+        let chattersAt = 0;
+        let chattersLoading = false;
+        let suggRows = [];
+        let suggSel = -1;
+        const suggCards = Object.create(null);   // login → аватар, кэш на всё время работы панели
+        const suggTried = Object.create(null);   // для кого аватар уже запрашивали
+        let suggAvatarsBusy = false;
+        getModeratorContext().then((c) => { ctxLocal = c; }).catch(() => {});
+
+        function hideSugg() {
+            suggEl.style.display = 'none';
+            suggRows = [];
+            suggSel = -1;
+            // Если секция уже закрыта, снимаем подписку: иначе слушатели копятся с каждым входом.
+            if (!inputEl.isConnected) window.removeEventListener('resize', hideSugg);
+        }
+
+        // --- глобальный поиск по Twitch ---------------------------------------------------
+        // Публичного «поиска пользователей» у Twitch нет: в Helix есть только поиск каналов.
+        // Поэтому: 1) официальный /helix/search/channels (находит стримеров), 2) собственная
+        // операция Twitch для поиска пользователей — её запоминает twitch-api.js из трафика
+        // страницы (страница поиска, автодополнение личных сообщений), если она когда-либо
+        // попадалась. Найденные логины добавляются к подсказкам с меткой «Twitch».
+        let netRows = [];
+        let netTimer = null;
+        let netQuery = '';
+        let netBusy = false;
+        let netDone = false;   // для текущего запроса поиск уже выполнялся (в т.ч. с нулём результатов)
+
+        function collectLogins(node, out, depth) {
+            if (!node || depth > 6 || out.length > 60) return;
+            if (Array.isArray(node)) { node.forEach((n) => collectLogins(n, out, depth + 1)); return; }
+            if (typeof node !== 'object') return;
+            const login = typeof node.login === 'string' ? node.login
+                : (typeof node.userLogin === 'string' ? node.userLogin : '');
+            if (login && /^[a-z0-9_]{3,25}$/i.test(login)) out.push(login.toLowerCase());
+            Object.keys(node).forEach((k) => collectLogins(node[k], out, depth + 1));
+        }
+
+        async function fetchGlobalUsers(q) {
+            const out = [];
+            try {
+                const token = await getToken();
+                if (token) {
+                    const r = await apiRequest('https://api.twitch.tv/helix/search/channels?first=8&query=' + encodeURIComponent(q),
+                        { headers: { 'Authorization': 'Bearer ' + token, 'Client-Id': CLIENT_ID } });
+                    if (r && !r.error && r.ok) {
+                        const d = JSON.parse(r.text);
+                        (d.data || []).forEach((c) => {
+                            if (c && c.broadcaster_login) {
+                                out.push({ login: String(c.broadcaster_login).toLowerCase(), tag: c.is_live ? 'в эфире' : 'канал' });
+                            }
+                        });
+                    }
+                }
+            } catch (e) {}
+            // Операция Twitch из его же трафика: имя и хеш подставляем свои, а в переменные
+            // кладём запрос вместо той строки, которая была в оригинале.
+            try {
+                const ops = JSON.parse(localStorage.getItem('TMOD_USER_SEARCH_OPS') || '[]') || [];
+                const rec = ops.find((o) => o && o.hash && o.op);
+                if (rec && IS_EXTENSION) {
+                    const vars = JSON.parse(rec.vars || '{}');
+                    Object.keys(vars).forEach((k) => { if (typeof vars[k] === 'string') vars[k] = q; });
+                    const res = await gqlPersisted(rec.op, rec.hash, vars, { integrity: true });
+                    if (res && res.success) {
+                        const found = [];
+                        collectLogins(res.data, found, 0);
+                        found.slice(0, 10).forEach((l) => out.push({ login: l, tag: 'Twitch' }));
+                    }
+                }
+            } catch (e) {}
+            const seen = Object.create(null);
+            return out.filter((r) => {
+                if (!r.login || seen[r.login]) return false;
+                seen[r.login] = 1;
+                return true;
+            });
+        }
+
+        function scheduleNetSearch(q) {
+            // Повторно не ищем ни пока запрос в полёте, ни если для этого же запроса уже искали
+            // (иначе пустой результат запускал бы новый запрос по кругу).
+            if (q === netQuery && (netBusy || netDone)) return;
+            clearTimeout(netTimer);
+            netQuery = q;
+            netBusy = false;
+            netDone = false;
+            netTimer = setTimeout(() => {
+                netBusy = true;
+                fetchGlobalUsers(q).then((rows) => {
+                    // Результат мог прийти для устаревшего запроса — тогда не показываем его.
+                    if (q !== String(inputEl.value || '').trim().toLowerCase().replace(/^@/, '')) return;
+                    netRows = rows;
+                    netBusy = false;
+                    netDone = true;
+                    buildSuggest(inputEl.value);
+                }).catch(() => { netBusy = false; netDone = true; });
+            }, 300);
+        }
+
+        async function getChatterListCached() {
+            if (chatters.length && Date.now() - chattersAt < 60000) {
+                return chatters.map((l) => ({ login: l }));
+            }
+            const list = await fetchChatterList();
+            chatters = list.map((c) => String(c.login || '').toLowerCase()).filter(Boolean);
+            chattersAt = Date.now();
+            return list;
+        }
+
+        function ensureChatters() {
+            if (chattersLoading || (chatters.length && Date.now() - chattersAt < 60000)) return;
+            chattersLoading = true;
+            getChatterListCached()
+                .then(() => { if (String(inputEl.value || '').trim().length >= 2) buildSuggest(inputEl.value); })
+                .catch(() => {})
+                .then(() => { chattersLoading = false; });
+        }
+
+        function buildSuggest(raw) {
+            const q = String(raw || '').trim().toLowerCase().replace(/^@/, '');
+            if (q.length < 2) {
+                // Сброс кэша глобального поиска: следующий ввод ищет заново.
+                netQuery = ''; netDone = false; netBusy = false; netRows = [];
+                hideSugg();
+                return;
+            }
+            const seen = Object.create(null);
+            const rows = [];
+            // priority: 0 — в чате и результаты поиска Twitch, 1 — недавно в панели, 2 — журнал
+            const add = (login, tag, priority) => {
+                const s = String(login || '').toLowerCase();
+                if (!s || seen[s] || s.indexOf(q) === -1) return;
+                seen[s] = 1;
+                rows.push({ login: s, tag: tag, prefix: s.indexOf(q) === 0 ? 0 : 1, priority: priority });
+            };
+            chatters.forEach((l) => add(l, 'в чате', 0));
+            netRows.forEach((r) => add(r.login, r.tag || 'Twitch', 0));
+            try {
+                const ch = getChannelName();
+                Object.keys(panelStatusCache).forEach((k) => {
+                    if (k.indexOf(ch + ':') !== 0) return;
+                    add(panelStatusCache[k] && panelStatusCache[k].login, 'в панели', 1);
+                });
+            } catch (e) {}
+            try {
+                const cache = modLogCacheGet(ctxLocal ? ctxLocal.broadcasterId : '');
+                (cache.events || []).slice(0, 800).forEach((ev) => add(ev && ev.targetLogin, 'в журнале', 2));
+            } catch (e) {}
+            rows.sort((a, b) => (a.prefix - b.prefix) || (a.priority - b.priority) || a.login.localeCompare(b.login));
+            const top = rows.slice(0, 8);
+            // Глобальный поиск запускаем после локальных подсказок: они появляются мгновенно.
+            scheduleNetSearch(q);
+            suggRows = top;
+            suggSel = -1;
+            if (!top.length) {
+                // Пустой список — тоже состояние, и его надо показать: иначе кажется, что сломалось.
+                const searching = netBusy || (netQuery === q && !netDone);
+                suggEl.innerHTML = `<div data-empty="1" class="tmod-cu-empty">${searching ? 'ищу по Twitch…' : 'ничего не нашлось'}</div>`;
+                suggEl.style.display = 'block';
+                positionSugg();
+                return;
+            }
+            renderSugg();
+        }
+
+        // Класс строки: аватар (чтобы узнавать людей, а не сверять ники по буквам), сам ник
+        // целиком (без обрезки) и цветная метка источника вместо бледной мелкой подписи.
+        function suggTagColor(tag) {
+            if (tag === 'в чате') return '#00f593';
+            if (tag === 'в эфире') return '#bf94ff';
+            if (tag === 'Twitch') return '#9146FF';
+            return '#8f8f98';
+        }
+
+        function renderSugg() {
+            if (!suggRows.length) { hideSugg(); return; }
+            suggEl.innerHTML = suggRows.map((r, i) => {
+                const avatar = suggCards[r.login]
+                    ? `<img src="${escapeHtml(suggCards[r.login])}" alt="" style="width:24px;height:24px;border-radius:50%;flex:0 0 24px;">`
+                    : '<span style="width:24px;height:24px;border-radius:50%;background:#2f2f33;flex:0 0 24px;"></span>';
+                return `<div data-login="${escapeHtml(r.login)}"${i === suggSel ? ' class="sel"' : ''}>`
+                    + avatar
+                    + `<span class="tmod-cu-nick">${escapeHtml(r.login)}</span>`
+                    + (r.tag ? `<span class="tmod-cu-tag" style="color:${suggTagColor(r.tag)};">${escapeHtml(r.tag)}</span>` : '')
+                    + '</div>';
+            }).join('');
+            suggEl.style.display = 'block';
+            positionSugg();
+            ensureAvatars();
+        }
+
+        // Аватары — одним запросом на весь список, с кэшем; логины, которых Twitch не знает,
+        // больше не перезапрашиваем (иначе каждый рендер порождал бы новый запрос).
+        function ensureAvatars() {
+            const missing = suggRows.map((r) => r.login).filter((l) => !suggCards[l] && !suggTried[l]);
+            if (!missing.length || suggAvatarsBusy) return;
+            missing.forEach((l) => { suggTried[l] = 1; });
+            suggAvatarsBusy = true;
+            const snapshot = String(inputEl.value || '');
+            fetchUserCards(missing.map((l) => ({ login: l, name: l }))).then((cards) => {
+                Object.keys(cards || {}).forEach((l) => {
+                    const c = cards[l];
+                    if (c && c.avatar) suggCards[l] = c.avatar;
+                });
+                suggAvatarsBusy = false;
+                if (inputEl.isConnected && String(inputEl.value || '') === snapshot) renderSugg();
+            }).catch(() => { suggAvatarsBusy = false; });
+        }
+
+        function positionSugg() {
+            // Позиционируем вручную и фиксированно: панель низкая, поле ввода стоит у самого низа,
+            // поэтому список открывается ВВЕРХ, если снизу места меньше, чем нужно.
+            const ir = inputEl.getBoundingClientRect();
+            const need = Math.min(suggEl.offsetHeight || 220, 240);
+            const below = window.innerHeight - ir.bottom - 8;
+            const above = ir.top - 8;
+            const openUp = below < need && above > below;
+            suggEl.style.width = Math.round(ir.width) + 'px';
+            suggEl.style.left = Math.round(ir.left) + 'px';
+            if (openUp) {
+                suggEl.style.top = 'auto';
+                suggEl.style.bottom = Math.round(window.innerHeight - ir.top + 4) + 'px';
+            } else {
+                suggEl.style.bottom = 'auto';
+                suggEl.style.top = Math.round(ir.bottom + 4) + 'px';
+            }
+        }
+
+        function pickSugg(i) {
+            const r = suggRows[i];
+            if (!r) return false;
+            inputEl.value = r.login;
+            hideSugg();
+            lookup();
+            return true;
+        }
+
+        goEl.onclick = lookup;
+        inputEl.addEventListener('input', () => { buildSuggest(inputEl.value); ensureChatters(); });
+        inputEl.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                if (!suggRows.length) return;
+                e.preventDefault();
+                // Ничего не подсвечено по умолчанию: иначе Enter незаметно подменял бы введённый
+                // ник первым совпадением по префиксу (sekach_1 → sekach_12).
+                if (suggSel < 0) suggSel = e.key === 'ArrowDown' ? 0 : suggRows.length - 1;
+                else suggSel = (suggSel + (e.key === 'ArrowDown' ? 1 : -1) + suggRows.length) % suggRows.length;
+                Array.from(suggEl.children).forEach((el, i) => el.classList.toggle('sel', i === suggSel));
+                return;
+            }
+            if (e.key === 'Escape') { hideSugg(); return; }
+            if (e.key === 'Enter') {
+                // Enter берёт подсказку только если её выбрали стрелками; иначе проверяем ровно
+                // то, что введено.
+                if (suggSel >= 0 && pickSugg(suggSel)) return;
+                lookup();
+            }
+        });
+        // mousedown, а не click: к моменту click поле уже теряет фокус и список прячется.
+        suggEl.addEventListener('mousedown', (e) => {
+            const row = e.target && e.target.closest ? e.target.closest('[data-login]') : null;
+            if (!row) return;
+            e.preventDefault();
+            pickSugg(Array.from(suggEl.children).indexOf(row));
+        });
+        inputEl.addEventListener('blur', () => setTimeout(hideSugg, 150));
+        // Список «приклеен» к полю ввода: при прокрутке панели или изменении окна он должен
+        // спрятаться, иначе останется висеть в стороне от поля.
+        content.addEventListener('scroll', hideSugg, { passive: true });
+        window.addEventListener('resize', hideSugg);
+        inputEl.focus();
+        ensureChatters();
+    }
+
+    function showBannedSection(panel) {
+        const content = panel.querySelector('#tmod-panel-content');
+        if (!content) return;
+        const savedWidth = panel.getBoundingClientRect().width + 'px';
+        panel.style.width = savedWidth;
+        panel.style.minWidth = savedWidth;
+        content.innerHTML = `
+            <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;"><span>\u2190</span> <span>Назад</span></button>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <div style="font-size:14px;font-weight:600;color:#efeff1;">Баны и таймауты</div>
+                <span id="tmod-ban-spin" title="Идёт чтение журнала" style="display:none;width:12px;height:12px;border:2px solid #3a3a3d;border-top-color:#9147FF;border-radius:50%;animation:tmod-spin .8s linear infinite;flex:0 0 12px;"></span>
+                <span style="margin-left:auto;display:flex;align-items:center;gap:2px;flex:0 0 auto;">
+                    <a id="tmod-ban-journal" href="#" title="Журнал модерации в отдельном окне (Twitch)" aria-label="Журнал модерации в отдельном окне" style="background:none;border:none;color:#adadb8;cursor:pointer;padding:0;width:24px;height:24px;display:flex;align-items:center;justify-content:center;flex:0 0 24px;text-decoration:none;"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M14 3v2h3.586l-6.293 6.293 1.414 1.414L19 6.414V10h2V3h-7ZM5 5h5V3H3v18h18v-7h-2v5H5V5Z"/></svg></a>
+                    <button id="tmod-ban-refresh" title="Проверить новые записи (кэш журнала не перечитывается)" aria-label="Проверить новые записи" style="background:none;border:none;color:#adadb8;cursor:pointer;padding:0;width:24px;height:24px;display:flex;align-items:center;justify-content:center;flex:0 0 24px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20 5.999A9.985 9.985 0 0 0 12 2C6.477 2 2 6.477 2 12h2a8 8 0 0 1 14.93-4H14v2h8V2h-2v3.999ZM12 20a8 8 0 0 0 8-8h2c0 5.523-4.477 10-10 10a9.985 9.985 0 0 1-8-3.999V22H2v-8h8v2H5.07A7.997 7.997 0 0 0 12 20Z"></path></svg></button>
+                </span>
+            </div>
+            <style>@keyframes tmod-spin { to { transform: rotate(360deg); } }</style>
+            <input id="tmod-ban-search" type="text" class="tmod-in" placeholder="Поиск по нику" style="width:100%;background:#0e0e10;border:1px solid #3a3a3d;color:#efeff1;padding:7px 9px;font-size:13px;box-sizing:border-box;">
+            <div id="tmod-ban-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin:8px 0;"></div>
+            <div id="tmod-ban-list" style="max-height:320px;overflow-y:auto;scrollbar-width:thin;font-size:12.5px;line-height:1.4;color:#efeff1;">Загрузка…</div>
+            <div style="margin-top:8px;font-size:11px;color:#8f8f98;">
+                <div id="tmod-ban-statustext" style="color:#adadb8;min-height:14px;"></div>
+                <div id="tmod-ban-note" style="min-height:14px;margin-top:2px;"></div>
+                <div style="margin-top:4px;"><a id="tmod-ban-reset" href="#" style="color:#6f6f78;text-decoration:none;border-bottom:1px dotted #4a4a4f;" title="Забыть кэш журнала по этому каналу и прочитать весь журнал заново (обновление сверху читает только новые записи)">перечитать журнал с нуля</a></div>
+            </div>
+        `;
+        content.querySelector('#tmod-back').onclick = () => {
+            panel.remove();
+            panelOpen = false;
+            setTimeout(() => createPanel(), 10);
+        };
+        const listEl = content.querySelector('#tmod-ban-list');
+        const noteEl = content.querySelector('#tmod-ban-note');
+        const searchEl = content.querySelector('#tmod-ban-search');
+        const chipsEl = content.querySelector('#tmod-ban-chips');
+        const spinEl = content.querySelector('#tmod-ban-spin');
+        const statusEl = content.querySelector('#tmod-ban-statustext');
+        const copyBtn = content.querySelector('#tmod-ban-journal');
+        let rows = [];
+        let complete = false;
+        let banFilter = 'active';   // active | all | ban | timeout
+
+        function renderChips() {
+            const defs = [['active', 'Активные'], ['ban', 'Баны'], ['timeout', 'Отстранения']];
+            chipsEl.innerHTML = defs.map(([id, label]) =>
+                `<button data-flt="${id}" class="tmod-chip" style="background:${id === banFilter ? '#9146FF' : '#2f2f33'};color:${id === banFilter ? '#fff' : '#adadb8'};border:none;padding:2px 9px;font-size:11px;cursor:pointer;">${label}</button>`
+            ).join('');
+            chipsEl.querySelectorAll('button[data-flt]').forEach((b) => {
+                b.onclick = () => { banFilter = b.dataset.flt; renderChips(); render(); };
+            });
+        }
+
+        function render() {
+            const q = String(searchEl.value || '').trim().toLowerCase();
+            const now = Date.now();
+            const shown = rows.filter((r) => {
+                if (q && String(r.login).indexOf(q) === -1 && String(r.name || '').toLowerCase().indexOf(q) === -1) return false;
+                if (banFilter === 'active') return r.active === true;   // подтверждённые и выведенные из журнала
+                if (banFilter === 'ban') return r.kind === 'ban';
+                if (banFilter === 'timeout') return r.kind === 'timeout';
+                return true;
+            });
+            if (!shown.length) {
+                listEl.innerHTML = '<div style="color:#8f8f98;">' + (rows.length ? 'Ничего не найдено' : 'Список пуст') + '</div>';
+                return;
+            }
+            const MAX_ROWS = 200;
+            const limited = shown.length > MAX_ROWS ? shown.slice(0, MAX_ROWS) : shown;
+            if (shown.length > MAX_ROWS) {
+                noteEl.textContent = 'Показаны первые ' + MAX_ROWS + ' из ' + shown.length + ' — уточни поиск или фильтр.';
+            }
+            listEl.innerHTML = limited.map((r) => {
+                const until = r.expiresAt ? new Date(r.expiresAt).getTime() : 0;
+                const isActive = r.active === true;
+                const color = r.sharedUnconfirmed
+                    ? '#8f8f98'
+                    : (r.active === null ? '#8f8f98' : (r.kind === 'ban' ? '#eb4b4b' : (isActive ? '#f0a04b' : '#6f6f78')));
+                // «забанен» — подтверждено запросом Twitch; «забанен (по журналу)» — вывод из
+                // журнала (бан есть, снятия после него нет), проверка не ответила.
+                let status;
+                let statusTip;
+                if (r.sharedUnconfirmed) {
+                    // Не «забанен» и не «снят»: запись есть, но бан наложен в общем чате
+                    // модератором другого канала — к этому каналу она не относится.
+                    status = 'действие в общем чате';
+                    statusTip = 'Запись реальна: модератор другого канала забанил его в общем '
+                        + 'чате, и Twitch зеркалит это в журнал каждого участника (в самом журнале '
+                        + 'цель показана как «неизвестный пользователь»). Бана в этом канале '
+                        + 'такая запись не создаёт.';
+                } else if (r.active === null) {
+                    status = 'срок неизвестен';
+                    statusTip = 'В журнале не нашлось ни снятия, ни срока отстранения';
+                } else if (r.kind === 'ban') {
+                    if (isActive) {
+                        // Источник — только в подсказке: в списке не должно быть ребусов.
+                        const local = r.source === 'cache';
+                        status = 'забанен';
+                        statusTip = local
+                            ? 'Наше действие или живое событие бана из чата (ответ Twitch получен)'
+                            : (r.confirmed
+                                ? 'Подтверждено запросом Twitch: бан действует сейчас'
+                                : 'Из журнала: бан есть, снятия после него не найдено');
+                    } else {
+                        status = 'бан снят';
+                        statusTip = r.liftedUnknown ? 'Проверка Twitch: бана уже нет' : 'В журнале есть снятие бана';
+                    }
+                } else if (isActive) {
+                    status = 'отстранён до ' + escapeHtml(fmtDateTime(r.expiresAt) || '');
+                    statusTip = 'Срок отстранения ещё не истёк';
+                } else {
+                    status = 'отстранение истекло';
+                    statusTip = 'Срок прошёл или отстранение снято';
+                }
+                // Дата события — абсолютная (день и время), «N назад» остаётся в подсказке:
+                // в списке на тысячи строк относительное время читать нельзя.
+                const atMs = r.at ? new Date(r.at).getTime() : 0;
+                const atAbs = atMs ? fmtDateTime(r.at) : '';
+                const atRel = atMs ? timeAgoMs(atMs) : '';
+                const meta = [
+                    r.by ? 'от ' + escapeHtml(r.by) : '',
+                    r.shared ? 'общий чат' : '',
+                    atAbs ? `<span title="${escapeHtml(atRel)}">${escapeHtml(atAbs)}</span>` : ''
+                ].filter(Boolean).join(' • ');
+                const avatar = r.avatar
+                    ? `<img src="${escapeHtml(r.avatar)}" alt="" style="width:20px;height:20px;border-radius:50%;flex:0 0 20px;">`
+                    : '<span style="width:20px;height:20px;border-radius:50%;background:#3a3a3d;flex:0 0 20px;"></span>';
+                const clickable = !!r.userId;
+                return `<div class="tmod-ma-row tmod-vw-row" data-login="${escapeHtml(r.login)}" data-uid="${escapeHtml(r.userId || '')}" data-uname="${escapeHtml(r.name || r.login)}" style="display:flex;gap:8px;align-items:flex-start;padding:6px 4px;border-bottom:1px solid #26262c;position:relative;${clickable ? 'cursor:pointer;' : ''}"${clickable ? ' data-tip="Открыть меню модерации"' : ''}>
+                    <span style="width:3px;border-radius:2px;background:${color};flex:0 0 3px;align-self:stretch;"></span>
+                    ${avatar}
+                    <div style="min-width:0;flex:1 1 auto;">
+                        <div style="word-break:break-word;"><span style="font-weight:600;">${escapeHtml(r.name || r.login)}</span> <span style="color:${color};" title="${escapeHtml(statusTip)}">${status}</span></div>
+                        ${r.reason ? `<div style="color:#adadb8;margin-top:2px;word-break:break-word;">${escapeHtml(String(r.reason).slice(0, 120))}</div>` : ''}
+                        <div style="color:#6f6f78;font-size:11px;margin-top:2px;">${meta}</div>
+                    </div>
+                    <span style="display:flex;align-items:center;">
+                        ${r.userId && !r.sharedUnconfirmed ? `<button class="tmod-vw-act" data-act="unban" data-mode="unban" data-login="${escapeHtml(r.login)}" data-tip="Снять бан или отстранение" style="padding:2px 7px;">Снять</button>` : ''}
+                    </span>
+                </div>`;
+            }).join('');
+            // Клик по строке открывает наше меню модерации (как в журнале действий),
+            // кнопка «Снять» — общий обработчик с подтверждением в строке.
+            listEl.querySelectorAll('.tmod-ma-row[data-uid]').forEach((rowEl) => {
+                rowEl.onclick = (e) => {
+                    if (e.target && e.target.closest && e.target.closest('.tmod-vw-act, .tmod-vw-confirm')) return;
+                    showPanelMenu({
+                        userId: rowEl.dataset.uid,
+                        userLogin: rowEl.dataset.login,
+                        userName: rowEl.dataset.uname,
+                        messageId: null
+                    }, null);
+                };
+            });
+            bindViewerActions(listEl, noteEl);
+        }
+
+        async function load() {
+            if (!listEl.isConnected) {
+                viewersListReloads = viewersListReloads.filter((f) => f !== load);
+                return;
+            }
+            if (viewersListReloads.indexOf(load) === -1) viewersListReloads.push(load);
+            listEl.textContent = 'Загрузка…';
+            noteEl.textContent = '';
+            // Прогрессивно: строки появляются сразу из кэша и дописываются по мере чтения
+            // журнала в фоне (в подписи видно, сколько событий уже прочитано).
+            let lastRender = 0;
+            const res = await collectBannedUsers((partial) => {
+                if (!listEl.isConnected) return;
+                rows = partial.list || [];
+                const reading = partial.partial || partial.deep;
+                spinEl.style.display = reading ? 'inline-block' : 'none';
+                const from = partial.oldestAt ? fmtDateShort(partial.oldestAt) : '';
+                statusEl.textContent = reading
+                    ? ('Читаю журнал… страниц ' + partial.pages + ', событий ' + (partial.scanned || 0)
+                        + (from ? ', дошёл до ' + from : '') + ', страйков ' + (partial.strikes || 0))
+                    : '';
+                const now = Date.now();
+                if (now - lastRender > 400 || !reading) { lastRender = now; render(); }
+            }, () => !listEl.isConnected);
+            if (res.error) {
+                listEl.innerHTML = '<div style="color:#ff6b6b;">Не удалось загрузить: ' + escapeHtml(res.error) + '</div>';
+                return;
+            }
+            rows = res.list || [];
+            complete = !!res.complete;
+            spinEl.style.display = 'none';
+            statusEl.textContent = '';
+            const from = res.oldestAt ? fmtDateShort(res.oldestAt) : '';
+            if (res.logError) {
+                noteEl.textContent = 'Журнал не читается: ' + res.logError;
+            } else {
+                // Что именно произошло с кэшем — видно прямо здесь: читали только новое или
+                // перечитывали журнал заново и почему.
+                const cacheLine = res.fromCache
+                    ? ('Кэш: ' + (res.cacheEvents || 0) + ' записей'
+                        + (res.caughtUp
+                            ? ' · новые проверены, пропусков нет'
+                            : ' · догон не закончен, продолжу с места обрыва'))
+                    : 'Кэш пуст — журнал прочитан заново';
+                noteEl.textContent = complete
+                    ? 'Полный список канала.'
+                    : ('Журнал: страниц ' + (res.pages || 0) + ', событий ' + (res.readNow || 0)
+                        + ', страйков ' + (res.strikes || 0)
+                        + (from ? ', дошёл до ' + from : '')
+                        + (res.endReached ? ' · прочитан до конца журнала' : '')
+                        + (res.limitHit && !res.endReached
+                            ? ' · остановился на лимите ' + (res.pages || 24) + ' страниц за заход, продолжу при следующем открытии'
+                            : (!res.endReached && res.hasMore ? ' · дальше есть ещё' : ''))
+                        + (res.noProgress ? ' · Twitch игнорирует курсор и отдаёт только первую страницу' : '')
+                        + (res.noCursor ? ' · Twitch не отдал курсор страницы' : '')
+                        + '. ' + cacheLine + '. Список неполный — целиком его видит только стример.');
+            }
+            copyBtn.href = modLogUrl();
+            render();
+        }
+
+        searchEl.oninput = render;
+        renderChips();
+        content.querySelector('#tmod-ban-refresh').onclick = load;
+        // Журнал открываем маленьким окном (как shield-mode), а не вкладкой: раньше это была
+        // обычная ссылка, и она разворачивала страницу на всю вкладку.
+        content.querySelector('#tmod-ban-journal').onclick = (e) => {
+            e.preventDefault();
+            const url = modLogUrl();
+            const win = window.open(url, 'tmod-modlog',
+                'width=520,height=760,scrollbars=yes,resizable=yes');
+            if (win) { try { win.focus(); } catch (err) {} return; }
+            window.open(url, '_blank', 'noopener');   // окно заблокировали — открываем вкладкой
+        };
+        // Полный перечит журнала: забываем кэш этого канала. Нужен и вручную (если кажется,
+        // что список неполный), и он же срабатывает автоматически, когда самопроверка кэша
+        // находит повреждение или кэш от старой версии.
+        content.querySelector('#tmod-ban-reset').onclick = async (e) => {
+            if (e) e.preventDefault();
+            try {
+                const c = await getModeratorContext();
+                if (c) modLogCacheDrop(c.broadcasterId);
+            } catch (err) {}
+            load();
+        };
+        load();
+    }
+
+    // --- Отдельное «парящее» окошко со списком зрителей (клик по счётчику) -------
+    async function openViewersWindow() {
+        const existing = document.getElementById('tmod-viewers-window');
+        if (existing) { existing.remove(); return; }   // повторный клик закрывает
+        const win = document.createElement('div');
+        win.id = 'tmod-viewers-window';
+        win.style.cssText = 'position:fixed;z-index:1000000;width:380px;max-width:calc(100vw - 16px);' +
+            'background:rgba(24,24,27,.9);backdrop-filter:blur(8px);border:1px solid #3a3a3d;border-radius:10px;' +
+            'box-shadow:0 10px 34px rgba(0,0,0,.65);overflow:hidden;color:#efeff1;' +
+            'font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;';
+        win.innerHTML = `
+            <style>
+                #tmod-viewers-window ::-webkit-scrollbar { width: 6px; }
+                #tmod-viewers-window ::-webkit-scrollbar-track { background: transparent; }
+                #tmod-viewers-window ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 3px; }
+                #tmod-viewers-window ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.32); }
+                #tmod-viewers-window .tmod-vw-row { border-radius: 8px; min-width: 0; }
+                #tmod-viewers-window .tmod-vw-row:hover { background: #31313a; }
+                #tmod-viewers-window .tmod-vw-nick { min-width: 0; flex: 1 1 auto; overflow-wrap: anywhere; }
+                #tmod-viewers-window .tmod-vw-act { background: none; border: 1px solid #3a3a3d; border-radius: 8px; color: #adadb8; cursor: pointer; font-size: 11px; padding: 1px 5px; display: inline-flex; align-items: center; justify-content: center; min-width: 22px; min-height: 20px; opacity: 0; flex: 0 0 auto; }
+                #tmod-viewers-window .tmod-vw-act svg { width: 14px; height: 14px; display: block; }
+                #tmod-viewers-window .tmod-vw-row:hover .tmod-vw-act { opacity: 1; }
+                #tmod-viewers-window .tmod-vw-act:hover { background: #3a3a3d; color: #efeff1; }
+                #tmod-viewers-window .tmod-vw-mark { width: 7px; height: 7px; border-radius: 50%; background: #eb4b4b; box-shadow: 0 0 6px rgba(235,75,75,.8); flex: 0 0 7px; }
+                #tmod-viewers-window .tmod-vw-row:hover .tmod-vw-mark { display: none; }
+                #tmod-viewers-window .tmod-vw-act[data-danger="1"] { border-color: #8f3d3d; color: #ff8a86; }
+                #tmod-viewers-window .tmod-vw-confirm { position: absolute; right: 4px; top: 0; bottom: 0; display: flex; align-items: center; gap: 6px; padding: 0 6px; background: #18181b; border: 1px solid #3a3a3d; border-radius: 10px; z-index: 3; font-size: 11.5px; color: #efeff1; }
+                #tmod-viewers-window .tmod-vw-confirm button { background: #26262c; border: 1px solid #3a3a3d; border-radius: 8px; color: #efeff1; cursor: pointer; font-size: 11px; padding: 2px 7px; }
+                #tmod-viewers-window .tmod-vw-confirm .tmod-vw-yes { background: #3d1f22; border-color: #8f3d3d; color: #ff8a86; }
+                #tmod-viewers-window .tmod-vw-confirm button:hover { filter: brightness(1.25); }
+            </style>
+            <div id="tmod-vwx-head" style="display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid #2f2f33;background:rgba(14,14,16,.92);cursor:grab;">
+                <span style="font-size:13px;font-weight:600;">Зрители</span>
+                <span id="tmod-vwx-count" style="font-size:11px;color:#8f8f98;"></span>
+                <button id="tmod-vwx-ref" title="Обновить" style="margin-left:auto;background:none;border:none;color:#adadb8;cursor:pointer;padding:0;width:22px;height:22px;display:flex;align-items:center;justify-content:center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 5.999A9.985 9.985 0 0 0 12 2C6.477 2 2 6.477 2 12h2a8 8 0 0 1 14.93-4H14v2h8V2h-2v3.999ZM12 20a8 8 0 0 0 8-8h2c0 5.523-4.477 10-10 10a9.985 9.985 0 0 1-8-3.999V22H2v-8h8v2H5.07A7.997 7.997 0 0 0 12 20Z"></path></svg></button>
+                <button id="tmod-vwx-close" title="Закрыть" style="background:none;border:none;color:#adadb8;cursor:pointer;padding:0;width:22px;height:22px;font-size:14px;">✕</button>
+            </div>
+            <div id="tmod-vwx-body" style="max-height:340px;overflow-y:auto;overflow-x:hidden;padding:8px 10px;font-size:12.5px;">Загрузка…</div>
+            <div id="tmod-vwx-note" style="padding:0 10px 8px;font-size:10.5px;color:#8f8f98;"></div>
+        `;
+        document.body.appendChild(win);
+        const counter = document.querySelector('[data-a-target="animated-channel-viewers-count"]');
+        const host = counter ? (counter.closest('div') || counter) : null;
+        const rect = host ? host.getBoundingClientRect() : null;
+        // Окно растёт ВВЕРХ от счётчика: прижимаем к низу, а не к верху.
+        // Окно шире, чем было (300 → 380): ники влезают целиком, обрезать их не нужно.
+        win.style.left = Math.max(8, Math.min(rect ? rect.left - 40 : 40, window.innerWidth - win.offsetWidth - 8)) + 'px';
+        if (rect) {
+            win.style.bottom = Math.max(8, window.innerHeight - rect.top + 8) + 'px';
+        } else {
+            win.style.bottom = '120px';
+        }
+        win.style.top = 'auto';
+        // Высоту ограничиваем, чтобы окошко не улетало за верх экрана.
+        win.querySelector('#tmod-vwx-body').style.maxHeight = Math.max(160, Math.min(340, (rect ? rect.top : 400) - 80)) + 'px';
+
+        const head = win.querySelector('#tmod-vwx-head');
+        let drag = null;
+        head.addEventListener('mousedown', (e) => {
+            // Перед перетаскиванием переводим окно из «прижато снизу» в «top»: если оставить
+            // и top, и bottom, окно растягивается на всю разницу между ними.
+            const r = win.getBoundingClientRect();
+            win.style.top = r.top + 'px';
+            win.style.bottom = 'auto';
+            win.style.height = 'auto';
+            drag = { x: e.clientX, y: e.clientY, left: r.left, top: r.top };
+            e.preventDefault();
+        });
+        const onMove = (e) => {
+            if (!drag) return;
+            win.style.left = Math.max(4, Math.min(drag.left + (e.clientX - drag.x), window.innerWidth - win.offsetWidth - 4)) + 'px';
+            win.style.top = Math.max(4, Math.min(drag.top + (e.clientY - drag.y), window.innerHeight - 60)) + 'px';
+        };
+        const onUp = () => { drag = null; };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+
+        function closeWindow() {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            document.removeEventListener('mousedown', onDocDown, true);
+            viewersListReloads = viewersListReloads.filter((f) => f !== load);
+            hideTip();
+            closeViewerConfirm();
+            win.remove();
+        }
+        // Клик вне окна (но не по нашему меню модерации) закрывает список.
+        function onDocDown(e) {
+            const t = e.target;
+            if (win.contains(t)) return;
+            // Закрываем только кликом по основной странице: клики по нашим элементам
+            // (меню модерации, панель) и по счётчику список не закрывают.
+            const el = t && t.nodeType === 1 ? t : (t && t.parentElement);
+            if (el && el.closest && el.closest('#tmod-mod-menu, #tmod-panel, [data-tmod-viewers-hooked="1"], [data-a-target="animated-channel-viewers-count"]')) return;
+            closeWindow();
+        }
+        // Вешаем на следующий тик: иначе клик по счётчику, которым окно открыли, закроет его сразу.
+        setTimeout(() => document.addEventListener('mousedown', onDocDown, true), 0);
+        win.querySelector('#tmod-vwx-close').onclick = closeWindow;
+
+        // Окно не должно вылезать за пределы экрана (в том числе после догрузки списка).
+        function clampWindow() {
+            if (!win.isConnected) return;
+            let r = win.getBoundingClientRect();
+            const bodyEl = win.querySelector('#tmod-vwx-body');
+            if (bodyEl && r.height > window.innerHeight - 8) {
+                const cur = bodyEl.getBoundingClientRect().height;
+                bodyEl.style.maxHeight = Math.max(80, cur - (r.height - (window.innerHeight - 8))) + 'px';
+                r = win.getBoundingClientRect();
+            }
+            let left = r.left;
+            let top = r.top;
+            if (left + r.width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - r.width - 8);
+            if (left < 8) left = 8;
+            if (top < 8) top = 8;
+            if (top + r.height > window.innerHeight - 8) top = Math.max(8, window.innerHeight - r.height - 8);
+            win.style.left = left + 'px';
+            win.style.top = top + 'px';
+            win.style.bottom = 'auto';
+        }
+
+        const body = win.querySelector('#tmod-vwx-body');
+        const note = win.querySelector('#tmod-vwx-note');
+        const countEl = win.querySelector('#tmod-vwx-count');
+
+        function rowsHtml(groups, cards) {
+            return groups.map((g) => {
+                if (!g.members.length) return '';
+                const items = g.members.map((m) => {
+                    const c = cards[m.login] || {};
+                    const avatar = c.avatar
+                        ? `<img src="${escapeHtml(c.avatar)}" alt="" style="width:22px;height:22px;border-radius:50%;flex:0 0 22px;">`
+                        : '<span style="width:22px;height:22px;border-radius:50%;background:#2f2f33;flex:0 0 22px;"></span>';
+                    return `<div class="tmod-vw-row" data-login="${escapeHtml(m.login)}"${c.id ? ` data-uid="${escapeHtml(c.id)}" data-uname="${escapeHtml(m.name || m.login)}"` : ''} style="display:flex;align-items:center;gap:8px;padding:4px;cursor:context-menu;position:relative;">
+                        ${avatar}<span class="tmod-vw-nick" data-login="${escapeHtml(m.login)}" style="cursor:pointer;" title="ЛКМ — карточка в чате, ПКМ — меню модерации">${escapeHtml(m.name || m.login)}</span>
+                        ${viewerActionsHtml(m, c)}
+                    </div>`;
+                }).join('');
+                return `<div style="margin-bottom:10px;"><div style="font-size:11px;color:#8f8f98;margin-bottom:3px;">${escapeHtml(g.title)} — ${g.members.length}</div>${items}</div>`;
+            }).join('');
+        }
+
+        // Меню модерации, открытое из окошка зрителей, ставим так, чтобы его нижний край
+        // совпал с нижним краем окошка, и растёт оно вверх.
+        function openMenuFromWindow(data) {
+            showPanelMenu(data, null);
+            const align = () => {
+                const menu = panelMenuEl;
+                const w = document.getElementById('tmod-viewers-window');
+                if (!menu || !w) return;
+                const wr = w.getBoundingClientRect();
+                const mr = menu.getBoundingClientRect();
+                menu.style.top = Math.max(8, wr.bottom - mr.height) + 'px';
+                menu.style.left = Math.max(8, Math.min(wr.left - mr.width - 8, window.innerWidth - mr.width - 8)) + 'px';
+            };
+            align();
+            setTimeout(align, 60);
+            setTimeout(align, 350);   // после подгрузки статуса меню становится выше
+        }
+
+        function bind() {
+            body.querySelectorAll('.tmod-vw-row').forEach((rowEl) => {
+                rowEl.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openMenuFromWindow({
+                        userId: rowEl.dataset.uid || null,
+                        userLogin: rowEl.dataset.login,
+                        userName: rowEl.dataset.uname || rowEl.dataset.login,
+                        messageId: null
+                    });
+                });
+            });
+            body.querySelectorAll('.tmod-vw-nick').forEach((nEl) => {
+                nEl.onclick = (e) => { e.stopPropagation(); sendToChatInput('/user ' + nEl.dataset.login); };
+            });
+            bindViewerActions(body, note, openMenuFromWindow);
+        }
+
+        async function load() {
+            if (!win.isConnected) {
+                viewersListReloads = viewersListReloads.filter((f) => f !== load);
+                return;
+            }
+            if (viewersListReloads.indexOf(load) === -1) viewersListReloads.push(load);
+            body.textContent = 'Загрузка…';
+            note.textContent = '';
+            try {
+                const { groups, source, total } = await loadViewerGroups();
+                const all = [];
+                groups.forEach((g) => g.members.forEach((m) => all.push(m)));
+                if (!all.length) {
+                    const isMod = await amIModeratorHere();
+                    body.innerHTML = (source === 'chatters' && isMod === false)
+                        ? '<div style="color:#8f8f98;">Twitch отдаёт список зрителей только модераторам канала.</div>'
+                        : '<div style="color:#8f8f98;">Список пуст.</div>';
+                    countEl.textContent = '';
+                    note.textContent = '';
+                    return;
+                }
+                const cards = await fetchUserCards(all);
+                body.innerHTML = rowsHtml(groups, cards);
+                bind();
+                prefetchViewerStatuses(cards);
+                countEl.textContent = '(' + all.length + ')';
+                note.textContent = source === 'gql' ? ''
+                    : (source === 'dom' ? 'Из панели «Сообщество».' : 'Только те, кто сейчас в чате.');
+            } catch (e) {
+                body.textContent = 'Ошибка: ' + (e && e.message ? e.message : String(e));
+            } finally {
+                clampWindow();
+            }
+        }
+        win.querySelector('#tmod-vwx-ref').onclick = load;
+        load();
+    }
+
+    // Приоритет источников списка зрителей: прямой запрос Twitch (роли, без режима
+    // модератора), затем открытая панель «Сообщество», затем официальные чатеры.
+    async function loadViewerGroups() {
+        try {
+            const ct = await fetchCommunityTab(getChannelName());
+            if (ct && ct.groups && ct.groups.length) {
+                return { groups: ct.groups, source: 'gql', total: ct.count };
+            }
+        } catch (e) {}
+        const dom = readCommunityGroupsFromDom();
+        if (dom) return { groups: dom, source: 'dom' };
+        // Список чатеров — только для модератора: у остальных Helix ответит 401, и запрос
+        // был бы просто мусором. Известного «не модератора» не дёргаем вообще.
+        if (moderatorResolved === false) return { groups: [], source: 'chatters' };
+        const chatters = await fetchChatterList();
+        return { groups: [{ title: 'Сейчас в чате', members: chatters }], source: 'chatters' };
+    }
+
     function showRaidSection(panel) {
         const channelName = getChannelName();
         const content = panel.querySelector('#tmod-panel-content');
@@ -2391,10 +5413,10 @@ const announceText = content.querySelector('#tmod-announce-text');
             <button id="tmod-back" style="background: none; border: none; color: #9146FF; cursor: pointer; font-size: 14px; padding: 0; margin-bottom: 12px; display: flex; align-items: center; gap: 4px;"><span>\u2190</span> <span>Назад</span></button>
             <div style="position: relative; margin-bottom: 10px;">
                 <label style="font-size: 12px; color: #adadb8; display: block; margin-bottom: 4px;">Канал для рейда</label>
-                <input type="text" id="tmod-raid-input" placeholder="логин или ссылка..." autocomplete="off" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 4px; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
+                <input type="text" id="tmod-raid-input" class="tmod-in" placeholder="логин или ссылка..." autocomplete="off" style="width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; color: #efeff1; padding: 8px 10px; font-size: 13px; box-sizing: border-box;">
                 <div id="tmod-raid-results" style="background: #1a1a1e; border: 1px solid #3a3a3d; border-radius: 0 0 4px 4px; display: none; max-height: 250px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #3a3a3d transparent;"></div>
             </div>
-            <button id="tmod-raid-btn" style="width: 100%; background: #9146FF; color: white; border: none; border-radius: 4px; padding: 10px; font-size: 14px; font-weight: 600; cursor: pointer;">Начать рейд</button>
+            <button id="tmod-raid-btn" class="tmod-btn" style="width: 100%; background: #9146FF; color: white; border: none; padding: 10px; font-size: 14px; font-weight: 600; cursor: pointer;">Начать рейд</button>
             <div id="tmod-raid-status" style="margin-top: 10px; font-size: 13px; text-align: center;"></div>
         `;
 
@@ -2549,20 +5571,42 @@ const announceText = content.querySelector('#tmod-announce-text');
             'Content-Type': 'application/json'
         };
         if (opts && opts.integrity) {
-            const integ = await gqlIntegrityToken(gqlToken);
-            if (integ) {
-                headers['Client-Integrity'] = integ;
-                const dev = gqlDeviceId();
-                if (dev) headers['X-Device-Id'] = dev;
+            // Приоритет — ЖИВЫЕ заголовки клиента Twitch, снятые из их же запросов
+            // (их пишет twitch-api.js в localStorage). Свой integrity-токен Twitch для
+            // части операций не принимает: «failed integrity check» даже с ним.
+            const live = gqlLiveHeaders();
+            if (live && !(opts && opts.forceOwnIntegrity)) {
+                headers['Client-Integrity'] = live.integrity;
+                if (live.deviceId) headers['X-Device-Id'] = live.deviceId;
+                if (live.sessionId) headers['Client-Session-Id'] = live.sessionId;
+                if (live.version) headers['Client-Version'] = live.version;
+                debugLogOnce('gql-live-headers', { ageMs: Date.now() - live.at, version: live.version });
+            } else {
+                const integ = await gqlIntegrityToken(gqlToken);
+                if (integ) {
+                    headers['Client-Integrity'] = integ;
+                    const dev = gqlDeviceId();
+                    if (dev) headers['X-Device-Id'] = dev;
+                    // Веб-клиент Twitch шлёт ещё session-id и версию клиента; без них токен,
+                    // похоже, не принимается — их и добавляем.
+                    const sid = gqlSessionId();
+                    if (sid) headers['Client-Session-Id'] = sid;
+                    const ver = gqlClientVersion();
+                    if (ver) headers['Client-Version'] = ver;
+                }
             }
         }
 
         let resp;
+        // credentials нельзя: gql.twitch.tv отвечает с Access-Control-Allow-Origin: *,
+        // поэтому запрос с cookies браузер режет («Failed to fetch»). Проверено.
+        const creds = (opts && opts.credentials === true) ? 'include' : 'omit';
         if (IS_EXTENSION) {
             resp = await fetch('https://gql.twitch.tv/gql', {
                 method: 'POST',
                 headers,
-                body
+                body,
+                credentials: creds
             }).then(async (r) => ({ status: r.status, ok: r.ok, text: await r.text() }))
               .catch((e) => ({ error: e.message }));
         } else {
@@ -2586,10 +5630,19 @@ const announceText = content.querySelector('#tmod-announce-text');
             const json = JSON.parse(resp.text);
             if (json.errors && json.errors.length) {
                 const msg = String(json.errors[0].message || '');
-                // Twitch для части GQL-мутаций требует integrity-токен — переводим это
-                // в понятную подсказку, а не показываем сырой текст.
+                const rawCode = (json.errors[0].extensions && json.errors[0].extensions.code) || '';
+                // Пишем сырой ответ Twitch: по нему видно, действительно ли это integrity
+                // или, например, устаревший хеш — раньше всё сводилось к одной фразе.
+                debugLog('gql-error', {
+                    op: (opts && opts.operationName) || null,
+                    msg: msg.slice(0, 200), code: rawCode, withIntegrity: !!(opts && opts.integrity)
+                });
                 if (/integrity/i.test(msg)) {
-                    return { success: false, error: 'Twitch отклонил запрос (integrity check). Обновите страницу и повторите.' };
+                    return {
+                        success: false,
+                        error: 'Twitch отклонил запрос (integrity check). Обновите страницу и повторите.',
+                        rawError: msg, rawCode: rawCode
+                    };
                 }
                 if (/persisted/i.test(msg)) {
                     return { success: false, error: 'Хеш внутреннего запроса устарел (Twitch обновил клиент). Нужен свежий перехват: localStorage.TMOD_CAPTURE_GQL=1' };
@@ -2623,7 +5676,14 @@ const announceText = content.querySelector('#tmod-announce-text');
         ViewerCardModLogsComments: '58273e486b4e50dafbad9f736bc1ebcc7db935572664cb9c1e561b8e1e076dc6',
         ViewerCardModLogsSharedComments: '12424d0ae0b1bc16d86d20627607abd163a8e978d7b3d231031dd4d60a5df1f1',
         ViewerCardHeader: '18d1a553b18e5530fa7810d2328ca5e4353891033e1e89ecfe9c3e6e6aaf6090',
-        ViewerCard: '2c6cc05878bf2f007613fe807512546000401362a2d7d87ab20ebf259960a29e'
+        ViewerCard: '2c6cc05878bf2f007613fe807512546000401362a2d7d87ab20ebf259960a29e',
+        // Канальные операции (найдены перехватом в окне «Действия модератора» и в
+        // панели «Сообщество» режима модератора).
+        ModActionsList: 'f09041ba19fdd3d0ceb6e9b9163d5d903eddd625e1b156e8af6deb207ed3e77e',
+        ModActionFilterCategories: 'bcbcf28172f20cc41ac367ae918c2b440cb151c1aab40897334a4fe9e812b222',
+        CommunityTab: '92168b4434c8f4d32df14510052131c3544b929723d5f8b69bb96c96207e483e',
+        ModViewChannelQuery: '95d9fbad2f03b2109ccc68e5df04e0c5b89aa3d4a50ddbff09e3e7259e47fd9c',
+        UserWithBadges: '9a1a4c9d9bf80eed822bb8e0ab9d60325b4de1bd28f194e5ca9b44ea38138134'
     };
 
     // Хеш операции: сначала выученный из трафика страницы (twitch-api.js пишет
@@ -2641,8 +5701,38 @@ const announceText = content.querySelector('#tmod-announce-text');
     // ViewerCardHeader/ViewerCard отвечают «integrity check»), поэтому берём его у
     // самого Twitch и прикладываем ТОЛЬКО к таким операциям — рабочие модераторские
     // запросы остаются ровно такими же, как сейчас.
-    const GQL_INTEGRITY_OPS = new Set(['ViewerCardHeader', 'ViewerCard']);
+    const GQL_INTEGRITY_OPS = new Set(['ViewerCardHeader', 'ViewerCard', 'CommunityTab']);
     let gqlIntegrityCache = { token: null, expiresAt: 0 };
+
+    // Session-id и версия клиента: веб-клиент Twitch отправляет их вместе с integrity-токеном.
+    // Session-id генерируем свой (на вкладку), версию подхватываем из перехвата их запросов.
+    function gqlSessionId() {
+        try {
+            let id = sessionStorage.getItem('TMOD_CLIENT_SESSION_ID');
+            if (!id) {
+                id = (typeof crypto !== 'undefined' && crypto.randomUUID)
+                    ? crypto.randomUUID()
+                    : (String(Date.now()) + '-' + Math.random().toString(16).slice(2));
+                sessionStorage.setItem('TMOD_CLIENT_SESSION_ID', id);
+            }
+            return id;
+        } catch (e) { return null; }
+    }
+
+    function gqlClientVersion() {
+        try { return localStorage.getItem('TMOD_CLIENT_VERSION') || ''; } catch (e) { return ''; }
+    }
+
+    // Живые заголовки клиента Twitch (включая их integrity-токен), снятые перехватчиком.
+    // Считаем свежими 15 минут: токен короткоживущий, протухший только навредит.
+    function gqlLiveHeaders() {
+        try {
+            const j = JSON.parse(localStorage.getItem('TMOD_LIVE_GQL_HEADERS') || 'null');
+            if (!j || !j.integrity) return null;
+            if (Date.now() - (j.at || 0) > 15 * 60 * 1000) return null;
+            return j;
+        } catch (e) { return null; }
+    }
 
     function gqlDeviceId() {
         try {
@@ -2660,8 +5750,7 @@ const announceText = content.querySelector('#tmod-announce-text');
         } catch (e) { return null; }
     }
 
-    async function gqlIntegrityToken(gqlToken) {
-        const now = Date.now();
+    async function gqlIntegrityToken(gqlToken) {        const now = Date.now();
         if (gqlIntegrityCache.token && gqlIntegrityCache.expiresAt > now + 5000) return gqlIntegrityCache.token;
         if (!IS_EXTENSION || typeof chrome === 'undefined' || !chrome.runtime) return null;
         try {
@@ -2677,7 +5766,12 @@ const announceText = content.querySelector('#tmod-announce-text');
             if (!j || !j.token) { debugLog('integrity-none', j && j.error); return null; }
             const exp = j.expiration ? new Date(j.expiration).getTime() : now + 3600000;
             gqlIntegrityCache = { token: j.token, expiresAt: exp };
-            debugLog('integrity-ok', { expiresAt: exp });
+            debugLog('integrity-ok', {
+                expiresAt: exp,
+                clientVersion: gqlClientVersion() || '(не выучена — включи TMOD_CAPTURE_GQL и перезагрузи)',
+                sessionId: gqlSessionId() ? 'set' : 'none',
+                deviceId: gqlDeviceId() ? 'set' : 'none'
+            });
             return j.token;
         } catch (e) {
             debugLog('integrity-fail', e && e.message);
@@ -2686,12 +5780,144 @@ const announceText = content.querySelector('#tmod-announce-text');
     }
 
     // Запрос по persisted-хешу: то же тело, что отправляет клиент Twitch.
-    async function gqlPersisted(operationName, hash, variables) {
-        return gqlRequest(null, variables, {
+    async function gqlPersisted(operationName, hash, variables, extraOpts) {
+        const opts = Object.assign({
             operationName: operationName,
             persistedHash: hash || gqlHash(operationName),
             integrity: GQL_INTEGRITY_OPS.has(operationName)
-        });
+        }, extraOpts || {});
+        return gqlRequest(null, variables, opts);
+    }
+
+    // Пакетный запрос к GQL: Twitch принимает МАССИВ операций одним POST. Именно так делает
+    // их собственный веб-клиент. Для нас это главное: 300 зрителей = 6 запросов вместо 300.
+    async function gqlBatchPersisted(list) {
+        if (!IS_EXTENSION || !list || !list.length) return null;
+        const gqlToken = await gqlGetSessionToken();
+        if (!gqlToken) return null;
+        const headers = {
+            'Client-Id': GQL_CLIENT_ID,
+            'Content-Type': 'application/json',
+            'Authorization': 'OAuth ' + gqlToken
+        };
+        const live = gqlLiveHeaders();
+        if (live) {
+            headers['Client-Integrity'] = live.integrity;
+            if (live.deviceId) headers['X-Device-Id'] = live.deviceId;
+            if (live.sessionId) headers['Client-Session-Id'] = live.sessionId;
+            if (live.version) headers['Client-Version'] = live.version;
+        }
+        const body = JSON.stringify(list.map((op) => ({
+            operationName: op.operationName,
+            variables: op.variables || {},
+            extensions: { persistedQuery: { version: 1, sha256Hash: op.hash || gqlHash(op.operationName) } }
+        })));
+        try {
+            const r = await fetch('https://gql.twitch.tv/gql', { method: 'POST', headers, body });
+            const json = JSON.parse(await r.text());
+            return Array.isArray(json) ? json : [json];
+        } catch (e) {
+            debugLog('gql-batch-error', e && e.message);
+            return null;
+        }
+    }
+
+    // --- Прямой запрос списка зрителей (CommunityTab) ---------------------------
+    // Twitch отдаёт этот список всем (в чате есть кнопка «Сообщество» даже не модератору),
+    // но операция капризна: часть попыток отбивается проверкой integrity, а часть — наоборот,
+    // «чужим» integrity-токеном. Поэтому перебираем варианты и запоминаем рабочий.
+    let communityTabCombo = null;
+    async function fetchCommunityTab(login) {
+        if (!IS_EXTENSION) return null;
+        const combos = communityTabCombo ? [communityTabCombo] : [
+            { integrity: true },                                  // живые заголовки Twitch
+            { integrity: true, forceOwnIntegrity: true },          // свой integrity-токен
+            { integrity: false }
+        ];
+        for (const combo of combos) {
+            const res = await gqlPersisted('CommunityTab', null, { login: login || getChannelName() || '' }, combo);
+            const data = res && res.success ? res.data : null;
+            const parsed = data ? groupsFromCommunityTab(data) : null;
+            const users = data ? usersFromCommunityTab(data) : [];
+            debugLog('community-tab-try', {
+                integrity: combo.integrity,
+                liveHeaders: !!(combo.integrity && !combo.forceOwnIntegrity && gqlLiveHeaders()),
+                ok: !!data,
+                groups: parsed ? parsed.groups.length : 0,
+                users: users.length,
+                error: (res && res.error) || null,
+                rawError: (res && res.rawError) || null,
+                rawCode: (res && res.rawCode) || null
+            });
+            if (data) {
+                // Ответ получен — дальше варианты не перебираем.
+                communityTabCombo = combo;
+                if (parsed) {
+                    debugLogOnce('community-tab-ok', combo);
+                    try { window.postMessage({ type: 'TMOD_DEBUG_STORE', key: 'communityTab', value: data }, '*'); } catch (e) {}
+                    return parsed;
+                }
+                // Форма иная — сохраняем сырой ответ для разбора.
+                try { window.postMessage({ type: 'TMOD_DEBUG_STORE', key: 'communityTabRaw', value: data }, '*'); } catch (e) {}
+                return null;
+            }
+        }
+        return null;
+    }
+
+    // Вытаскиваем пользователей из ответа любой формы: ищем объекты с login + id.
+    // Разбор ответа CommunityTab (форма проверена на живом ответе Twitch):
+    //   data.user.channel.chatters = { broadcasters, moderators, vips, chatbots, staff,
+    //                                  viewers, count } — элементы это { login } без id,
+    //   поэтому id дозапрашиваем через Helix уже при отрисовке (fetchUserCards).
+    function groupsFromCommunityTab(data) {
+        const ch = data && data.user && data.user.channel;
+        const c = ch && ch.chatters;
+        if (!c) return null;
+        const map = (arr) => {
+            const out = [];
+            const seen = Object.create(null);
+            (Array.isArray(arr) ? arr : []).forEach((x) => {
+                const login = String((x && x.login) || '').toLowerCase().trim();
+                if (!login || seen[login]) return;
+                seen[login] = 1;
+                out.push({ login: login, name: (x && x.login) || login });
+            });
+            return out;
+        };
+        const groups = [
+            { title: 'Владелец канала', members: map(c.broadcasters) },
+            { title: 'Модераторы', members: map(c.moderators) },
+            { title: 'VIP-пользователи', members: map(c.vips) },
+            { title: 'Чат-боты', members: map(c.chatbots) },
+            { title: 'Twitch Staff', members: map(c.staff) },
+            { title: 'Зрители', members: map(c.viewers) }
+        ].filter((g) => g.members.length);
+        if (!groups.length) return null;
+        return { groups: groups, count: Number(c.count) || 0 };
+    }
+
+    // Вытаскиваем пользователей из ответа любой формы (аварийный вариант, если форма
+    // ответа снова изменится): ищем объекты с login + id.
+    function usersFromCommunityTab(node) {
+        const out = [];
+        const seen = Object.create(null);
+        const walk = (n, depth) => {
+            if (!n || depth > 7) return;
+            if (Array.isArray(n)) { n.forEach((x) => walk(x, depth + 1)); return; }
+            if (typeof n !== 'object') return;
+            const login = typeof n.login === 'string' ? n.login.toLowerCase() : '';
+            if (login && (n.id != null || n.displayName)) {
+                if (!seen[login]) {
+                    seen[login] = 1;
+                    out.push({ login: login, name: n.displayName || n.login, id: n.id != null ? String(n.id) : '' });
+                }
+                return;   // внутрь пользователя не лезем
+            }
+            Object.keys(n).forEach((k) => walk(n[k], depth + 1));
+        };
+        walk(node, 0);
+        return out;
     }
 
     // Разведка внутренних запросов о юзере. Ничего не меняет в интерфейсе: складывает
@@ -2739,6 +5965,39 @@ const announceText = content.querySelector('#tmod-announce-text');
                 '\nПолные ответы: copy(JSON.stringify(TMOD_DEBUG_DATA, null, 1))');
         } catch (e) {}
         try { window.postMessage({ type: 'TMOD_DEBUG_STORE', key: 'userGql:' + uid, value: out }, '*'); } catch (e) {}
+        return out;
+    }
+
+    // Разведка КАНАЛЬНЫХ операций (запускается только при включённой диагностике):
+    //   ModActionsList        — собственный журнал действий модераторов Twitch
+    //                           (окно «Действия модератора»), это и есть мод-лог канала;
+    //   CommunityTab          — панель «Сообщество» в режиме модератора
+    //                           (владелец/модераторы/VIP/боты/зрители);
+    //   ModViewChannelQuery   — данные канала для Mod View.
+    // Форма ответа внутренняя, поэтому сначала смотрим СЫРЫЕ ответы в TMOD_DEBUG_DATA,
+    // а уже по ним пишем разбор полей и плитки.
+    async function probeChannelGql(broadcasterId, channelLogin) {
+        if (!IS_EXTENSION) return null;
+        const cid = String(broadcasterId || '');
+        if (!cid) return null;
+        const jobs = [
+            ['ModActionsList', { channelID: cid }],
+            ['ModActionFilterCategories', {}],
+            ['CommunityTab', { login: channelLogin || '' }],
+            ['ModViewChannelQuery', { channelLogin: channelLogin || '' }]
+        ];
+        const out = {};
+        for (const [name, vars] of jobs) {
+            const res = await gqlPersisted(name, null, vars);
+            out[name] = res && res.success ? res.data : { tmodError: (res && res.error) || 'unknown' };
+        }
+        const summary = Object.keys(out).map((k) => k + '=' + (out[k] && out[k].tmodError ? 'ERR' : 'ok'));
+        debugLog('channel-gql-probe', summary);
+        try {
+            console.log('[ModPanel][gql] разведка канала ' + cid + ': ' + summary.join(' | '),
+                '\nПолные ответы: copy(JSON.stringify(TMOD_DEBUG_DATA, null, 1))');
+        } catch (e) {}
+        try { window.postMessage({ type: 'TMOD_DEBUG_STORE', key: 'channelGql:' + cid, value: out }, '*'); } catch (e) {}
         return out;
     }
 
@@ -2873,18 +6132,24 @@ const announceText = content.querySelector('#tmod-announce-text');
     // unbanrequest*/warnings/warningacknowledgements, в каждой записи
     // { type, timestamp, localizedLabel:{ fallbackString, localizedStringFragments } }.
     // Twitch сам отдаёт готовую локализованную фразу — просто собираем её из фрагментов.
-    function tmodModLogText(node) {
+    // Текст из внутреннего объекта Twitch вида
+    // { localizedStringFragments: [{ token: { text | displayName | login } }] }.
+    // Одна и та же форма у мод-лога юзера, у журнала действий канала и у его фильтров.
+    function tmodFragText(obj) {
         try {
-            const frags = node && node.localizedLabel && node.localizedLabel.localizedStringFragments;
-            if (Array.isArray(frags) && frags.length) {
-                return frags.map((f) => {
-                    const t = f && f.token;
-                    if (!t) return '';
-                    return t.text != null ? String(t.text) : (t.displayName || t.login || '');
-                }).join('').replace(/\s+/g, ' ').trim();
-            }
-            return String((node && node.localizedLabel && node.localizedLabel.fallbackString) || '');
+            const frags = obj && obj.localizedStringFragments;
+            if (!Array.isArray(frags) || !frags.length) return '';
+            return frags.map((f) => {
+                const t = f && f.token;
+                if (!t) return '';
+                return t.text != null ? String(t.text) : (t.displayName || t.login || '');
+            }).join('').replace(/\s+/g, ' ').trim();
         } catch (e) { return ''; }
+    }
+
+    function tmodModLogText(node) {
+        const label = node && node.localizedLabel;
+        return tmodFragText(label) || String((label && label.fallbackString) || '');
     }
 
     async function fetchModLogs(broadcasterId, userId) {
@@ -4773,6 +8038,29 @@ const announceText = content.querySelector('#tmod-announce-text');
     let chatWsRetryTimer = null;
     const chatEventRefreshAt = Object.create(null);
     const chatEventsLog = [];   // последние события канала (отладка, будущая история)
+    const chatUserColors = Object.create(null);  // логин -> цвет ника из IRC (тег color)
+
+    // Цвета ников: Twitch отдаёт их только вместе с сообщением, поэтому собираем из уже
+    // отрисованного чата (инлайн-стиль на элементе ника) и из IRC-тега color. Для тех, кто
+    // ни разу не писал при нас, цвета взять негде — остаётся цвет по умолчанию.
+    function scanChatColors() {
+        try {
+            const els = document.querySelectorAll('[data-a-target="chat-line-username"]');
+            let n = 0;
+            els.forEach((el) => {
+                if (n++ > 400) return;
+                const login = String(el.textContent || '').trim().toLowerCase();
+                if (!login) return;
+                let style = el.getAttribute('style') || '';
+                if (!/color/i.test(style)) {
+                    const inner = el.querySelector('[style*="color"]');
+                    if (inner) style = inner.getAttribute('style') || '';
+                }
+                const m = /color:\s*(rgb\([^)]+\)|#[0-9a-fA-F]{3,6})/i.exec(style);
+                if (m) chatUserColors[login] = m[1];
+            });
+        } catch (e) {}
+    }
 
     function chatEventsDisabled() {
         try { return localStorage.getItem('TMOD_CHAT_EVENTS') === '0'; } catch (e) { return false; }
@@ -4903,6 +8191,14 @@ const announceText = content.querySelector('#tmod-announce-text');
             if (chatEventsLog.length > 200) chatEventsLog.shift();
             debugLog('chat-clearchat', ev);
             onChatStrikeEvent(ev);
+            return;
+        }
+        if (m.command === 'PRIVMSG') {
+            // Цвет ника приходит тегом color — собираем его, чтобы показывать цвета
+            // в списке зрителей (Twitch отдаёт цвета только вместе с сообщениями).
+            const login = sanitizeLogin(String(m.prefix || '').split('!')[0]);
+            const color = m.tags['color'];
+            if (login && color && /^#[0-9a-fA-F]{6}$/.test(color)) chatUserColors[login] = color;
             return;
         }
         if (m.command === 'CLEARMSG') {
@@ -5304,13 +8600,111 @@ const announceText = content.querySelector('#tmod-announce-text');
         clampPanelMenuPosition();
     }
 
+    // Превью сообщения: то, что написал пользователь — текст и сами смайлы картинками
+    // (а не их названиями). Ник, время, бейджи, кнопки и панель «Копировать/Отправить/Unban»
+    // отбрасываются, а вместе с ними — служебные элементы сторонних расширений
+    // (7TV/BTTV/FFZ вставляют в сообщение свои кнопки и подписи вида «Канал: … 7TV»).
+    // Возвращает { text, html }: html — с экранированным текстом и <img> смайлов.
+    const TMOD_EMOTE_HOST_RE = /^https:\/\/(static-cdn\.jtvnw\.net|cdn\.7tv\.app|cdn\.betterttv\.net|cdn\.frankerfacez\.com)\//;
+    function tmodMessagePreview(msgEl) {
+        if (!msgEl) return { text: '', html: '' };
+        // Берём ТОЛЬКО две известные вещи: текстовые фрагменты Twitch и картинки смайлов.
+        // Никакого обхода всего сообщения — именно из-за него в превью попадали время, ник
+        // и служебные подписи сторонних расширений («Канал: … Смайлики канала 7TV»).
+        const nodes = [];
+        const seenEmotes = Object.create(null);
+        const junkAlt = /канал:|смайлики|badge|бейдж|копир|copy|отправ|send|unban|меню|menu|tooltip/i;
+        msgEl.querySelectorAll('.text-fragment, [data-a-target="chat-message-text"], [data-test-selector="message-text"]').forEach((el) => {
+            const t = String(el.textContent || '').trim();
+            if (t && !junkAlt.test(t)) nodes.push({ el, kind: 'text', value: t });
+        });
+        msgEl.querySelectorAll('img').forEach((im) => {
+            const src = im.currentSrc || im.getAttribute('src') || '';
+            const alt = String(im.getAttribute('alt') || '').trim();
+            if (!src) return;
+            if (src.indexOf('/badges/') !== -1) return;                  // бейдж — не смайл
+            if (TMOD_EMOTE_HOST_RE.test(src)) {
+                // 7TV/BTTV иногда вставляют одну и ту же картинку дважды — берём по разу.
+                if (seenEmotes[src]) return;
+                seenEmotes[src] = 1;
+                nodes.push({ el: im, kind: 'emote', value: src, alt: alt });
+                return;
+            }
+            // Незнакомый хост: показываем хотя бы название смайла текстом.
+            if (alt && alt.length < 40 && !junkAlt.test(alt)) {
+                nodes.push({ el: im, kind: 'text', value: alt });
+            }
+        });
+        if (!nodes.length) {
+            const raw = String(msgEl.textContent || '').replace(/\s+/g, ' ').trim();
+            return { text: raw, html: escapeHtml(raw) };
+        }
+        nodes.sort((a, b) => (a.el === b.el ? 0
+            : (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1)));
+        const text = nodes.map((n) => (n.kind === 'emote' ? (n.alt || '') : n.value)).join(' ').replace(/\s+/g, ' ').trim();
+        const html = nodes.map((n) => (n.kind === 'emote'
+            ? `<img class="mm-emote" src="${escapeHtml(n.value)}" alt="${escapeHtml(n.alt || '')}">`
+            : escapeHtml(n.value))).join(' ').replace(/\s+/g, ' ').trim();
+        return { text, html };
+    }
+
+    // Бейджи юзера внутренним запросом Twitch (UserWithBadges). Нужны, когда меню открыто
+    // не из сообщения (например, из списка зрителей) — тогда DOM бейджей не даёт.
+    // Форма ответа внутренняя, поэтому просто собираем ссылки на бейджи из ответа.
+    async function fetchUserBadgesGql(channelLogin, userId) {
+        if (!IS_EXTENSION) return [];
+        const res = await gqlPersisted('UserWithBadges', null, {
+            channelLogin: channelLogin || '',
+            userID: String(userId)
+        });
+        if (!res || !res.success || !res.data) return [];
+        const found = [];
+        const byUuid = Object.create(null);
+        const walk = (node, depth) => {
+            if (node == null || depth > 6) return;
+            if (typeof node === 'string') {
+                const m = /^https:\/\/static-cdn\.jtvnw\.net\/badges\/v1\/([0-9a-f-]+)\/(\d)$/i.exec(node);
+                if (m) {
+                    // Один и тот же бейдж приходит в трёх размерах — оставляем один (крупнее).
+                    const cur = byUuid[m[1]];
+                    if (!cur || Number(m[2]) > Number(cur.size)) {
+                        byUuid[m[1]] = { size: Number(m[2]), url: node, title: (cur && cur.title) || '' };
+                    }
+                    return;
+                }
+                return;
+            }
+            if (typeof node !== 'object') return;
+            if (Array.isArray(node)) { node.forEach((n) => walk(n, depth + 1)); return; }
+            // Заголовок бейджа (если он есть рядом с ссылкой) — для title/alt картинки.
+            const title = (typeof node.title === 'string' && node.title)
+                || (typeof node.description === 'string' && node.description)
+                || (typeof node.name === 'string' && node.name) || '';
+            Object.keys(node).forEach((k) => walk(node[k], depth + 1));
+            if (title) {
+                Object.keys(byUuid).forEach((u) => {
+                    if (!byUuid[u].title && String(JSON.stringify(node)).indexOf(u) !== -1) byUuid[u].title = title;
+                });
+            }
+        };
+        walk(res.data, 0);
+        Object.keys(byUuid).forEach((u) => { if (found.length < 8) found.push({ src: byUuid[u].url, alt: byUuid[u].title || '' }); });
+        debugLogOnce('user-badges-gql', found.length ? found : res.data);
+        return found;
+    }
+
     // Собирает картинки бейджей юзера из DOM сообщения (src с /badges/).
     function collectUserBadges(msgEl) {
         const out = [];
         if (!msgEl) return out;
         try {
-            msgEl.querySelectorAll('img[src]').forEach((im) => {
-                const src = im.currentSrc || im.getAttribute('src') || '';
+            msgEl.querySelectorAll('img[src], img[srcset], .chat-badge img, [data-a-target="chat-badge"] img').forEach((im) => {
+                let src = im.currentSrc || im.getAttribute('src') || '';
+                if (src.indexOf('/badges/') === -1) {
+                    // Иногда картинка задана только через srcset — берём первый кандидат.
+                    const ss = String(im.getAttribute('srcset') || '').split(',')[0].trim().split(' ')[0];
+                    if (ss && ss.indexOf('/badges/') !== -1) src = ss;
+                }
                 if (src.indexOf('/badges/') === -1) return;
                 out.push({ src, alt: String(im.getAttribute('alt') || '').trim() });
             });
@@ -5374,19 +8768,45 @@ const announceText = content.querySelector('#tmod-announce-text');
         return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()}`;
     }
 
+    // Полная дата события: в списке банов/отстранений «6 лет назад» читать невозможно,
+    // когда записей тысячи — нужен конкретный день и время.
+    function fmtDateTime(iso) {
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        const p = (n) => String(n).padStart(2, '0');
+        return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    }
+
     // Шапка меню: аватар цели, «аккаунт N», «фолловер с ДД.ММ.ГГГГ» / «не фолловер».
     function renderPanelMenuUserMeta() {
         if (!panelMenuEl) return;
         const img = panelMenuEl.querySelector('.mm-avatar');
         const meta = panelMenuEl.querySelector('.mm-meta');
         const p = panelMenuState && panelMenuState.status && panelMenuState.status.profile;
+        const ph = panelMenuEl.querySelector('.mm-avatar-ph');
+        const showPh = () => { if (ph) ph.hidden = false; };
+        const hidePh = () => { if (ph) ph.hidden = true; };
         if (img) {
             if (p && p.avatar) {
-                img.src = p.avatar;
-                img.hidden = false;
+                if (img.getAttribute('src') !== p.avatar) {
+                    // Пока картинка не загрузилась, показываем заглушку; после загрузки
+                    // убираем её полностью, чтобы она не просвечивала сквозь аватар.
+                    showPh();
+                    img.hidden = true;
+                    img.onload = () => { img.hidden = false; hidePh(); };
+                    img.onerror = () => { img.hidden = true; showPh(); };
+                    img.src = p.avatar;
+                }
+                if (img.complete && img.naturalWidth > 0) {
+                    img.hidden = false;
+                    hidePh();
+                }
             } else {
                 img.hidden = true;
+                img.onload = null;
+                img.onerror = null;
                 img.removeAttribute('src');
+                showPh();
             }
         }
         if (!meta) return;
@@ -5780,12 +9200,23 @@ const announceText = content.querySelector('#tmod-announce-text');
                 #tmod-mod-menu .mm-header { padding: 10px 12px; border-bottom: 1px solid #2f2f33; background: #0e0e10; cursor: grab; }
                 #tmod-mod-menu .mm-header.dragging { cursor: grabbing; }
                 #tmod-mod-menu .mm-header-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-                #tmod-mod-menu .mm-close { background: none; border: none; color: #adadb8; font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: 6px; flex: 0 0 auto; }
+                #tmod-mod-menu .mm-close { background: none; border: none; color: #adadb8; font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: 8px; flex: 0 0 auto; }
                 #tmod-mod-menu .mm-close:hover { color: #fff; background: #2f2f33; }
                 #tmod-mod-menu .mm-name { font-weight: 700; font-size: 13px; color: #fff; display: inline-flex; align-items: center; flex-wrap: wrap; min-width: 0; }
                 #tmod-mod-menu .mm-login { font-weight: 400; font-size: 11px; color: #9147ff; margin-left: 4px; }
                 #tmod-mod-menu .mm-preview { font-size: 11.5px; line-height: 1.35; color: #adadb8; margin-top: 2px; word-break: break-word; max-height: 34px; overflow: hidden; }
-                #tmod-mod-menu .mm-avatar { width: 34px; height: 34px; border-radius: 50%; flex: 0 0 34px; object-fit: cover; background: #2f2f33; }
+                #tmod-mod-menu .mm-preview .mm-emote { height: 18px; max-width: 28px; object-fit: contain; vertical-align: middle; margin: 0 1px; }
+                /* Заглушка аватара (иконка зрителей) видна сразу и полностью скрывается,
+                   когда картинка реально загрузилась — иначе она просвечивала сквозь
+                   полупрозрачные аватары. */
+                #tmod-mod-menu .mm-msg-block[hidden] { display: none; }
+                #tmod-mod-menu .mm-avatar-wrap { position: relative; width: 34px; height: 34px; border-radius: 50%; flex: 0 0 34px; display: inline-flex; align-items: center; justify-content: center; overflow: hidden; }
+                #tmod-mod-menu .mm-avatar-ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #8f8f98; }
+                /* Атрибут hidden должен побеждать display:flex выше, иначе заглушка
+                   оставалась видимой поверх уже загруженного аватара. */
+                #tmod-mod-menu .mm-avatar-ph[hidden] { display: none !important; }
+                #tmod-mod-menu .mm-avatar-ph svg { width: 20px; height: 20px; display: block; }
+                #tmod-mod-menu .mm-avatar { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
                 #tmod-mod-menu .mm-ident { flex: 1 1 auto; min-width: 0; }
                 #tmod-mod-menu .mm-meta { font-size: 10.5px; color: #8f8f98; margin-top: 2px; }
                 #tmod-mod-menu .mm-chip.lt-evasion, #tmod-mod-menu .mm-chip.lt-harasser { background: #4a2f10; color: #ffb86b; }
@@ -5806,7 +9237,7 @@ const announceText = content.querySelector('#tmod-announce-text');
 #tmod-mod-menu .mm-row { display: flex; gap: 5px; margin: 4px 0; flex-wrap: wrap; align-items: stretch; }
                 #tmod-mod-menu .mm-btn {
                     flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
-                    background: #26262c; border: 1px solid #3a3a3d; border-radius: 6px;
+                    background: #26262c; border: 1px solid #3a3a3d; border-radius: 10px;
                     color: #efeff1; padding: 5px 8px; font-size: 12px; cursor: pointer; text-align: center;
                     min-height: 28px;
                 }
@@ -5824,17 +9255,17 @@ const announceText = content.querySelector('#tmod-announce-text');
                 #tmod-mod-menu .mm-btn.preset { flex: 0 0 auto; min-height: 24px; padding: 3px 10px; border-radius: 12px; font-size: 11px; color: #bf94ff; }
                 #tmod-mod-menu .mm-btn.preset:hover:not(:disabled) { background: #9147ff; color: #fff; }
                 #tmod-mod-menu .mm-input {
-                    flex: 1 1 100%; width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 6px;
+                    flex: 1 1 100%; width: 100%; background: #0e0e10; border: 1px solid #3a3a3d; border-radius: 10px;
                     color: #efeff1; padding: 5px 8px; font-size: 12px; box-sizing: border-box;
                 }
                 #tmod-mod-menu .mm-input::placeholder { color: #6f6f78; }
                 #tmod-mod-menu .mm-status { font-size: 11.5px; color: #adadb8; padding: 6px 10px; border-top: 1px solid #2f2f33; min-height: 16px; user-select: text; -webkit-user-select: text; word-break: break-word; }
                 #tmod-mod-menu .mm-status.err { color: #ff6b6b; }
                 #tmod-mod-menu .mm-status.ok { color: #00d66a; }
-                #tmod-mod-menu .mm-timeout-row { margin: 6px 0 2px; padding: 6px 10px; border: 1px solid #5c2323; border-radius: 6px; background: #261414; }
+                #tmod-mod-menu .mm-timeout-row { margin: 6px 0 2px; padding: 6px 10px; border: 1px solid #5c2323; border-radius: 10px; background: #261414; }
                 #tmod-mod-menu .mm-timeout-info { font-size: 11.5px; color: #ffb3b3; margin-bottom: 4px; user-select: text; -webkit-user-select: text; word-break: break-word; white-space: pre-line; }
-                #tmod-mod-menu .mm-ban-row { margin: 6px 0 2px; padding: 6px 10px; border: 1px solid #3a3a3d; border-radius: 6px; background: #101014; }
-        #tmod-mod-menu .mm-modlogs-row { margin: 6px 0 2px; padding: 6px 10px; border: 1px solid #2f2f33; border-radius: 6px; background: #0e0e10; max-height: 168px; overflow-y: auto; scrollbar-width: thin; cursor: pointer; user-select: none; -webkit-user-select: none; }
+                #tmod-mod-menu .mm-ban-row { margin: 6px 0 2px; padding: 6px 10px; border: 1px solid #3a3a3d; border-radius: 10px; background: #101014; }
+        #tmod-mod-menu .mm-modlogs-row { margin: 6px 0 2px; padding: 6px 10px; border: 1px solid #2f2f33; border-radius: 10px; background: #0e0e10; max-height: 168px; overflow-y: auto; scrollbar-width: thin; cursor: pointer; user-select: none; -webkit-user-select: none; }
         /* При наведении подсвечиваем обводку и текст, но не фон: развёрнутая история не
            должна «мигать» под курсором, а цвет фона совпадает с шапкой меню. */
         #tmod-mod-menu .mm-modlogs-row:hover { border-color: #4a4a52; }
@@ -5842,15 +9273,16 @@ const announceText = content.querySelector('#tmod-announce-text');
         #tmod-mod-menu .mm-modlogs-row:hover .mm-modlogs-hint { color: #bf94ff; }
         #tmod-mod-menu .mm-modlogs-info { font-size: 11.5px; line-height: 1.45; color: #adadb8; white-space: pre-wrap; word-break: break-word; }
         #tmod-mod-menu .mm-modlogs-caret { display: inline-block; width: 13px; color: #9147ff; font-size: 10px; line-height: 1.2; }
-        #tmod-mod-menu .mm-modlogs-title { font-weight: 700; color: #efeff1; }
-        #tmod-mod-menu .mm-modlogs-hint { float: right; color: #6f6f78; font-size: 10.5px; }
+        #tmod-mod-menu .mm-modlogs-title { font-weight: 400; color: #dedee3; }
+        #tmod-mod-menu .mm-modlogs-hint { float: right; color: #6f6f78; font-size: 10.5px; opacity: 0; transition: opacity .12s; }
+        #tmod-mod-menu .mm-modlogs-row:hover .mm-modlogs-hint { opacity: 1; color: #bf94ff; }
         #tmod-mod-menu .mm-modlogs-sum { color: #adadb8; margin: 3px 0 4px; user-select: text; -webkit-user-select: text; }
         #tmod-mod-menu .mm-modlogs-item { color: #adadb8; user-select: text; -webkit-user-select: text; }
                 #tmod-mod-menu .mm-ban-info { font-size: 11.5px; color: #adadb8; user-select: text; -webkit-user-select: text; word-break: break-word; white-space: pre-line; }
             </style>
             <div class="mm-header">
                 <div class="mm-header-top">
-                    <img class="mm-avatar" alt="" hidden>
+                    <span class="mm-avatar-wrap"><span class="mm-avatar-ph" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" d="M6 8a6 6 0 1 1 7.025 5.913l.012.036A3 3 0 0 0 15.883 16H17a4 4 0 0 1 4 4v2h-2v-2a2 2 0 0 0-2-2h-1.117A5 5 0 0 1 12 16.15 5 5 0 0 1 8.117 18H7a2 2 0 0 0-2 2v2H3v-2a4 4 0 0 1 4-4h1.117a3 3 0 0 0 2.846-2.051l.012-.036A6.002 6.002 0 0 1 6 8Zm6 4a4 4 0 1 1 0-8 4 4 0 0 1 0 8Z" clip-rule="evenodd"></path></svg></span><img class="mm-avatar" alt="" hidden></span>
                     <div class="mm-ident">
                         <div class="mm-name"><span class="mm-badges"></span>${name}<span class="mm-login">${login}</span></div>
                         <div class="mm-meta" hidden></div>
@@ -5862,8 +9294,10 @@ const announceText = content.querySelector('#tmod-announce-text');
                 <div class="mm-chips"></div>
             </div>
             <div class="mm-body">
-                <div class="mm-section">Сообщение</div>
-                <button class="mm-btn wide danger" data-action="delete"${delDisabled}><span class="mm-ic">${MOD_ICONS.delete}</span><span class="mm-lbl">Удалить сообщение</span></button>
+                <div class="mm-msg-block"${delDisabled ? ' hidden' : ''}>
+                    <div class="mm-section">Сообщение</div>
+                    <button class="mm-btn wide danger" data-action="delete"${delDisabled}><span class="mm-ic">${MOD_ICONS.delete}</span><span class="mm-lbl">Удалить сообщение</span></button>
+                </div>
 
                 <div class="mm-section">Предупреждение</div>
                 <input class="mm-input" type="text" maxlength="500" placeholder="Причина (варн / таймаут / бан)">
@@ -5916,6 +9350,18 @@ const announceText = content.querySelector('#tmod-announce-text');
         panelMenuEl = menu;
         panelMenuState.badges = collectUserBadges(msgEl);
         renderPanelMenuUserBadges();
+        // Если бейджей в сообщении нет (меню открыто из списка зрителей или из журнала
+        // действий), добираем их внутренним запросом Twitch.
+        if (!panelMenuState.badges.length && panelMenuState.userId) {
+            const badgeUid = String(panelMenuState.userId);
+            fetchUserBadgesGql(getChannelName(), badgeUid).then((list) => {
+                if (!list.length || !panelMenuEl || !panelMenuState) return;
+                if (String(panelMenuState.userId) !== badgeUid) return;   // меню уже переключилось
+                panelMenuState.badges = list;
+                renderPanelMenuUserBadges();
+                clampPanelMenuPosition();
+            }).catch(() => {});
+        }
         // Сворачивание/разворачивание истории модерации (по умолчанию свёрнута).
         const modLogsRow = menu.querySelector('.mm-modlogs-row');
         if (modLogsRow) {
@@ -6035,7 +9481,8 @@ const announceText = content.querySelector('#tmod-announce-text');
         }
 
         const preview = menu.querySelector('.mm-preview');
-        if (data.preview) preview.textContent = data.preview;
+        if (data.previewHtml) preview.innerHTML = data.previewHtml;
+        else if (data.preview) preview.textContent = data.preview;
 
         const reasonInput = menu.querySelector('.mm-input[type="text"]');
         menu.querySelectorAll('.mm-btn[data-action]').forEach((btn) => {
@@ -6378,18 +9825,23 @@ closePanelMenu();
                 // Стримера или чужого модератора удалить нельзя; своё сообщение модератора — можно.
                 const isOtherMod = data.isModerator && (!myId || myId !== data.userId);
                 data.canDelete = !!data.messageId && !data.isBroadcaster && !isOtherMod;
-                // Превью: простые фрагменты текста сообщения (без ника и бейджей).
-                let preview = '';
-                const frags = msgEl.querySelectorAll('.text-fragment, .chat-line__text-fragment, [data-a-target="chat-message-text"]');
-                if (frags.length) {
-                    preview = Array.from(frags).map((f) => f.textContent).join(' ').trim();
-                }
+                // Превью: текст берём из модели чата (fiber) — там ровно то, что написал юзер,
+                // включая названия смайлов. Картинки смайлов из DOM подставляем только если
+                // их текстовый слепок совпадает с моделью: иначе в превью попадает мусор
+                // сторонних расширений (7TV дописывает «Канал: … Смайлики канала 7TV»).
+                const pv = tmodMessagePreview(msgEl);
+                const fiberText = String(data.body || '').trim();
+                const normPrev = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                const sameAsFiber = !!(fiberText && pv.text && normPrev(fiberText) === normPrev(pv.text));
+                let preview = fiberText || pv.text;
                 if (!preview) {
                     // Фолбэк: вырезаем элемент ника из текста сообщения.
                     preview = (msgEl.textContent || '').trim();
                     const nickEl = msgEl.querySelector('[data-a-target="chat-line-username"]');
                     if (nickEl) preview = preview.replace(nickEl.textContent || '', '').replace(/^\s*[:：]\s*/, '').trim();
                 }
+                data.preview = preview.slice(0, 80);
+                data.previewHtml = sameAsFiber ? pv.html.slice(0, 1200) : escapeHtml(data.preview);
                 data.preview = preview.slice(0, 80);
                 debugLog('mod-context', 'data', data);
                 showPanelMenu(data, msgEl);
@@ -6564,6 +10016,9 @@ closePanelMenu();
                     setTimeout(getChannelAccentColor, 12000);
                 }
             }
+            // Клик по счётчику зрителей открывает нашу плитку «Зрители».
+            initViewersCounterClick();
+            scanChatColors();
             // Кнопка могла исчезнуть вместе с контейнером чата, который Twitch
             // пересоздаёт (смена раскладки/theatre, ремоунт чата). Возвращаем её на
             // место — раньше панель становилась недоступной до смены канала.
@@ -6599,6 +10054,20 @@ closePanelMenu();
     // Живые события модерации из чата (IRC) — чтобы плашка появлялась и когда бан/таймаут
     // выдал другой модератор, без переоткрытия меню.
     chatEventsStart(getChannelName());
+    // Разведка канальных операций (мод-лог/«Сообщество») — только при включённой
+    // диагностике, один раз на канал: она нужна, чтобы разобрать форму ответа.
+    try {
+        const diagOn = localStorage.getItem('TMOD_DEBUG') === '1'
+            || localStorage.getItem('TMOD_CAPTURE_GQL') === '1';
+        if (diagOn) {
+            const probeChannel = getChannelName();
+            getToken().then(async (t) => {
+                if (!t) return;
+                const cid = await getChannelId(probeChannel, t);
+                if (cid) await probeChannelGql(cid, probeChannel);
+            }).catch(() => {});
+        }
+    } catch (e) {}
     // Разовый дожимающий вход для пользователей со старыми правами. Отложен,
     // чтобы не спорить с остальным стартом и не мешать первому рендеру.
     setTimeout(ensureScopesFresh, 1500);
