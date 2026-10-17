@@ -896,7 +896,8 @@
             user-select: none;
             -webkit-user-select: none;
             width: fit-content;
-            min-width: 360px;
+            min-width: min(360px, calc(100vw - 16px));
+            max-width: calc(100vw - 16px);
         `;
 
         const headerIcon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path fill-rule="evenodd" d="M15.504 2H22v6.496L10.35 17.35 12 19l-1.5 1.5-2.785-2.785L3.5 22 2 20.5l4.285-4.215L3.5 13.5 5 12l1.65 1.65L15.504 2ZM20 7.504 8.923 15.923l-.846-.846L16.496 4H20v3.504Z" clip-rule="evenodd"></path></svg>';
@@ -1095,7 +1096,7 @@
                     <button id="tmod-panel-close" style="background: none; border: none; color: #adadb8; cursor: pointer; padding: 4px; font-size: 18px;">✕</button>
                 </div>
             </div>
-            <div style="padding: 8px; border-radius: 0 0 8px 8px; min-width: 360px; box-sizing: border-box;" id="tmod-panel-content">
+            <div style="padding: 8px; border-radius: 0 0 8px 8px; min-width: min(360px, calc(100vw - 32px)); box-sizing: border-box;" id="tmod-panel-content">
                 <div style="position: relative; min-height: 60px;">
                     <div id="tmod-tiles-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;"></div>
                     <div id="tmod-tiles-empty-label" style="display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 12px; color: #adadb8; pointer-events: none; text-align: center;">Все плитки скрыты —<br>нажми «Настроить панель»</div>
@@ -1644,6 +1645,21 @@
         document.documentElement.appendChild(panel);
         panelOpen = true;
         panelElement = panel;
+
+        // Панель считается «справа от кнопки». На обычном канале это работает: кнопка в правой
+        // колонке чата. Но на chat-странице и в popout-окне чат занимает всю ширину, кнопка стоит
+        // у левого края, и rightPos получается больше ширины окна — панель уезжала за правую
+        // границу, и выглядело это как «панель не открывается». Поэтому поджимаем её по факту
+        // измеренных размеров так, чтобы целиком влезала в окно с отступом 8px.
+        try {
+            const rect = panel.getBoundingClientRect();
+            const right = parseFloat(panel.style.right) || 8;
+            const bottom = parseFloat(panel.style.bottom) || 8;
+            const maxRight = Math.max(8, window.innerWidth - rect.width - 8);
+            const maxBottom = Math.max(8, window.innerHeight - rect.height - 8);
+            panel.style.right = Math.min(Math.max(8, right), maxRight) + 'px';
+            panel.style.bottom = Math.min(Math.max(8, bottom), maxBottom) + 'px';
+        } catch (e) {}
     }
 
     function showSettingsSection(panel) {
